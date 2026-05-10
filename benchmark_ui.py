@@ -2,12 +2,15 @@
 """
 Streamlit UI for LLM Benchmarking
 Interfaces with the existing benchmark.sh script to test and benchmark LLM endpoints.
+With realtime streaming output.
 """
 
 import streamlit as st
 import subprocess
 import os
 import time
+import threading
+import queue
 from pathlib import Path
 
 # Page configuration
@@ -22,40 +25,36 @@ st.set_page_config(
 BENCH_SCRIPT = Path(__file__).parent / "benchmark.sh"
 WORK_DIR = Path(__file__).parent
 
-def run_benchmark(model, endpoint):
-    """Run the benchmark script and return output."""
+def run_benchmark_stream(model, endpoint):
+    """Run the benchmark script and yield lines in realtime."""
     if not BENCH_SCRIPT.exists():
-        return f"Error: Benchmark script not found at {BENCH_SCRIPT}"
+        yield f"Error: Benchmark script not found at {BENCH_SCRIPT}"
+        return
     
-    # Make sure script is executable
     if not os.access(BENCH_SCRIPT, os.X_OK):
         try:
             os.chmod(BENCH_SCRIPT, 0o755)
         except Exception as e:
-            return f"Error: Cannot make script executable: {e}"
+            yield f"Error: Cannot make script executable: {e}"
+            return
     
     cmd = [str(BENCH_SCRIPT), model, endpoint]
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(WORK_DIR),
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-        
-        output = result.stdout
-        if result.stderr:
-            output += "\n\nSTDERR:\n" + result.stderr
-            
-        if result.returncode != 0:
-            output = f"Error (exit code {result.returncode}):\n{output}"
-            
-        return output
-    except subprocess.TimeoutExpired:
-        return "Error: Benchmark timed out after 5 minutes"
-    except Exception as e:
-        return f"Error running benchmark: {e}"
+    
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(WORK_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1
+    )
+    
+    for line in iter(proc.stdout.readline, ''):
+        yield line
+    
+    proc.wait()
+    if proc.returncode != 0:
+        yield f"\n[EXIT CODE: {proc.returncode}]"
 
 def list_models(endpoint):
     """List available models at the endpoint."""
@@ -88,7 +87,7 @@ def list_models(endpoint):
 def main():
     """Main Streamlit application."""
     st.title("🚀 LLM Benchmark UI")
-    st.markdown("Interface for testing and benchmarking LLM endpoints using the existing benchmark script.")
+    st.markdown("Interface for testing and benchmarking LLM endpoints with realtime streaming output.")
     
     # Sidebar for inputs
     with st.sidebar:
@@ -122,6 +121,9 @@ def main():
             if st.button("▶️ Run Benchmark", use_container_width=True, type="primary"):
                 st.session_state.run_benchmark = True
                 st.session_state.list_models = False
+                st.session_state.benchmark_lines = []
+                st.session_state.benchmark_running = True
+                st.session_state.benchmark_start = time.time()
     
     # Main area for output
     if st.session_state.get('list_models', False):
@@ -130,28 +132,39 @@ def main():
         
         st.subheader("Available Models")
         st.code(output, language="bash")
-        
-        # Provide a way to copy the output
-        if st.button("📋 Copy Output"):
-            st.write("Output copied to clipboard! (Note: actual clipboard functionality requires streamlit-clipy)")
     
     elif st.session_state.get('run_benchmark', False):
-        with st.spinner("Running benchmark... This may take several minutes."):
-            start_time = time.time()
-            output = run_benchmark(model, endpoint)
-            elapsed_time = time.time() - start_time
+        st.subheader(f"📊 Benchmark Results for `{model}`")
+        st.caption(f"Endpoint: {endpoint}")
         
-        st.subheader(f"Benchmark Results for `{model}`")
-        st.caption(f"Endpoint: {endpoint} | Elapsed time: {elapsed_time:.2f}s")
+        # Streaming output area
+        output_placeholder = st.empty()
+        status_placeholder = st.empty()
         
-        # Display output in a nice container
-        with st.container(border=True):
-            st.code(output, language="bash")
+        # Accumulate all lines
+        all_lines = []
+        elapsed = 0
         
-        # Provide download option
+        for line in run_benchmark_stream(model, endpoint):
+            all_lines.append(line)
+            elapsed = time.time() - st.session_state.benchmark_start
+            
+            # Show live output with elapsed time
+            full_output = "".join(all_lines)
+            status_placeholder.caption(f"⏱️ Running... {elapsed:.1f}s elapsed")
+            output_placeholder.code(full_output, language="bash")
+        
+        # Final display
+        elapsed = time.time() - st.session_state.benchmark_start
+        status_placeholder.caption(f"✅ Completed in {elapsed:.2f}s")
+        
+        full_output = "".join(all_lines)
+        output_placeholder.code(full_output, language="bash")
+        
+        # Download button
         st.download_button(
             label="💾 Download Results",
-            data=output,
+            data=full_output,
             file_name=f"benchmark_{model.replace('.', '_')}_{int(time.time())}.txt",
             mime="text/plain"
         )
@@ -167,7 +180,7 @@ def main():
         2. **Set Endpoint URL**: Enter the base URL of your LLM service (default: http://127.0.0.1:8081)
         3. **Choose Action**:
            - **List Models**: Fetch and display available models from the endpoint
-           - **Run Benchmark**: Execute the full benchmark suite for the specified model
+           - **Run Benchmark**: Execute the full benchmark suite with live streaming output
         
         ### About the Benchmark
         
