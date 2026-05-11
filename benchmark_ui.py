@@ -9,12 +9,9 @@ import streamlit as st
 import subprocess
 import os
 import time
-import threading
-import queue
 import re
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from pathlib import Path
 
 # Page configuration
@@ -59,12 +56,18 @@ def parse_benchmark_output(output_text):
         gen_ts = re.search(r'Generation\s+\(t/s\)\s+:\s+([\d.]+)', content)
         decode = re.search(r'Decode:\s+([\d.]+)', content)
 
-        if p_tokens: metrics["Prompt Tokens"] = int(p_tokens.group(1))
-        if c_tokens: metrics["Completion Tokens"] = int(c_tokens.group(1))
-        if p_eval: metrics["Prompt Eval (p/s)"] = float(p_eval.group(1))
-        if ttft: metrics["TTFT (s)"] = float(ttft.group(1))
-        if gen_ts: metrics["Generation (t/s)"] = float(gen_ts.group(1))
-        if decode: metrics["Decode Time (s)"] = float(decode.group(1))
+        if p_tokens:
+            metrics["Prompt Tokens"] = int(p_tokens.group(1))
+        if c_tokens:
+            metrics["Completion Tokens"] = int(c_tokens.group(1))
+        if p_eval:
+            metrics["Prompt Eval (p/s)"] = float(p_eval.group(1))
+        if ttft:
+            metrics["TTFT (s)"] = float(ttft.group(1))
+        if gen_ts:
+            metrics["Generation (t/s)"] = float(gen_ts.group(1))
+        if decode:
+            metrics["Decode Time (s)"] = float(decode.group(1))
 
         turns.append(metrics)
 
