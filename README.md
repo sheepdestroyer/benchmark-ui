@@ -1,102 +1,135 @@
-# LLM Benchmark UI
+# LLM Benchmarking & Optimization Registry Suite
 
-A lightweight Streamlit interface for testing and benchmarking LLM endpoints using the existing `benchmark.sh` script.
+A comprehensive benchmarking pipeline and Streamlit dashboard designed to evaluate, optimize, and visualize multi-GPU `llama.cpp` server Router deployments.
 
-## Files in this directory
+## Directory Structure
 
-- `benchmark_ui.py` - Main Streamlit application
-- `requirements.txt` - Python dependencies (Streamlit)
-- `benchmark.sh` - The original benchmark script (symlinked or copied from parent directory)
-- `run_ui.sh` - Convenience script to launch the UI
-- `README.md` - This file
+- `dashboard.py` - The state-of-the-art interactive Streamlit UI dashboard.
+- `run_suite.py` - The unified run orchestrator for executing different benchmark modes.
+- `advanced_benchmarks.py` - The long-context and agentic reasoning benchmarks pipeline.
+- `kld_benchmark.py` - KV Cache quantization Kullback-Leibler (KL) Divergence and perplexity evaluation.
+- `history/` - Registry directory storing historical run JSON logs.
+- `benchmark.sh` - The original bash ORM throughput benchmark script.
+- `requirements.txt` - Python package dependencies (Streamlit, Pandas, Plotly).
+- `run_ui.sh` - Convenience script to launch the interactive dashboard.
 
 ## Installation
 
-1. Ensure you have Python 3.7+ installed
-2. Install the required packages:
+1. Ensure you have Python 3.8+ installed.
+2. Install the required Python dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## Quick Start
 
-### Method 1: Using the convenience script
+### 1. Launch the Dashboard
+
+Use the convenience script to launch the Streamlit dashboard:
 
 ```bash
 ./run_ui.sh
 ```
 
-### Method 2: Manual launch
+Or run manually:
 
 ```bash
-streamlit run benchmark_ui.py
+streamlit run dashboard.py
 ```
 
-### Method 3: Direct execution (if you prefer not to use Streamlit)
+### 2. Execute the Unified Runner Script
 
-You can still use the original benchmark script directly:
+To run all benchmarks (throughput, reasoning, and local KLD quantization analysis) under a single command:
 
 ```bash
-../benchmark.sh "ModelName" "http://127.0.0.1:8081"
+python3 run_suite.py --mode all --endpoint http://127.0.0.1:8081 --model unsloth/Qwen3.6-27B-GGUF:Q4_K_S
 ```
 
-## Features
+#### Run Modes:
+- `--mode throughput`: Runs only the ORM and Markdown throughput workloads via `benchmark.sh`.
+- `--mode reasoning`: Runs the long-context synthetic and real-world reasoning tasks.
+- `--mode kld`: Compiles the native `llama-perplexity` binary and runs KLD analysis locally.
+- `--mode all`: Orchestrates all of the above sequentially.
 
-- **Model Listing**: Fetch and display available models from your LLM endpoint
-- **Benchmark Execution**: Run the full benchmark suite with visual feedback
-- **Results Display**: Clean, formatted output of benchmark metrics
-- **Result Download**: Save benchmark results as text files
-- **Configuration Sidebar**: Easy model and endpoint configuration
-
-## Benchmark Details
-
-The benchmark script performs four sequential tests:
-
-1. **Turn 1**: Cold start -> Python ORMs (measures initial latency)
-2. **Turn 2**: KV Cache Hit -> Repetitive Python ORMs (measures cached performance)
-3. **Turn 3**: KV Cache Hit -> Repetitive JSON Tool Calls (measures structured output)
-4. **Turn 4**: KV Cache Hit -> Repetitive Markdown (measures generation throughput)
-
-For each test, it reports:
-- Prompt and completion tokens
-- Prompt evaluation speed (tokens/sec) and Time To First Token (TTFT)
-- Generation speed (tokens/sec) and decode time
-
-Finally, it attempts to pull metrics from the Prometheus endpoint (`/metrics?model=${MODEL}`) if available.
-
-## Requirements
-
-- Python 3.7+
-- Streamlit (see requirements.txt)
-- The original `benchmark.sh` script (must be in the same directory or parent directory)
-- `jq` and `bc` command-line utilities (used by the benchmark script)
-- `curl` for making HTTP requests
-
-## Troubleshooting
-
-If you encounter issues:
-
-1. **Script not found**: Ensure `benchmark.sh` is present in the same directory as `benchmark_ui.py` or in the parent `LAB/IA/` directory.
-2. **Permission denied**: Make sure `benchmark.sh` is executable (`chmod +x benchmark.sh`)
-3. **Missing dependencies**: Install `jq` and `bc` via your package manager (e.g., `sudo apt install jq bc`)
-4. **Endpoint unreachable**: Verify your LLM service is running and accessible at the provided URL
-5. **Streamlit port conflicts**: The UI runs on port 8501 by default; change with `--server.port` if needed
-
-## Customization
-
-You can modify `benchmark_ui.py` to:
-- Change the default model or endpoint
-- Add additional input fields (e.g., API keys)
-- Modify the layout or styling
-- Add result parsing or visualization
-
-## Notes
-
-- The UI uses the existing benchmark script without modification, ensuring consistency with command-line usage.
-- All benchmark output is captured and displayed verbatim for transparency.
-- For long-running benchmarks, the UI shows a spinner and timeout protection (5 minutes).
+#### CLI Arguments:
+- `--endpoint`: Server endpoint URL (default: `http://127.0.0.1:8081`).
+- `--model`: Model alias or name loaded on the endpoint.
+- `--tokens`: Target token context length for reasoning tests (e.g. 5000 for validation, 200000 for full scaling).
+- `--gguf-path`: Local GGUF file path (for KLD mode, auto-detects Hugging Face cache if blank).
+- `--corpus`: Corpus prose file path for local perplexity calculation.
 
 ---
 
-Built for the LAB/IA/bench project.
+## Historical Run Registry Schema
+
+All benchmark executions export structured JSON logs saved under `history/run_[timestamp].json`. The schema matches:
+
+```json
+{
+    "run_metadata": {
+        "timestamp": "2026-07-08T02:48:25.506401",
+        "target_endpoint": "http://127.0.0.1:8081",
+        "cli_arguments": ["--mode", "throughput", "--model", "Qwen3.6-27B"]
+    },
+    "model_settings": {
+        "model_name": "Qwen3.6-27B",
+        "base_quantization": "Q4_K_S",
+        "kv_cache_quant": "q5_1",
+        "threads": 16,
+        "ubatch_size": 512,
+        "batch_size": 2048,
+        "speculative_draft_type": "ngram"
+    },
+    "throughput_metrics": {
+        "prefill_speed": 1326.0,
+        "decode_speed": 42.04,
+        "ttft": 3.43
+    },
+    "reasoning_accuracy": {
+        "needle": "Pass",
+        "ruler": "Pass",
+        "longbench": "Fail",
+        "swe_bench": "Pass"
+    },
+    "quantization_loss": {
+        "perplexity": 3.9682,
+        "mean_kld": 0.00115,
+        "same_top_match_percent": 98.1
+    }
+}
+```
+
+---
+
+## Detailed Benchmark Components
+
+### 1. Throughput Benchmarks (`benchmark.sh`)
+Runs four sequential multi-turn prompts measuring:
+1. **Turn 1 (Cold Start)**: Initial latency and prefill speed during cold ORM generation.
+2. **Turn 2 (KV Cache Hit)**: Cached response speed for repetitive ORM queries.
+3. **Turn 3 (JSON Tool Calls)**: Performance and formatting rates for structured outputs.
+4. **Turn 4 (Markdown)**: Document throughput and decode speeds.
+
+### 2. Advanced Reasoners (`advanced_benchmarks.py`)
+- **Needle in a Haystack (Needle)**: Verifies factual retrieval from configurable depths inside a deep synthetic context window.
+- **RULER**: Evaluates multi-hop variable tracking chains (e.g. `alpha` -> `beta` -> `gamma`) inside long context inputs.
+- **LongBench**: Validates document QA capabilities using technical corpus materials.
+- **SWE-bench (Toy)**: Dynamically tests code generation by tasking the model with fixing a math calculator library, saving the fix, and validating via local unit tests.
+
+### 3. KV Cache Quantization Loss (`kld_benchmark.py`)
+Wraps the native `llama-perplexity` executable to assess information loss of quantized key-value caches (`q8_0`, `q5_1`, `q4_0`) against an unquantized `f16` baseline. Tracks:
+- **Perplexity (PPL)**: Shift in prediction confidence.
+- **KL Divergence (KLD)**: Statistical divergence distance compared to high-precision reference.
+- **Same Top Token %**: Token matching fidelity.
+
+---
+
+## Interactive Dashboard Features
+
+The Streamlit UI (`dashboard.py`) enables:
+- **Run Browser**: Filter, sort, and search historical registry records.
+- **Multi-GPU / Optimization Plots**: Bar charts comparing Prefill vs. Decode speeds and accuracy scores.
+- **Quantization Optimizer**: Scatter plot mapping KL Divergence vs. VRAM Savings (%) to identify the ideal sweet-spot for cache quantization.
+- **Side-by-Side Comparator**: Directly compare two benchmark configurations head-to-head.
+- **Background Runner Control**: Run tests on the fly and stream logs to the UI.

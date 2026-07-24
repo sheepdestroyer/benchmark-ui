@@ -5,17 +5,19 @@
 export LC_NUMERIC=C
 
 if [[ "$1" == "--list" ]]; then
-    ENDPOINT="${2:-http://127.0.0.1:8081}"
+    ENDPOINT="${2:-http://127.0.0.1:8083}"
+    ENDPOINT="${ENDPOINT%/}"
     echo "========================================================="
     echo " Available Models at: $ENDPOINT"
     echo "========================================================="
-    curl -s "${ENDPOINT}/v1/models" | jq -r '.data[].id' || echo "Error: Could not fetch models or jq is missing."
+    curl -L -s "${ENDPOINT}/v1/models" | jq -r '.data[].id' || echo "Error: Could not fetch models or jq is missing."
     echo "========================================================="
     exit 0
 fi
 
 MODEL="${1:-Qwen3.6-27B}"
-ENDPOINT="${2:-http://127.0.0.1:8081}"
+ENDPOINT="${2:-http://127.0.0.1:8083}"
+ENDPOINT="${ENDPOINT%/}"
 
 echo "========================================================="
 echo " Benchmarking Model: $MODEL"
@@ -23,7 +25,7 @@ echo " Endpoint: $ENDPOINT"
 echo "========================================================="
 
 echo -n "Triggering model reload... "
-curl -s "${ENDPOINT}/v1/models?reload=1" > /dev/null && echo "Done." || echo "Failed."
+curl -L -s "${ENDPOINT}/v1/models?reload=1" > /dev/null && echo "Done." || echo "Failed."
 
 call_api() {
   local turn_name="$1"
@@ -35,7 +37,7 @@ call_api() {
   local first_token_ts=""
   local temp_file=$(mktemp)
 
-  curl -s -N -X POST "${ENDPOINT}/v1/chat/completions" \
+  curl -L -s -N -X POST "${ENDPOINT}/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -d "$payload" | while read -r line; do
       
@@ -165,7 +167,7 @@ echo -e "\n========================================================="
 echo " Final Model Metrics (from Prometheus endpoint)"
 echo "========================================================="
 # Pull metrics, strip out comments and empty lines
-curl -s "${ENDPOINT}/metrics?model=${MODEL}" | grep -v "^#" | awk NF
+curl -L -s "${ENDPOINT}/metrics?model=${MODEL}" | grep -v "^#" | awk NF
 echo "========================================================="
 echo " Note: Your journalctl logs hold the exact N-Gram Spec stats."
 echo " Run this to see the acceptance rates:"

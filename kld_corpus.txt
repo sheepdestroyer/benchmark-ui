@@ -1,0 +1,11 @@
+Artificial intelligence and machine learning have revolutionized the way we approach complex computational tasks. 
+At the heart of modern large language models is the transformer architecture, which relies on the self-attention mechanism.
+The self-attention mechanism computes a weighted representation of the input sequence, allowing the model to focus on different tokens at different positions.
+However, as the context window of these models scales up to 128K, 256K, or even a million tokens, the memory footprint of the Key-Value (KV) cache becomes a severe bottleneck.
+For a standard model, the KV cache grows linearly with both the sequence length and the batch size.
+To mitigate this memory overhead, researchers and developers have proposed various quantization techniques for the KV cache.
+By compressing the keys and values from 16-bit floating-point numbers (FP16 or BF16) to lower-precision formats like 8-bit (Q8_0) or 5-bit (Q5_1) integers, the memory footprint can be reduced by 2x to 3x.
+However, down-quantization introduces quantization noise, which can degrade the model's perplexity and multi-step reasoning capabilities.
+To quantify this information loss, we calculate the Kullback-Leibler (KL) divergence of the model's output probability distribution compared to a high-precision baseline.
+A KL divergence of zero indicates that the output distributions are identical, while higher values indicate increasing quality degradation.
+In this test, we evaluate different KV cache quantization types against a baseline reference to determine the sweet spot for long-context agentic reasoning.

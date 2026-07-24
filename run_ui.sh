@@ -12,4 +12,4 @@ fi
 
 # Launch the Streamlit app
 echo "Launching LLM Benchmark UI..."
-streamlit run benchmark_ui.py "$@"
+streamlit run dashboard.py "$@"

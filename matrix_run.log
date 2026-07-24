@@ -1,0 +1,322 @@
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T04:12:51.705345
+================================================================================
+[+] Loaded 0 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Launching Real Run: Model=Qwen3.6-27B | Context=1024 tokens...
+    [+] Success! Run saved in history/.
+[2/24] Launching Real Run: Model=Qwen3.6-27B | Context=8192 tokens...
+    [+] Success! Run saved in history/.
+[3/24] Launching Real Run: Model=Qwen3.6-27B | Context=32000 tokens...
+    [+] Success! Run saved in history/.
+[4/24] Launching Real Run: Model=Qwen3.6-27B | Context=64000 tokens...
+    [+] Success! Run saved in history/.
+[5/24] Launching Real Run: Model=Qwen3.6-27B | Context=128000 tokens...
+    [+] Success! Run saved in history/.
+[6/24] Launching Real Run: Model=Qwen3.6-27B | Context=228000 tokens...
+    [+] Success! Run saved in history/.
+[7/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=1024 tokens...
+    [+] Success! Run saved in history/.
+[8/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=8192 tokens...
+    [+] Success! Run saved in history/.
+[9/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=32000 tokens...
+    [+] Success! Run saved in history/.
+[10/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=64000 tokens...
+    [+] Success! Run saved in history/.
+[11/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=128000 tokens...
+    [+] Success! Run saved in history/.
+[12/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=228000 tokens...
+    [+] Success! Run saved in history/.
+[13/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=1024 tokens...
+    [+] Success! Run saved in history/.
+[14/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=8192 tokens...
+    [+] Success! Run saved in history/.
+[15/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=32000 tokens...
+Traceback (most recent call last):
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 168, in <module>
+    run_matrix()
+    ~~~~~~~~~~^^
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 149, in run_matrix
+    result = subprocess.run(cmd, capture_output=True, text=True)
+  File "/usr/lib64/python3.14/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 1221, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 2153, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib64/python3.14/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T09:50:45.106611
+================================================================================
+[+] Loaded 6 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=1024
+[2/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=8192
+[3/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=32000
+[4/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=64000
+[5/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=128000
+[6/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=228000
+[7/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=1024 tokens...
+Traceback (most recent call last):
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 168, in <module>
+    run_matrix()
+    ~~~~~~~~~~^^
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 149, in run_matrix
+    result = subprocess.run(cmd, capture_output=True, text=True)
+  File "/usr/lib64/python3.14/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 1221, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 2153, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib64/python3.14/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+[]
+[('Qwen3.6-27B', 1024), ('Qwen3.6-27B', 8192), ('Qwen3.6-27B', 32000), ('Qwen3.6-27B', 64000), ('Qwen3.6-27B', 128000), ('Qwen3.6-27B', 228000), ('Qwen3.6-27B-spec3', 1024), ('Qwen3.6-27B-spec3', 8192), ('Qwen3.6-27B-spec3', 32000), ('Qwen3.6-27B-spec3', 64000), ('Qwen3.6-27B-spec3', 128000), ('Qwen3.6-27B-spec3', 228000), ('Qwen3.6-27B-spec4', 1024), ('Qwen3.6-27B-spec4', 8192)]
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T10:03:39.051213
+================================================================================
+[+] Loaded 14 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=1024
+[2/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=8192
+[3/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=32000
+[4/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=64000
+[5/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=128000
+[6/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=228000
+[7/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=1024
+[8/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=8192
+[9/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=32000
+[10/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=64000
+[11/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=128000
+[12/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=228000
+[13/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=1024
+[14/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=8192
+[15/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=32000 tokens...
+    [-] Timeout: Subprocess timed out (exceeded 5 minutes limit). Skipping to prevent hang.
+[16/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=64000 tokens...
+Traceback (most recent call last):
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 180, in <module>
+    run_matrix()
+    ~~~~~~~~~~^^
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 157, in run_matrix
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+  File "/usr/lib64/python3.14/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 1221, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 2153, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib64/python3.14/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T10:10:38.789880
+================================================================================
+[+] Loaded 14 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=1024
+[2/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=8192
+[3/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=32000
+[4/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=64000
+[5/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=128000
+[6/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=228000
+[7/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=1024
+[8/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=8192
+[9/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=32000
+[10/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=64000
+[11/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=128000
+[12/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=228000
+[13/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=1024
+[14/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=8192
+[15/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=32000 tokens...
+    [+] Success! Run saved in history/.
+[16/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=64000 tokens...
+    [+] Success! Run saved in history/.
+[17/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=128000 tokens...
+    [-] Timeout: Subprocess timed out (exceeded 5 minutes limit). Marking model as broken, and restarting llama-router...
+[18/24] Skipping (Model Broken/Missing): Model=Qwen3.6-27B-spec4 | Context=228000
+[19/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=1024 tokens...
+    [+] Success! Run saved in history/.
+[20/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=8192 tokens...
+    [+] Success! Run saved in history/.
+[21/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=32000 tokens...
+    [+] Success! Run saved in history/.
+[22/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=64000 tokens...
+    [+] Success! Run saved in history/.
+[23/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=128000 tokens...
+    [+] Success! Run saved in history/.
+[24/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=228000 tokens...
+Traceback (most recent call last):
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 202, in <module>
+    run_matrix()
+    ~~~~~~~~~~^^
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 164, in run_matrix
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+  File "/usr/lib64/python3.14/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 1221, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 2153, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib64/python3.14/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T10:40:16.973504
+================================================================================
+[+] Loaded 21 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=1024
+[2/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=8192
+[3/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=32000
+[4/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=64000
+[5/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=128000
+[6/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=228000
+[7/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=1024
+[8/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=8192
+[9/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=32000
+[10/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=64000
+[11/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=128000
+[12/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=228000
+[13/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=1024
+[14/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=8192
+[15/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=32000
+[16/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=64000
+[17/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=128000 tokens...
+    [-] Timeout: Subprocess timed out (exceeded 5 minutes limit). Marking model as broken, and restarting llama-router...
+[18/24] Skipping (Model Broken/Missing): Model=Qwen3.6-27B-spec4 | Context=228000
+[19/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=1024
+[20/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=8192
+[21/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=32000
+[22/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=64000
+[23/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=128000
+[24/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=228000 tokens...
+Traceback (most recent call last):
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 202, in <module>
+    # Restart server router service to clear locks
+  File "/home/sheepdestroyer/LAB/IA/bench/run_matrix.py", line 164, in run_matrix
+    run_timeout = 300    # 5 minutes
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 1221, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib64/python3.14/subprocess.py", line 2153, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib64/python3.14/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T10:48:09.503935
+================================================================================
+[+] Loaded 21 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=1024
+[2/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=8192
+[3/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=32000
+[4/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=64000
+[5/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=128000
+[6/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=228000
+[7/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=1024
+[8/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=8192
+[9/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=32000
+[10/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=64000
+[11/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=128000
+[12/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=228000
+[13/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=1024
+[14/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=8192
+[15/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=32000
+[16/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=64000
+[17/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=128000 tokens...
+    [+] Success! Run saved in history/.
+[18/24] Launching Real Run: Model=Qwen3.6-27B-spec4 | Context=228000 tokens...
+    [+] Success! Run saved in history/.
+[19/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=1024
+[20/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=8192
+[21/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=32000
+[22/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=64000
+[23/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=128000
+[24/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=228000 tokens...
+    [+] Success! Run saved in history/.
+
+================================================================================
+ LLM MATRIX RUNNER COMPLETE - END TIME: 2026-07-08T11:13:39.561650
+ Successfully evaluated: 24 | Total matrix: 24 runs.
+================================================================================
+
+
+================================================================================
+ LLM MATRIX RUNNER - START TIME: 2026-07-08T11:57:58.278087
+================================================================================
+[+] Loaded 18 already completed runs from history/.
+[+] Output is automatically copied to: /home/sheepdestroyer/LAB/IA/bench/matrix_run.log
+[+] Failures/Errors are logged to: /home/sheepdestroyer/LAB/IA/bench/matrix_errors.log
+
+[1/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=1024
+[2/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=8192
+[3/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=32000
+[4/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=64000
+[5/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=128000
+[6/24] Skipping (Already Completed): Model=Qwen3.6-27B | Context=228000
+[7/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=1024
+[8/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=8192
+[9/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=32000
+[10/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=64000
+[11/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec3 | Context=128000
+[12/24] Launching Real Run: Model=Qwen3.6-27B-spec3 | Context=228000 tokens...
+    [+] Success! Run saved in history/.
+[13/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=1024
+[14/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=8192
+[15/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=32000
+[16/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=64000
+[17/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=128000
+[18/24] Skipping (Already Completed): Model=Qwen3.6-27B-spec4 | Context=228000
+[19/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=1024 tokens...
+    [+] Success! Run saved in history/.
+[20/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=8192 tokens...
+    [+] Success! Run saved in history/.
+[21/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=32000 tokens...
+    [+] Success! Run saved in history/.
+[22/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=64000 tokens...
+    [+] Success! Run saved in history/.
+[23/24] Launching Real Run: Model=Qwen3.6-35B-A3B-spec | Context=128000 tokens...
+    [+] Success! Run saved in history/.
+[24/24] Skipping (Already Completed): Model=Qwen3.6-35B-A3B-spec | Context=228000
+
+================================================================================
+ LLM MATRIX RUNNER COMPLETE - END TIME: 2026-07-08T12:18:04.877202
+ Successfully evaluated: 24 | Total matrix: 24 runs.
+================================================================================
+
