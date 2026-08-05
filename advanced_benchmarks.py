@@ -8,6 +8,41 @@ import sys
 import os
 import subprocess
 import shutil
+import ast
+
+def is_safe_code(code_str):
+    try:
+        tree = ast.parse(code_str)
+    except SyntaxError as e:
+        return False, f"Syntax error: {e}"
+
+    dangerous_names = {'os.system', 'shutil.rmtree', 'eval', 'exec', 'subprocess', 'socket'}
+    dangerous_modules = {'subprocess', 'socket'}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                mod = alias.name.split('.')[0]
+                if mod in dangerous_modules or alias.name in dangerous_names:
+                    return False, f"Forbidden import: {alias.name}"
+        elif isinstance(node, ast.ImportFrom):
+            mod = (node.module or '').split('.')[0]
+            if mod in dangerous_modules:
+                return False, f"Forbidden import module: {node.module}"
+            for alias in node.names:
+                full_import = f"{node.module}.{alias.name}"
+                if full_import in dangerous_names or alias.name in ('eval', 'exec', 'subprocess', 'socket'):
+                    return False, f"Forbidden import: {full_import}"
+        elif isinstance(node, ast.Attribute):
+            if isinstance(node.value, ast.Name):
+                full_attr = f"{node.value.id}.{node.attr}"
+                if full_attr in dangerous_names:
+                    return False, f"Forbidden attribute usage: {full_attr}"
+        elif isinstance(node, ast.Name):
+            if node.id in ('eval', 'exec', 'subprocess', 'socket'):
+                return False, f"Forbidden identifier usage: {node.id}"
+
+    return True, None
 
 # ==============================================================================
 # COMMON UTILITIES & DATA GENERATION
@@ -297,36 +332,41 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
         print("Error: Could not parse python code block from response.")
         is_correct = False
     else:
-        # Backup original file
-        backup_path = code_path + ".bak"
-        shutil.copy2(code_path, backup_path)
-        
-        try:
-            # Write new code
-            with open(code_path, "w", encoding="utf-8") as f:
-                f.write(new_code)
-                
-            # Run unit tests
-            test_run = subprocess.run(
-                [sys.executable, "-m", "unittest", "test_calculator.py"],
-                cwd=toy_repo_dir,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            print(test_run.stdout)
-            print(test_run.stderr)
-            
-            is_correct = (test_run.returncode == 0)
-        except Exception as e:
-            print(f"Failed to execute tests: {e}")
+        is_safe, reason = is_safe_code(new_code)
+        if not is_safe:
+            print(f"Error: Generated code failed security sandboxing check: {reason}")
             is_correct = False
-        finally:
-            # Restore backup
-            if 'backup_path' in locals() and os.path.exists(backup_path):
-                shutil.copy2(backup_path, code_path)
-                os.remove(backup_path)
+        else:
+            # Backup original file
+            backup_path = code_path + ".bak"
+            shutil.copy2(code_path, backup_path)
+            
+            try:
+                # Write new code
+                with open(code_path, "w", encoding="utf-8") as f:
+                    f.write(new_code)
+                    
+                # Run unit tests
+                test_run = subprocess.run(
+                    [sys.executable, "-m", "unittest", "test_calculator.py"],
+                    cwd=toy_repo_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                print(test_run.stdout)
+                print(test_run.stderr)
+                
+                is_correct = (test_run.returncode == 0)
+            except Exception as e:
+                print(f"Failed to execute tests: {e}")
+                is_correct = False
+            finally:
+                # Restore backup
+                if 'backup_path' in locals() and os.path.exists(backup_path):
+                    shutil.copy2(backup_path, code_path)
+                    os.remove(backup_path)
             
     print("\n---------------------------------------------------------")
     print(f"SWE-bench Result   : {'PASSED' if is_correct else 'FAILED'}")
