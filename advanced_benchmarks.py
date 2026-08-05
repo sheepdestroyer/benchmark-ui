@@ -59,38 +59,38 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
     usage = None
     
     try:
-        response = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
-        if response.status_code != 200:
-            print(f"Error: {response.status_code} - {response.text}")
-            return None
-            
-        for line in response.iter_lines():
-            if not line:
-                continue
-            line_str = line.decode('utf-8')
-            if line_str.startswith("data: "):
-                data_content = line_str[6:]
-                if data_content.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data_content)
-                    if chunk.get("choices"):
-                        delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content", "")
-                        reasoning_content = delta.get("reasoning_content", "")
-                        
-                        if first_token_time is None and (content or reasoning_content):
-                            first_token_time = time.time()
-                        
-                        if content:
-                            response_text += content
-                        if reasoning_content:
-                            reasoning_text += reasoning_content
-                        
-                    if chunk.get("usage"):
-                        usage = chunk["usage"]
-                except Exception:
-                    pass
+        with requests.post(url, json=payload, headers=headers, stream=True, timeout=300) as response:
+            if response.status_code != 200:
+                print(f"Error: {response.status_code} - {response.text}")
+                return None
+                
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                line_str = line.decode('utf-8')
+                if line_str.startswith("data: "):
+                    data_content = line_str[6:]
+                    if data_content.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_content)
+                        if chunk.get("choices"):
+                            delta = chunk["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            reasoning_content = delta.get("reasoning_content", "")
+                            
+                            if first_token_time is None and (content or reasoning_content):
+                                first_token_time = time.time()
+                            
+                            if content:
+                                response_text += content
+                            if reasoning_content:
+                                reasoning_text += reasoning_content
+                            
+                        if chunk.get("usage"):
+                            usage = chunk["usage"]
+                    except Exception:
+                        pass
     except Exception as e:
         print(f"Request failed: {e}")
         return None
@@ -172,11 +172,11 @@ def run_ruler_test(endpoint, model, tokens=200000):
     fact_3 = "The variable gamma is assigned the value of variable beta."
     query = "What is the final value of variable gamma? Provide only the numerical value and nothing else."
     
-    # Insert facts at 25%, 50%, and 75% depth
+    # Insert facts at 75%, 50%, and 25% depth
     p_len = len(paragraphs)
-    paragraphs.insert(int(p_len * 0.25), fact_1)
-    paragraphs.insert(int(p_len * 0.50), fact_2)
     paragraphs.insert(int(p_len * 0.75), fact_3)
+    paragraphs.insert(int(p_len * 0.50), fact_2)
+    paragraphs.insert(int(p_len * 0.25), fact_1)
     
     full_context = "\n\n".join(paragraphs)
     prompt = f"Context:\n{full_context}\n\nQuestion: {query}"
@@ -254,9 +254,9 @@ def run_swe_test(endpoint, model):
         return None
         
     # Read files
-    with open(code_path, "r") as f:
+    with open(code_path, "r", encoding="utf-8") as f:
         code_content = f.read()
-    with open(test_path, "r") as f:
+    with open(test_path, "r", encoding="utf-8") as f:
         test_content = f.read()
         
     # Construct prompt
@@ -303,15 +303,16 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
         
         try:
             # Write new code
-            with open(code_path, "w") as f:
+            with open(code_path, "w", encoding="utf-8") as f:
                 f.write(new_code)
                 
             # Run unit tests
             test_run = subprocess.run(
-                ["python3", "-m", "unittest", "test_calculator.py"],
+                [sys.executable, "-m", "unittest", "test_calculator.py"],
                 cwd=toy_repo_dir,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=30
             )
             
             print(test_run.stdout)
@@ -323,8 +324,9 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
             is_correct = False
         finally:
             # Restore backup
-            shutil.copy2(backup_path, code_path)
-            os.remove(backup_path)
+            if 'backup_path' in locals() and os.path.exists(backup_path):
+                shutil.copy2(backup_path, code_path)
+                os.remove(backup_path)
             
     print("\n---------------------------------------------------------")
     print(f"SWE-bench Result   : {'PASSED' if is_correct else 'FAILED'}")
@@ -424,57 +426,57 @@ def get_model_settings_from_endpoint(endpoint, target_model):
             
     try:
         url = f"{endpoint}/v1/models"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            model_info = None
-            for item in data.get("data", []):
-                if item.get("id") == target_model or target_model in item.get("id", ""):
-                    model_info = item
-                    break
-            
-            if model_info:
-                status = model_info.get("status", {})
-                args = status.get("args", [])
-                preset = status.get("preset", "")
-                
-                # Check args
-                for i, arg in enumerate(args):
-                    if arg == "--threads" and i + 1 < len(args):
-                        settings["threads"] = int(args[i+1])
-                    elif arg == "--batch-size" and i + 1 < len(args):
-                        settings["batch_size"] = int(args[i+1])
-                    elif arg == "--ubatch-size" and i + 1 < len(args):
-                        settings["ubatch_size"] = int(args[i+1])
-                    elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
-                        settings["kv_cache_quant"] = args[i+1]
-                
-                # Try preset parsing
-                if preset:
-                    for line in preset.split("\n"):
-                        line = line.strip()
-                        if "=" in line:
-                            k, v = line.split("=", 1)
-                            k, v = k.strip(), v.strip()
-                            if k == "threads":
-                                settings["threads"] = int(v)
-                            elif k == "batch-size":
-                                settings["batch_size"] = int(v)
-                            elif k == "ubatch-size":
-                                settings["ubatch_size"] = int(v)
-                            elif k in ["cache-type-k", "cache-type-v"]:
-                                settings["kv_cache_quant"] = v
-                                
-                repo_or_id = model_info.get("id", "")
-                for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
-                    if q.lower() in repo_or_id.lower():
-                        settings["base_quantization"] = q
+        with requests.get(url, timeout=5) as response:
+            if response.status_code == 200:
+                data = response.json()
+                model_info = None
+                for item in data.get("data", []):
+                    if item.get("id") == target_model or target_model in item.get("id", ""):
+                        model_info = item
                         break
                 
-                if "mtp" in repo_or_id.lower() or any("spec" in str(arg).lower() for arg in args):
-                    settings["speculative_draft_type"] = "ngram"
-                else:
-                    settings["speculative_draft_type"] = "None"
+                if model_info:
+                    status = model_info.get("status", {})
+                    args = status.get("args", [])
+                    preset = status.get("preset", "")
+                    
+                    # Check args
+                    for i, arg in enumerate(args):
+                        if arg == "--threads" and i + 1 < len(args):
+                            settings["threads"] = int(args[i+1])
+                        elif arg == "--batch-size" and i + 1 < len(args):
+                            settings["batch_size"] = int(args[i+1])
+                        elif arg == "--ubatch-size" and i + 1 < len(args):
+                            settings["ubatch_size"] = int(args[i+1])
+                        elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
+                            settings["kv_cache_quant"] = args[i+1]
+                    
+                    # Try preset parsing
+                    if preset:
+                        for line in preset.split("\n"):
+                            line = line.strip()
+                            if "=" in line:
+                                k, v = line.split("=", 1)
+                                k, v = k.strip(), v.strip()
+                                if k == "threads":
+                                    settings["threads"] = int(v)
+                                elif k == "batch-size":
+                                    settings["batch_size"] = int(v)
+                                elif k == "ubatch-size":
+                                    settings["ubatch_size"] = int(v)
+                                elif k in ["cache-type-k", "cache-type-v"]:
+                                    settings["kv_cache_quant"] = v
+                                    
+                    repo_or_id = model_info.get("id", "")
+                    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
+                        if q.lower() in repo_or_id.lower():
+                            settings["base_quantization"] = q
+                            break
+                    
+                    if "mtp" in repo_or_id.lower() or any("spec" in str(arg).lower() for arg in args):
+                        settings["speculative_draft_type"] = "ngram"
+                    else:
+                        settings["speculative_draft_type"] = "None"
     except Exception as e:
         print(f"[*] Could not fetch model settings from endpoint: {e}")
         
@@ -585,7 +587,7 @@ def main():
         safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
         output_file = os.path.join(history_dir, f"run_{safe_timestamp}.json")
         
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             json.dump(run_data, f, indent=4)
         print(f"[+] Saved structured historical run to {output_file}")
 
