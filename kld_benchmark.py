@@ -49,8 +49,6 @@ def compile_perplexity_binary(root_dir):
     print("[-] Binary missing: llama-perplexity binary not found after compilation.")
     sys.exit(1)
 
-<<<<<<< HEAD
-
 def sanitize_nan_inf(obj):
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
