@@ -59,8 +59,14 @@ def run_perplexity(binary, model, corpus, cache_k, cache_v, base_kld=None, evalu
             cmd.append("--kl-divergence")
             
     print(f"[*] Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return result.stdout, result.stderr
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600)
+        return result.stdout, result.stderr
+    except subprocess.TimeoutExpired as e:
+        print("[-] Execution of llama-perplexity timed out after 600 seconds.")
+        stdout = e.stdout if isinstance(e.stdout, str) else (e.stdout.decode('utf-8') if e.stdout else "")
+        stderr = e.stderr if isinstance(e.stderr, str) else (e.stderr.decode('utf-8') if e.stderr else "")
+        return stdout, stderr
 
 def parse_metrics(output):
     metrics = {

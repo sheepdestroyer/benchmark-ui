@@ -59,6 +59,16 @@ def get_default_gguf_paths(cache_dir=None):
         "Qwen3.6-35B-A3B-spec": os.environ.get("GGUF_PATH_QWEN35B_SPEC", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-35B-A3B-GGUF/snapshots/a483e9e6cbd595906af30beda3187c2663a1118c/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"))
     }
 
+def restart_router_service(model="N/A", context=0):
+    res = subprocess.run(["systemctl", "--user", "restart", "llama-router"], capture_output=True, text=True)
+    if res.returncode != 0:
+        err_msg = f"systemctl restart llama-router failed with exit code {res.returncode}"
+        print(f"    [!] Warning: {err_msg}")
+        if res.stderr:
+            print(f"        STDERR: {res.stderr.strip()}")
+        log_error(model, context, err_msg, stdout=res.stdout, stderr=res.stderr)
+    return res.returncode == 0
+
 def wait_for_endpoint_health(endpoint="http://127.0.0.1:8081", timeout=60, poll_interval=2):
     import urllib.request
     url = f"{endpoint.rstrip("/")}/v1/models"
@@ -190,6 +200,14 @@ def run_matrix(endpoint="http://127.0.0.1:8081", presets_file=None, cache_dir=No
                 
             print(f"[{count}/{total_runs}] Launching Real Run: Model={m} | Context={c} tokens...")
             
+            # Check endpoint health before starting benchmark
+            if not wait_for_endpoint_health(endpoint=endpoint, timeout=15, poll_interval=2):
+                err_msg = f"Endpoint {endpoint} is unhealthy before starting benchmark for model {m}"
+                print(f"    [-] Unhealthy Endpoint: {err_msg}. Skipping model {m}...")
+                log_error(m, c, err_msg)
+                failed_models.add(m)
+                continue
+            
             cmd = [
                 sys.executable, "run_suite.py",
                 "--mode", "all",
@@ -223,7 +241,7 @@ def run_matrix(endpoint="http://127.0.0.1:8081", presets_file=None, cache_dir=No
                     failed_models.add(m)  # Mark model as failed to skip subsequent context sizes
                     
                     # Restart server router service to clear locks
-                    subprocess.run(["systemctl", "--user", "restart", "llama-router"])
+                    restart_router_service(m, c)
                     wait_for_endpoint_health(endpoint=endpoint)
             except subprocess.TimeoutExpired as e:
                 err_msg = f"Subprocess timed out (exceeded {run_timeout} seconds limit)"

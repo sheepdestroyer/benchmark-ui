@@ -31,10 +31,29 @@ if 'benchmark_history' not in st.session_state:
     st.session_state.benchmark_history = []
 if 'benchmark_running' not in st.session_state:
     st.session_state.benchmark_running = False
+if 'current_proc' not in st.session_state:
+    st.session_state.current_proc = None
 
 # Paths
 BENCH_SCRIPT = Path(__file__).parent / "benchmark.sh"
 WORK_DIR = Path(__file__).parent
+
+def cleanup_current_proc():
+    proc = st.session_state.get('current_proc')
+    if proc is not None:
+        try:
+            if proc.stdout and not proc.stdout.closed:
+                proc.stdout.close()
+        except Exception:
+            pass
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1)
+        st.session_state.current_proc = None
 
 def parse_benchmark_output(output_text):
     """Parse the benchmark output to extract metrics for each turn."""
@@ -106,20 +125,29 @@ def run_benchmark_stream(model, endpoint):
         text=True,
         bufsize=1
     )
+    st.session_state.current_proc = proc
     
     try:
-        for line in iter(proc.stdout.readline, ''):
-            yield line
+        if proc.stdout:
+            for line in iter(proc.stdout.readline, ''):
+                yield line
         proc.wait()
         if proc.returncode != 0:
             yield f"\n[EXIT CODE: {proc.returncode}]"
     finally:
+        if proc.stdout and not proc.stdout.closed:
+            try:
+                proc.stdout.close()
+            except Exception:
+                pass
         if proc.poll() is None:
             proc.terminate()
             try:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait(timeout=1)
+        st.session_state.current_proc = None
 
 def list_models(endpoint):
     """List available models at the endpoint."""
@@ -151,6 +179,7 @@ def list_models(endpoint):
 
 def main():
     """Main Streamlit application."""
+    cleanup_current_proc()
     st.title("🚀 LLM Benchmark UI")
     st.markdown("Interface for testing and benchmarking LLM endpoints with realtime streaming output.")
 
@@ -182,11 +211,13 @@ def main():
         
         with col1:
             if st.button("📋 List Models", use_container_width=True):
+                cleanup_current_proc()
                 st.session_state.list_models = True
                 st.session_state.run_benchmark = False
         
         with col2:
             if st.button("▶️ Run Benchmark", use_container_width=True, type="primary"):
+                cleanup_current_proc()
                 st.session_state.run_benchmark = True
                 st.session_state.list_models = False
                 st.session_state.benchmark_lines = []
