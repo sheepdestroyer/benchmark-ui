@@ -321,7 +321,7 @@ def main():
     }
     
     # Write output to history/
-    history_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "history")))
+    history_dir = (Path(__file__).parent / "history").resolve()
     history_dir.mkdir(parents=True, exist_ok=True)
     safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
     output_file = history_dir / f"run_{safe_timestamp}.json"

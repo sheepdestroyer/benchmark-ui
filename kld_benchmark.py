@@ -5,6 +5,12 @@ import sys
 import subprocess
 import re
 import argparse
+import tempfile
+import datetime
+import json
+from pathlib import Path
+
+BENCH_DIR = Path(__file__).parent.resolve()
 
 # Default corpus text for perplexity calculation (approx 800 tokens of technical prose)
 DEFAULT_CORPUS = """
@@ -43,6 +49,7 @@ def compile_perplexity_binary(root_dir):
     print("[-] Binary missing: llama-perplexity binary not found after compilation.")
     sys.exit(1)
 
+<<<<<<< HEAD
 
 def sanitize_nan_inf(obj):
     if isinstance(obj, float):
@@ -56,13 +63,18 @@ def sanitize_nan_inf(obj):
     return obj
 
 def run_perplexity(binary, model, corpus, cache_k, cache_v, base_kld=None, evaluate=False):
+=======
+def run_perplexity(binary, model, corpus, cache_k, cache_v, base_kld=None, evaluate=False, threads=None):
+    if threads is None:
+        threads = os.cpu_count() or 4
+>>>>>>> 8937156 (Fix infrastructure issues — TeeLogger, file paths, history management, and thread counts)
     cmd = [
         binary,
         "-m", model,
         "-f", corpus,
         "--cache-type-k", cache_k,
         "--cache-type-v", cache_v,
-        "--threads", "16",
+        "--threads", str(threads),
         "--ctx-size", "128"
     ]
     
@@ -96,19 +108,16 @@ def parse_metrics(output):
     float_pattern = r"[-+]?(?:[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?|inf|nan)"
     
     # Parse final perplexity (PPL)
-    # Output matches: "Final perplexity: 7.2345", "Final estimate: PPL = 3.9645" or "Mean PPL(Q)                   :   3.948214"
     ppl_match = re.search(r"(?:Final perplexity:\s*|Final estimate:\s*PPL\s*=\s*|Mean PPL\(Q\)\s*:\s*)(" + float_pattern + ")", output, re.IGNORECASE)
     if ppl_match:
         metrics["ppl"] = float(ppl_match.group(1))
         
     # Parse Mean KL divergence
-    # Output matches: "Mean    KLD:   0.001158"
     kld_match = re.search(r"Mean\s+KLD:\s*(" + float_pattern + ")", output, re.IGNORECASE)
     if kld_match:
         metrics["kld"] = float(kld_match.group(1))
         
     # Parse Same top token percentage
-    # Output matches: "Same top p: 100.000 ± 0.000 %"
     top_match = re.search(r"Same top p:\s*(" + float_pattern + ")", output, re.IGNORECASE)
     if top_match:
         metrics["same_top"] = float(top_match.group(1))
@@ -119,6 +128,7 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate KL-Divergence and Perplexity of KV Cache Quantizations")
     parser.add_argument("--model", type=str, help="Path to GGUF model file")
     parser.add_argument("--corpus", type=str, default="kld_corpus.txt", help="Path to evaluation text corpus")
+    parser.add_argument("--threads", type=int, default=os.cpu_count() or 4, help="Number of threads for llama-perplexity")
     args = parser.parse_args()
 
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp"))
@@ -144,19 +154,22 @@ def main():
 
     # Setup Corpus
     corpus_file = args.corpus
+    if not os.path.isabs(corpus_file):
+        corpus_file = str(BENCH_DIR / corpus_file)
+
     if not os.path.exists(corpus_file):
         with open(corpus_file, "w", encoding="utf-8") as f:
             f.write(DEFAULT_CORPUS.strip())
         print(f"[*] Created default corpus at {corpus_file}")
 
-    baseline_kld_file = "baseline_f16.kld"
-    if os.path.exists(baseline_kld_file):
-        os.remove(baseline_kld_file)
+    tmp_kld_file = tempfile.NamedTemporaryFile(delete=False, suffix=".kld")
+    baseline_kld_file = tmp_kld_file.name
+    tmp_kld_file.close()
 
     try:
         # 1. Generate Baseline Logits (f16 / unquantized cache)
         print("\n[1/2] Generating baseline logits (f16 KV cache)...")
-        stdout, stderr = run_perplexity(binary, model_path, corpus_file, "f16", "f16", base_kld=baseline_kld_file)
+        stdout, stderr = run_perplexity(binary, model_path, corpus_file, "f16", "f16", base_kld=baseline_kld_file, threads=args.threads)
         if stdout is None:
             print("[-] Failed to generate baseline perplexity. Check logs:")
             print(stderr)
@@ -187,7 +200,7 @@ def main():
             print(f"\n---> Evaluating {name}...")
             stdout, stderr = run_perplexity(
                 binary, model_path, corpus_file, cache_k, cache_v, 
-                base_kld=baseline_kld_file, evaluate=True
+                base_kld=baseline_kld_file, evaluate=True, threads=args.threads
             )
             if stdout is None:
                 m = {"ppl": None, "kld": None, "same_top": None}
@@ -201,7 +214,7 @@ def main():
             })
     finally:
         # Cleanup temp baseline file
-        if os.path.exists(baseline_kld_file):
+        if baseline_kld_file and os.path.exists(baseline_kld_file):
             os.remove(baseline_kld_file)
 
     # 3. Print Results Table
@@ -216,7 +229,8 @@ def main():
     print("="*70)
     
     # Save output to markdown log
-    with open("kld_results.md", "w", encoding="utf-8") as f:
+    results_md = BENCH_DIR / "kld_results.md"
+    with open(results_md, "w", encoding="utf-8") as f:
         f.write("# KV Cache Quantization KLD Results\n\n")
         f.write(f"**Model**: `{os.path.basename(model_path)}`\n\n")
         f.write("| KV Cache Quant | Perplexity (PPL) | KL Divergence | Same Top % |\n")
@@ -227,16 +241,11 @@ def main():
             top_str = f"{r['same_top']:.2f}%" if r['same_top'] is not None else "N/A"
             f.write(f"| {r['name']} | {ppl_str} | {kld_str} | {top_str} |\n")
             
-    print("[+] Saved markdown summary to kld_results.md")
+    print(f"[+] Saved markdown summary to {results_md}")
 
     # Save output to historical run registry JSON files
-    import datetime
-    import json
-    import json as json_lib
-    import sys
-    
-    history_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "history"))
-    os.makedirs(history_dir, exist_ok=True)
+    history_dir = (BENCH_DIR / "history").resolve()
+    history_dir.mkdir(parents=True, exist_ok=True)
     
     base_model_name = os.path.basename(model_path)
     base_quant = "Unknown"
@@ -245,8 +254,8 @@ def main():
             base_quant = q
             break
             
-    for i, r in enumerate(results):
-        timestamp = (datetime.datetime.now() + datetime.timedelta(seconds=i)).isoformat()
+    for r in results:
+        timestamp = datetime.datetime.now().isoformat()
         kv_quant = r["name"].replace(" (Baseline)", "")
         
         run_data = {
@@ -259,7 +268,7 @@ def main():
                 "model_name": base_model_name,
                 "base_quantization": base_quant,
                 "kv_cache_quant": kv_quant,
-                "threads": 16,
+                "threads": args.threads,
                 "ubatch_size": None,
                 "batch_size": None,
                 "speculative_draft_type": "None"
@@ -283,10 +292,14 @@ def main():
         }
         
         safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
+<<<<<<< HEAD
         output_file = os.path.join(history_dir, f"run_{safe_timestamp}_{kv_quant}.json")
         run_data = sanitize_nan_inf(run_data)
+=======
+        output_file = history_dir / f"run_{safe_timestamp}_{kv_quant}.json"
+>>>>>>> 8937156 (Fix infrastructure issues — TeeLogger, file paths, history management, and thread counts)
         with open(output_file, "w", encoding="utf-8") as f:
-            json_lib.dump(run_data, f, indent=4)
+            json.dump(run_data, f, indent=4)
         print(f"[+] Saved structured KLD historical run to {output_file}")
 
 if __name__ == "__main__":
