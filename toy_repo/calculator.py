@@ -15,6 +15,9 @@ def parse_and_eval(expression: str) -> float:
         raise ValueError(f"Invalid expression syntax: '{expression}'")
 
     allowed_ops = {"+", "-", "*", "/"}
+    for i, token in enumerate(tokens):
+        if i % 2 == 1 and token not in allowed_ops:
+            raise ValueError(f"Unsupported operator: '{token}'")
     nums = [float(tokens[i]) for i in range(0, len(tokens), 2)]
     ops = [tokens[i] for i in range(1, len(tokens), 2)]
 

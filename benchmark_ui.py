@@ -6,6 +6,7 @@ With realtime streaming output.
 """
 
 import streamlit as st
+import uuid
 import subprocess
 import os
 import time
@@ -33,6 +34,8 @@ if 'benchmark_running' not in st.session_state:
     st.session_state.benchmark_running = False
 if 'current_proc' not in st.session_state:
     st.session_state.current_proc = None
+if 'benchmark_start' not in st.session_state:
+    st.session_state.benchmark_start = time.time()
 
 # Paths
 BENCH_SCRIPT = Path(__file__).parent / "benchmark.sh"
@@ -259,7 +262,7 @@ def main():
             if st.session_state.get('benchmark_running', False):
                 for line in run_benchmark_stream(model, endpoint):
                     all_lines.append(line)
-                    elapsed = time.time() - st.session_state.benchmark_start
+                    elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
 
                     # Show live output with elapsed time
                     full_output = "".join(all_lines)
@@ -267,7 +270,7 @@ def main():
                     output_placeholder.code(full_output, language="bash")
 
                 # Final display
-                elapsed = time.time() - st.session_state.benchmark_start
+                elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
                 status_placeholder.caption(f"✅ Completed in {elapsed:.2f}s")
 
                 full_output = "".join(all_lines)
@@ -275,7 +278,7 @@ def main():
 
                 # Store in history
                 run_data = {
-                    "id": int(time.time()),
+                    "id": f"{int(time.time())}_{uuid.uuid4().hex[:6]}",
                     "model": model,
                     "endpoint": endpoint,
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -406,9 +409,12 @@ def main():
                             pie_data.append({"Category": f"{turn['Turn']} (Completion)", "Tokens": turn["Completion Tokens"]})
 
                         pie_df = pd.DataFrame(pie_data)
-                        fig = px.pie(pie_df, values="Tokens", names="Category",
-                                     title=f"Token Distribution across Turns: {run['model']} ({run['timestamp']})")
-                        st.plotly_chart(fig, use_container_width=True)
+                        if pie_df.empty or pie_df["Tokens"].sum() == 0:
+                            st.warning("No token data available for Pie Chart.")
+                        else:
+                            fig = px.pie(pie_df, values="Tokens", names="Category",
+                                         title=f"Token Distribution across Turns: {run['model']} ({run['timestamp']})")
+                            st.plotly_chart(fig, use_container_width=True)
 
                 # Show raw data
                 with st.expander("View Comparative Data Table"):

@@ -15,7 +15,7 @@ done
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
-if [[ "$1" == "--list" ]]; then
+if [[ "${1:-}" == "--list" ]]; then
     ENDPOINT="${2:-http://127.0.0.1:8083}"
     ENDPOINT="${ENDPOINT%/}"
     echo "========================================================="
@@ -94,8 +94,8 @@ call_api() {
   echo "---------------------------------------------------------"
   echo "Prompt Tokens      : $prompt_tokens"
   echo "Completion Tokens  : $completion_tokens"
-  printf "Prompt Eval (p/s)  : %.2f tokens/sec (TTFT: %.2fs)\n" "$p_s" "$ttft"
-  printf "Generation  (t/s)  : %.2f tokens/sec (Decode: %.2fs)\n" "$t_s" "$gen_time"
+  printf "Prompt Eval (p/s)  : %.2f tokens/sec (TTFT: %.2fs)\n" "${p_s:-0}" "${ttft:-0}"
+  printf "Generation  (t/s)  : %.2f tokens/sec (Decode: %.2fs)\n" "${t_s:-0}" "${gen_time:-0}"
   echo "---------------------------------------------------------"
   
   rm -f "$temp_file" "${temp_file}_first" "${temp_file}_usage"
