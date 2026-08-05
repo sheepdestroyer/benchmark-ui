@@ -14,6 +14,37 @@ import re
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
+import urllib.parse
+import ipaddress
+
+def validate_endpoint_url(url_str):
+    if not url_str:
+        raise ValueError("Endpoint URL cannot be empty.")
+    parsed = urllib.parse.urlparse(url_str)
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Only http and https are allowed.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+    
+    hostname_lower = hostname.lower()
+    if hostname_lower == "localhost" or hostname == "127.0.0.1":
+        return url_str
+    
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or not ip.is_global:
+            raise ValueError(f"Forbidden IP address range: {hostname}")
+    except ValueError as e:
+        if "Forbidden IP address range" in str(e):
+            raise
+        pass
+    return url_str
+
+def validate_model_name(model_name):
+    if not model_name or not re.match(r'^[a-zA-Z0-9._:/-]+$', model_name):
+        raise ValueError(f"Invalid model name '{model_name}'. Must match ^[a-zA-Z0-9._:/-]+$")
+    return model_name
 
 # Page configuration
 st.set_page_config(
@@ -117,6 +148,13 @@ def parse_benchmark_output(output_text):
 
 def run_benchmark_stream(model, endpoint):
     """Run the benchmark script and yield lines in realtime."""
+    try:
+        endpoint = validate_endpoint_url(endpoint)
+        model = validate_model_name(model)
+    except ValueError as e:
+        yield f"Error: Invalid input: {e}"
+        return
+
     if not BENCH_SCRIPT.exists():
         yield f"Error: Benchmark script not found at {BENCH_SCRIPT}"
         return
@@ -164,6 +202,11 @@ def run_benchmark_stream(model, endpoint):
 
 def list_models(endpoint):
     """List available models at the endpoint."""
+    try:
+        endpoint = validate_endpoint_url(endpoint)
+    except ValueError as e:
+        return f"Error: Invalid endpoint URL: {e}"
+
     if not BENCH_SCRIPT.exists():
         return f"Error: Benchmark script not found at {BENCH_SCRIPT}"
     
@@ -303,7 +346,7 @@ def main():
                 st.download_button(
                     label="💾 Download Results",
                     data=st.session_state.last_benchmark_output,
-                    file_name=f"benchmark_{model.replace('.', '_')}_{int(time.time())}.txt",
+                    file_name=f"benchmark_{re.sub(r'[^a-zA-Z0-9_-]', '_', model)}_{int(time.time())}.txt",
                     mime="text/plain"
                 )
         

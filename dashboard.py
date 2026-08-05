@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import urllib.parse
+import ipaddress
+import re
 import streamlit as st
 import os
 import json
@@ -12,6 +15,70 @@ import requests
 import queue
 import threading
 from pathlib import Path
+
+def validate_endpoint_url(url_str):
+    if not url_str:
+        raise ValueError("Endpoint URL cannot be empty.")
+    parsed = urllib.parse.urlparse(url_str)
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Only http and https are allowed.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+    
+    hostname_lower = hostname.lower()
+    if hostname_lower == "localhost" or hostname == "127.0.0.1":
+        return url_str
+    
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or not ip.is_global:
+            raise ValueError(f"Forbidden IP address range: {hostname}")
+    except ValueError as e:
+        if "Forbidden IP address range" in str(e):
+            raise
+        pass
+    return url_str
+
+def validate_model_name(model_name):
+    if not model_name or not re.match(r'^[a-zA-Z0-9._:/-]+$', model_name):
+        raise ValueError(f"Invalid model name '{model_name}'. Must match ^[a-zA-Z0-9._:/-]+$")
+    return model_name
+
+def validate_gguf_path(gguf_path_str):
+    if not gguf_path_str:
+        return gguf_path_str
+    resolved = Path(gguf_path_str).resolve()
+    if not resolved.exists():
+        raise ValueError(f"GGUF file path does not exist: {gguf_path_str}")
+    if not resolved.is_file():
+        raise ValueError(f"GGUF path is not a file: {gguf_path_str}")
+    
+    allowed_parents = [
+        Path.cwd().resolve(),
+        Path(__file__).parent.resolve(),
+        Path.home().resolve()
+    ]
+    is_allowed = False
+    for parent in allowed_parents:
+        try:
+            resolved.relative_to(parent)
+            is_allowed = True
+            break
+        except ValueError:
+            continue
+    if not is_allowed:
+        raise ValueError(f"GGUF path escapes allowed parent directories: {gguf_path_str}")
+    return str(resolved)
+
+def validate_corpus_name(corpus_str):
+    if not corpus_str:
+        raise ValueError("Corpus name cannot be empty.")
+    safe_name = os.path.basename(corpus_str)
+    if not safe_name or safe_name in ('.', '..'):
+        raise ValueError(f"Invalid corpus name: {corpus_str}")
+    return safe_name
+
 
 # Page config
 st.set_page_config(
@@ -860,6 +927,7 @@ with tab_run:
             "unsloth/gemma-4-E2B-it-GGUF:Q4_K_XL"
         ]
         try:
+            validate_endpoint_url(new_endpoint)
             url = f"{new_endpoint}/v1/models"
             resp = requests.get(url, timeout=2)
             if resp.status_code == 200:
@@ -880,6 +948,15 @@ with tab_run:
         new_corpus = st.text_input("Corpus Text File (for KLD mode)", value="kld_corpus.txt")
         
     if st.button("▶️ Launch Benchmark Process", type="primary", use_container_width=True):
+        try:
+            valid_endpoint = validate_endpoint_url(new_endpoint)
+            valid_model = validate_model_name(new_model)
+            valid_corpus = validate_corpus_name(new_corpus)
+            valid_gguf = validate_gguf_path(new_gguf) if new_gguf else ""
+        except ValueError as e:
+            st.error(f"Input validation error: {e}")
+            st.stop()
+
         st.session_state.bench_running = True
         st.session_state.bench_output = []
         
@@ -887,13 +964,13 @@ with tab_run:
         args = [
             "python3", "run_suite.py",
             "--mode", new_mode,
-            "--endpoint", new_endpoint,
-            "--model", new_model,
+            "--endpoint", valid_endpoint,
+            "--model", valid_model,
             "--tokens", str(int(new_tokens)),
-            "--corpus", new_corpus
+            "--corpus", valid_corpus
         ]
-        if new_gguf:
-            args.extend(["--gguf-path", new_gguf])
+        if valid_gguf:
+            args.extend(["--gguf-path", valid_gguf])
             
         st.info(f"Running command: {' '.join(args)}")
         
