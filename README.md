@@ -4,18 +4,22 @@ A comprehensive benchmarking pipeline and Streamlit dashboard designed to evalua
 
 ## Directory Structure
 
-- `dashboard.py` - The state-of-the-art interactive Streamlit UI dashboard.
-- `run_suite.py` - The unified run orchestrator for executing different benchmark modes.
-- `advanced_benchmarks.py` - The long-context and agentic reasoning benchmarks pipeline.
-- `kld_benchmark.py` - KV Cache quantization Kullback-Leibler (KL) Divergence and perplexity evaluation.
+- `dashboard.py` - Main interactive Streamlit UI dashboard for browsing historical run data, multi-GPU evaluation, and quantization optimization.
+- `benchmark_ui.py` - Simple runner Streamlit UI for direct benchmark execution and real-time streaming output.
+- `run_suite.py` - Unified run orchestrator for executing throughput, reasoning, and KLD benchmark modes.
+- `run_matrix.py` - Automated benchmark matrix generator sweeping across models, threads, and quantization settings.
+- `populate_history.py` - Utility script to populate the history registry with synthetic benchmark run logs.
+- `advanced_benchmarks.py` - Long-context (Needle, RULER, LongBench) and agentic reasoning (SWE-bench) benchmark pipeline.
+- `kld_benchmark.py` - KV cache quantization Kullback-Leibler (KL) Divergence and perplexity evaluation.
 - `history/` - Registry directory storing historical run JSON logs.
-- `benchmark.sh` - The original bash ORM throughput benchmark script.
-- `requirements.txt` - Python package dependencies (Streamlit, Pandas, Plotly).
-- `run_ui.sh` - Convenience script to launch the interactive dashboard.
+- `benchmark.sh` - Bash throughput benchmark script evaluating cold start, KV cache hit, tool calls, and document decode speed.
+- `run-tb-pi.sh` - Execution script for Terminal-Bench 2.0 with the pi agent and local llama.cpp server.
+- `run_ui.sh` - Convenience launcher script for the Streamlit dashboard.
+- `requirements.txt` - Python package dependencies (Streamlit, Pandas, Plotly, Requests).
 
 ## Installation
 
-1. Ensure you have Python 3.8+ installed.
+1. Ensure you have Python 3.10+ installed.
 2. Install the required Python dependencies:
 
 ```bash
@@ -24,26 +28,32 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### 1. Launch the Dashboard
+### 1. Launch the Dashboards
 
-Use the convenience script to launch the Streamlit dashboard:
+Use the convenience script to launch the main Streamlit dashboard:
 
 ```bash
 ./run_ui.sh
 ```
 
-Or run manually:
+Or run either UI dashboard manually:
 
-```bash
-streamlit run dashboard.py
-```
+- **Main Interactive Dashboard (`dashboard.py`)**:
+  ```bash
+  streamlit run dashboard.py
+  ```
+
+- **Simple Runner UI (`benchmark_ui.py`)**:
+  ```bash
+  streamlit run benchmark_ui.py
+  ```
 
 ### 2. Execute the Unified Runner Script
 
 To run all benchmarks (throughput, reasoning, and local KLD quantization analysis) under a single command:
 
 ```bash
-python3 run_suite.py --mode all --endpoint http://127.0.0.1:8081 --model unsloth/Qwen3.6-27B-GGUF:Q4_K_S
+python3 run_suite.py --mode all --endpoint http://127.0.0.1:8081 --model Qwen3.6-35B-A3B
 ```
 
 #### Run Modes:
@@ -70,16 +80,24 @@ All benchmark executions export structured JSON logs saved under `history/run_[t
     "run_metadata": {
         "timestamp": "2026-07-08T02:48:25.506401",
         "target_endpoint": "http://127.0.0.1:8081",
-        "cli_arguments": ["--mode", "throughput", "--model", "Qwen3.6-27B"]
+        "cli_arguments": ["--mode", "throughput", "--model", "Qwen3.6-35B-A3B"]
     },
     "model_settings": {
-        "model_name": "Qwen3.6-27B",
+        "model_name": "Qwen3.6-35B-A3B",
         "base_quantization": "Q4_K_S",
         "kv_cache_quant": "q5_1",
         "threads": 16,
         "ubatch_size": 512,
         "batch_size": 2048,
-        "speculative_draft_type": "ngram"
+        "speculative_draft_type": "ngram",
+        "flash_attn": "true",
+        "n_gpu_layers": 99,
+        "tensor_split": "28,14",
+        "cache_type_k": "q5_1",
+        "cache_type_v": "q5_1",
+        "alias": "Qwen3.6-35B-A3B",
+        "hf_repo": "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_S",
+        "chat_template_kwargs": "{\"preserve_thinking\": true}"
     },
     "throughput_metrics": {
         "prefill_speed": 1326.0,
@@ -127,9 +145,15 @@ Wraps the native `llama-perplexity` executable to assess information loss of qua
 
 ## Interactive Dashboard Features
 
-The Streamlit UI (`dashboard.py`) enables:
-- **Run Browser**: Filter, sort, and search historical registry records.
-- **Multi-GPU / Optimization Plots**: Bar charts comparing Prefill vs. Decode speeds and accuracy scores.
-- **Quantization Optimizer**: Scatter plot mapping KL Divergence vs. VRAM Savings (%) to identify the ideal sweet-spot for cache quantization.
-- **Side-by-Side Comparator**: Directly compare two benchmark configurations head-to-head.
-- **Background Runner Control**: Run tests on the fly and stream logs to the UI.
+The project includes two UI dashboard components:
+
+1. **Main Interactive Dashboard (`dashboard.py`)**:
+   - **Run Browser**: Filter, sort, and search historical registry records.
+   - **Multi-GPU / Optimization Plots**: Bar charts comparing Prefill vs. Decode speeds and accuracy scores.
+   - **Quantization Optimizer**: Scatter plot mapping KL Divergence vs. VRAM Savings (%) to identify the ideal sweet-spot for cache quantization.
+   - **Side-by-Side Comparator**: Directly compare two benchmark configurations head-to-head.
+   - **Background Runner Control**: Run tests on the fly and stream logs to the UI.
+
+2. **Simple Runner UI (`benchmark_ui.py`)**:
+   - **Direct Benchmark Trigger**: Lightweight UI interface to select model targets and launch `benchmark.sh` benchmarks directly.
+   - **Real-Time Streaming**: Real-time console log streaming and output capture.
