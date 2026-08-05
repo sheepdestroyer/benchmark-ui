@@ -62,12 +62,9 @@ def sanitize_nan_inf(obj):
         return [sanitize_nan_inf(v) for v in obj]
     return obj
 
-def run_perplexity(binary, model, corpus, cache_k, cache_v, base_kld=None, evaluate=False):
-=======
 def run_perplexity(binary, model, corpus, cache_k, cache_v, base_kld=None, evaluate=False, threads=None):
     if threads is None:
         threads = os.cpu_count() or 4
->>>>>>> 8937156 (Fix infrastructure issues — TeeLogger, file paths, history management, and thread counts)
     cmd = [
         binary,
         "-m", model,
