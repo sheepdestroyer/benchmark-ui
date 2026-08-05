@@ -142,7 +142,7 @@ def run_needle_test(endpoint, model, tokens=200000, depth=0.5):
     if not res:
         return None
         
-    is_correct = "BANANA_SPLIT" in res["response"] or "BANANA_SPLIT" in res["reasoning"]
+    is_correct = bool(re.search(r"\bBANANA_SPLIT\b", res["response"])) or bool(re.search(r"\bBANANA_SPLIT\b", res["reasoning"]))
     
     print("\n---------------------------------------------------------")
     print(f"Needle Result      : {'PASSED' if is_correct else 'FAILED'}")
@@ -185,7 +185,7 @@ def run_ruler_test(endpoint, model, tokens=200000):
     if not res:
         return None
         
-    is_correct = "93" in res["response"] or "93" in res["reasoning"]
+    is_correct = bool(re.search(r"\b93\b", res["response"])) or bool(re.search(r"\b93\b", res["reasoning"]))
     
     print("\n---------------------------------------------------------")
     print(f"RULER Result       : {'PASSED' if is_correct else 'FAILED'}")
@@ -223,7 +223,7 @@ def run_longbench_test(endpoint, model, tokens=200000):
     if not res:
         return None
         
-    is_correct = "1452" in res["response"] or "1452" in res["reasoning"]
+    is_correct = bool(re.search(r"\b1452\b", res["response"])) or bool(re.search(r"\b1452\b", res["reasoning"]))
     
     print("\n---------------------------------------------------------")
     print(f"LongBench Result   : {'PASSED' if is_correct else 'FAILED'}")
@@ -355,18 +355,19 @@ def map_repo_to_preset_alias(repo_or_id):
         config.read(presets_file)
         
         for section in config.sections():
+            if section.lower() == repo_or_id.lower():
+                return section
+                
+        for section in config.sections():
             if section == "*":
                 continue
             section_repo = config.get(section, "hf-repo", fallback="")
             section_alias = config.get(section, "alias", fallback="")
             
-            if section_repo and section_repo.lower() in repo_or_id.lower():
-                if "mtp" in repo_or_id.lower() and "spec" in section.lower():
-                    return section
-                if "mtp" not in repo_or_id.lower() and "spec" not in section.lower():
-                    return section
+            if section_repo and section_repo.lower() == repo_or_id.lower():
+                return section
                     
-            if section_alias and section_alias.lower() in repo_or_id.lower():
+            if section_alias and section_alias.lower() == repo_or_id.lower():
                 return section
     except Exception:
         pass
@@ -484,7 +485,7 @@ def get_model_settings_from_endpoint(endpoint, target_model):
     profile_name = map_repo_to_preset_alias(target_model)
     presets_meta = get_preset_metadata(profile_name)
     for k, v in presets_meta.items():
-        settings[k] = v
+        settings.setdefault(k, v)
     settings["profile_alias"] = profile_name
         
     return settings

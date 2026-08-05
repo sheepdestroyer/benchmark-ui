@@ -25,11 +25,16 @@ HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # VRAM savings helper
 VRAM_SAVINGS = {
-    "f16": 0.0,
-    "q8_0": 50.0,
-    "q5_1": 68.0,
-    "q4_0": 75.0,
-    "Unknown": 0.0
+    "f16": 0.0, "F16": 0.0,
+    "q8_0": 50.0, "Q8_0": 50.0,
+    "q5_1": 68.0, "Q5_1": 68.0,
+    "q4_0": 75.0, "Q4_0": 75.0,
+    "q4_k_m": 75.0, "Q4_K_M": 75.0,
+    "q5_k_m": 68.0, "Q5_K_M": 68.0,
+    "q4_k_s": 75.0, "Q4_K_S": 75.0,
+    "q5_k_s": 68.0, "Q5_K_S": 68.0,
+    "q8_k_m": 50.0, "Q8_K_M": 50.0,
+    "Unknown": 0.0, "UNKNOWN": 0.0
 }
 
 def fmt_num(val, fmt="{:.2f}"):
@@ -507,7 +512,7 @@ with tab_history:
         acc_cols = ["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length", "Needle", "RULER", "LongBench", "SWE-bench"]
         acc_group = unified_df[acc_cols].copy()
         for col in ["Needle", "RULER", "LongBench", "SWE-bench"]:
-            acc_group[col] = acc_group[col].map(lambda x: 1.0 if x == "Pass" else 0.0)
+            acc_group[col] = acc_group[col].map({"Pass": 1.0, "Fail": 0.0})
         acc_grouped = acc_group.groupby(["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length"]).mean().reset_index()
         
         merged_grouped = pd.merge(grouped_df, acc_grouped, on=["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length"])
@@ -771,9 +776,9 @@ with tab_plots:
 
 with tab_compare:
     st.subheader("Side-by-Side Model Comparison")
-    if len(df) >= 2:
+    if len(filtered_df) >= 2:
         # Group runs by Model and KV Cache Quant to get valid options
-        unique_combinations = df.groupby(["Model", "KV Quant"]).size().reset_index()[["Model", "KV Quant"]]
+        unique_combinations = filtered_df.groupby(["Model", "KV Quant"]).size().reset_index()[["Model", "KV Quant"]]
         
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -784,7 +789,7 @@ with tab_compare:
             quants_a = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_a]["KV Quant"].unique()))
             selected_quant_a = st.selectbox("Select Quant A", quants_a, key="quant_a")
             
-            runA_candidates = df[(df["Model"] == selected_model_a) & (df["KV Quant"] == selected_quant_a)]
+            runA_candidates = filtered_df[(filtered_df["Model"] == selected_model_a) & (filtered_df["KV Quant"] == selected_quant_a)]
             runA = runA_candidates.iloc[0] if not runA_candidates.empty else None
             
         with col_c2:
@@ -795,7 +800,7 @@ with tab_compare:
             quants_b = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_b]["KV Quant"].unique()))
             selected_quant_b = st.selectbox("Select Quant B", quants_b, key="quant_b")
             
-            runB_candidates = df[(df["Model"] == selected_model_b) & (df["KV Quant"] == selected_quant_b)]
+            runB_candidates = filtered_df[(filtered_df["Model"] == selected_model_b) & (filtered_df["KV Quant"] == selected_quant_b)]
             runB = runB_candidates.iloc[0] if not runB_candidates.empty else None
             
         if runA is not None and runB is not None:

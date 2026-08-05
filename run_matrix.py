@@ -137,10 +137,17 @@ def get_completed_runs(presets_file=None):
                 
             # If the profile name contains unsloth repo prefix, try mapping it
             if profile and ("/" in profile or ":" in profile):
+                matched = False
                 for section in presets_sections:
-                    if section.lower() in profile.lower() or profile.lower() in section.lower():
+                    if section.lower() == profile.lower():
                         profile = section
+                        matched = True
                         break
+                if not matched:
+                    for section in presets_sections:
+                        if section.lower() in profile.lower() or profile.lower() in section.lower():
+                            profile = section
+                            break
                     
             if profile and ctx:
                 completed.add((profile, ctx))

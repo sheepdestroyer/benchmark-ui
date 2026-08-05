@@ -21,6 +21,8 @@ def get_model_settings(endpoint, target_model):
         "model_name": target_model,
         "base_quantization": "Unknown",
         "kv_cache_quant": "Unknown",
+        "kv_cache_quant_k": "Unknown",
+        "kv_cache_quant_v": "Unknown",
         "threads": None,
         "ubatch_size": None,
         "batch_size": None,
@@ -57,8 +59,13 @@ def get_model_settings(endpoint, target_model):
                         settings["batch_size"] = int(args[i+1])
                     elif arg == "--ubatch-size" and i + 1 < len(args):
                         settings["ubatch_size"] = int(args[i+1])
-                    elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
+                    elif arg == "--cache-type-k" and i + 1 < len(args):
+                        settings["kv_cache_quant_k"] = args[i+1]
                         settings["kv_cache_quant"] = args[i+1]
+                    elif arg == "--cache-type-v" and i + 1 < len(args):
+                        settings["kv_cache_quant_v"] = args[i+1]
+                        if settings.get("kv_cache_quant") == "Unknown":
+                            settings["kv_cache_quant"] = args[i+1]
                 
                 # Try preset parsing
                 if preset:
@@ -73,8 +80,13 @@ def get_model_settings(endpoint, target_model):
                                 settings["batch_size"] = int(v)
                             elif k == "ubatch-size":
                                 settings["ubatch_size"] = int(v)
-                            elif k in ["cache-type-k", "cache-type-v"]:
+                            elif k == "cache-type-k":
+                                settings["kv_cache_quant_k"] = v
                                 settings["kv_cache_quant"] = v
+                            elif k == "cache-type-v":
+                                settings["kv_cache_quant_v"] = v
+                                if settings.get("kv_cache_quant") == "Unknown":
+                                    settings["kv_cache_quant"] = v
                                 
                 repo_or_id = model_info.get("id", "")
                 for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
@@ -82,7 +94,7 @@ def get_model_settings(endpoint, target_model):
                         settings["base_quantization"] = q
                         break
                 
-                if "mtp" in repo_or_id.lower() or any("spec" in str(arg).lower() for arg in args):
+                if "mtp" in repo_or_id.lower() or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
                     settings["speculative_draft_type"] = "ngram"
                 else:
                     settings["speculative_draft_type"] = "None"
@@ -199,7 +211,7 @@ def run_kld(model_path, corpus):
     lines = result.stdout.split("\n")
     for line in lines:
         if "|" in line and "Perplexity" not in line and "KV Cache" not in line and "===" not in line and "---" not in line:
-            parts = [p.strip() for p in line.split("|")]
+            parts = [p.strip() for p in line.split("|") if p.strip()]
             if len(parts) >= 4:
                 quant_name = parts[0].replace(" (Baseline)", "")
                 try:
