@@ -479,7 +479,7 @@ if not filtered_df.empty:
         st.metric("Max Decode Speed", f"{fmt_num(best_decode, '{:.1f}')} t/s" if fmt_num(best_decode, '{:.1f}') != "N/A" else "N/A")
     with col4:
         kld_numeric = pd.to_numeric(filtered_df["KLD"], errors='coerce')
-        min_kld = filtered_df[kld_numeric > 0]["KLD"].min()
+        min_kld = kld_numeric[kld_numeric > 0].min()
         st.metric("Best non-zero KLD", fmt_num(min_kld, "{:.6f}") if fmt_num(min_kld, "{:.6f}") != "N/A" else "0.000000")
 
 # Tabs
@@ -726,10 +726,10 @@ with tab_plots:
         with col_plot3:
             st.markdown("#### Quantization Loss: KL Divergence vs. VRAM Savings")
             # Filter rows with KLD values
-            loss_df = filtered_df.dropna(subset=['KLD', 'PPL']).copy()
-            # Remove zero baseline
+            loss_df = filtered_df.copy()
             loss_df["KLD"] = pd.to_numeric(loss_df["KLD"], errors='coerce')
-            loss_df = loss_df[loss_df["KLD"] > 0].copy()
+            loss_df["PPL"] = pd.to_numeric(loss_df["PPL"], errors='coerce')
+            loss_df = loss_df[(loss_df["KLD"] > 0) & (loss_df["PPL"].notna()) & (loss_df["PPL"] > 0)].copy()
             if not loss_df.empty:
                 # Add VRAM saving percentage
                 loss_df["VRAM Savings (%)"] = loss_df["KV Quant"].map(VRAM_SAVINGS).fillna(0.0)
