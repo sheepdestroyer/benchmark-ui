@@ -9,6 +9,8 @@ import plotly.graph_objects as go
 import subprocess
 import time
 import requests
+import queue
+import threading
 from pathlib import Path
 
 # Page config
@@ -893,23 +895,78 @@ with tab_run:
         )
         
         output_lines = []
+        line_queue = queue.Queue()
+
+        def enqueue_output(out, q):
+            try:
+                for line in iter(out.readline, ''):
+                    q.put(line)
+            finally:
+                if out and not out.closed:
+                    try:
+                        out.close()
+                    except Exception:
+                        pass
+
+        reader_thread = threading.Thread(target=enqueue_output, args=(proc.stdout, line_queue), daemon=True)
+        reader_thread.start()
+
+        timeout_sec = 3600
+        start_time = time.time()
+
         try:
             while True:
-                line = proc.stdout.readline()
-                if not line:
+                got_lines = False
+                while True:
+                    try:
+                        line = line_queue.get_nowait()
+                        output_lines.append(line)
+                        got_lines = True
+                    except queue.Empty:
+                        break
+
+                if got_lines:
+                    log_placeholder.code("".join(output_lines[-40:]), language="bash")
+
+                if proc.poll() is not None:
                     break
-                output_lines.append(line)
-                # Render lines
+
+                if time.time() - start_time > timeout_sec:
+                    st.error("Benchmark process timed out.")
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=1)
+                    break
+
+                time.sleep(0.1)
+
+            while True:
+                try:
+                    line = line_queue.get_nowait()
+                    output_lines.append(line)
+                except queue.Empty:
+                    break
+            if output_lines:
                 log_placeholder.code("".join(output_lines[-40:]), language="bash")
-                
-            proc.wait()
+
+            proc.wait(timeout=5)
         finally:
+            if proc.stdout and not proc.stdout.closed:
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
             if proc.poll() is None:
                 proc.terminate()
                 try:
                     proc.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+                    proc.wait(timeout=1)
+            reader_thread.join(timeout=1)
         
         if proc.returncode == 0:
             st.success("Benchmark completed successfully! Refreshing historical registry runs...")
