@@ -8,9 +8,9 @@ from pathlib import Path
 BENCH_DIR = Path(__file__).parent.resolve()
 HISTORY_DIR = BENCH_DIR / "history"
 
-def populate():
-    # Purge existing history
-    if HISTORY_DIR.exists():
+def populate(force=False):
+    # Purge existing history if --force is passed
+    if force and HISTORY_DIR.exists():
         shutil.rmtree(HISTORY_DIR)
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -162,11 +162,21 @@ def populate():
             
             # Write JSON file
             filename = f"run_{run_time.strftime('%Y-%m-%dT%H-%M-%S-%f')}.json"
-            with open(HISTORY_DIR / filename, "w") as f:
+            out_path = HISTORY_DIR / filename
+            tmp_path = out_path.with_suffix('.tmp')
+            with open(tmp_path, "w") as f:
                 json.dump(run_data, f, indent=4)
+            os.replace(tmp_path, out_path)
             count += 1
             
     print(f"[+] Successfully populated history registry with {count} structured runs!")
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Populate history directory with benchmark runs.")
+    parser.add_argument("--force", action="store_true", help="Force purging existing history directory before populating")
+    args = parser.parse_args()
+    populate(force=args.force)
+
 if __name__ == "__main__":
-    populate()
+    main()
