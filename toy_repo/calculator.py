@@ -22,8 +22,13 @@ def parse_and_eval(expression: str) -> float:
     ops = [tokens[i] for i in range(1, len(tokens), 2)]
 
     for op in ops:
+<<<<<<< HEAD
         if op not in allowed_ops:
             raise ValueError(f"Unsupported operator: '{op}'")
+=======
+        if op not in ("+", "-", "*", "/"):
+            raise ValueError(f"Unsupported operator: {op}")
+>>>>>>> 3d83386 (Fix data correctness bugs, substring matching, filter scoping, and parse errors)
 
     # Handle multiplication and division first
     i = 0

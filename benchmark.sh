@@ -51,6 +51,7 @@ call_api() {
   curl -L -s -N -X POST "${ENDPOINT}/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -d "$payload" | while read -r line; do
+      line="${line%$'\r'}"
       
       if [[ -z "$first_token_ts" && "$line" == data:* && "$line" != *"data: [DONE]"* ]]; then
           first_token_ts=$(date +%s.%N)

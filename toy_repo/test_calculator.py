@@ -25,6 +25,10 @@ class TestCalculator(unittest.TestCase):
         with self.assertRaises(ZeroDivisionError):
             parse_and_eval("10 / 0")
 
+    def test_unsupported_operator(self):
+        with self.assertRaises(ValueError):
+            parse_and_eval("10 % 3")
+
     def test_float_operations(self):
         self.assertAlmostEqual(parse_and_eval("3.5 + 2.1"), 5.6)
         self.assertAlmostEqual(parse_and_eval("7.5 / 2.5"), 3.0)
