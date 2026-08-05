@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run Terminal-Bench 2.0 with pi agent + local llama.cpp
-# Usage: ./run-tb-pi.sh [task-filter] [num-tasks]
+# Usage: ./run-tb-pi.sh [task-filter] [num-tasks] [model]
 
 set -euo pipefail
 
@@ -13,7 +13,7 @@ export OPENAI_BASE_URL="http://host.containers.internal:8081/v1"
 export OPENAI_API_KEY="llama-cpp-local"  # dummy key, pi requires it for openai provider
 
 # Model (must be in provider/name format)
-MODEL="local-llama/Qwen3.6-35B-A3B-spec2"
+MODEL="${3:-local-llama/Qwen3.6-35B-A3B-spec2}"
 
 # Agent
 AGENT="pi"

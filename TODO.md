@@ -11,7 +11,7 @@ This document outlines the roadmap for implementing, executing, and visualizing 
 | **Phase 3** | **LongBench** | Load a long historical narrative QA task to verify document reading comprehension. | Real-world | **COMPLETED** | [advanced_benchmarks.py](advanced_benchmarks.py) |
 | **Phase 4** | **SWE-bench** | Local toy repository issue debugging and dynamic unit-test validation loop (`calculator.py`). | Real-world | **COMPLETED** | [advanced_benchmarks.py](advanced_benchmarks.py) |
 | **Phase 4.5**| **KLD / Perplexity** | Measure information loss (KL Divergence, Perplexity, Same Top Token matching) of quantized KV caches. | Quant Loss | **COMPLETED** | [kld_benchmark.py](kld_benchmark.py) |
-| **Phase 5** | **Unified Dashboard**| Regroup, unify running benchmarks, record historical runs, and plot comparative metrics. | WebUI / DB | **ACTIVE** | [dashboard.py](dashboard.py) |
+| **Phase 5** | **Unified Dashboard**| Regroup, unify running benchmarks, record historical runs, and plot comparative metrics. | WebUI / DB | **COMPLETED** | [dashboard.py](dashboard.py) |
 
 ---
 
@@ -19,14 +19,14 @@ This document outlines the roadmap for implementing, executing, and visualizing 
 
 To centralize all benchmark results and provide a state-of-the-art WebUI, we will build the following system:
 
-### 1. Unified Run Orchestration (`bench/run_suite.py`)
+### 1. Unified Run Orchestration (`run_suite.py`)
 Create a single python entrypoint to execute all benchmarks:
 *   Allows executing the original ORM throughput tests (`benchmark.sh`), the long-context reasoning tests (`advanced_benchmarks.py`), and the KLD perplexity tests (`kld_benchmark.py`).
 *   Accepts customizable parameters (`--endpoint`, `--model`, `--tokens`, `--kv-quant`, etc.).
 
-### 2. Historical Run Database & Storage (`bench/history/`)
+### 2. Historical Run Database & Storage (`history/`)
 Establish a persistent storage system for benchmark runs:
-*   **Storage Format**: Structured JSON records saved in `bench/history/run_[timestamp].json`.
+*   **Storage Format**: Structured JSON records saved in `history/run_[timestamp].json`.
 *   **Schema**:
     *   `run_metadata`: Timestamp, target endpoint, CLI arguments.
     *   `model_settings`: Model name, base quantization, KV cache quant (`q5_1`/`q8_0`/`f16`), threads, ubatch/batch sizes, speculative draft type.
@@ -34,7 +34,7 @@ Establish a persistent storage system for benchmark runs:
     *   `reasoning_accuracy`: Needle (Pass/Fail), RULER (Pass/Fail), LongBench (Pass/Fail), SWE-bench (Pass/Fail).
     *   `quantization_loss`: Perplexity (PPL), Mean KLD, Same Top % matching.
 
-### 3. Configurable WebUI Dashboard (`bench/dashboard.py`)
+### 3. Configurable WebUI Dashboard (`dashboard.py`)
 Build a high-performance Streamlit WebUI to view and filter historical runs:
 *   **Run History Browser**: A table summarizing all past runs with sorting.
 *   **Advanced Filters Sidebar**: Filter runs by model name, endpoint, KV cache quant, context length, etc.
@@ -47,7 +47,7 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 ---
 
 ## Next Steps
-1. Create a `bench/history/` directory to store historical run JSONs.
-2. Update the existing benchmarking tools to automatically export their metrics to JSON under `bench/history/`.
-3. Create the unified run orchestrator (`bench/run_suite.py`).
-4. Implement the interactive dashboard (`bench/dashboard.py`).
+1. Create a `history/` directory to store historical run JSONs.
+2. Update the existing benchmarking tools to automatically export their metrics to JSON under `history/`.
+3. Create the unified run orchestrator (`run_suite.py`).
+4. Implement the interactive dashboard (`dashboard.py`).
