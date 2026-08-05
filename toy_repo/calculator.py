@@ -4,9 +4,20 @@ def parse_and_eval(expression):
     Supported operations: +, -, *, /
     Example: parse_and_eval("3 + 4 * 2") -> 11
     """
+    if not isinstance(expression, str):
+        raise TypeError("Expression must be a string")
+
     tokens = expression.split()
     if not tokens:
         return 0
+
+    if len(tokens) % 2 == 0:
+        raise ValueError("Invalid expression format: length must be odd")
+
+    valid_ops = {'+', '-', '*', '/'}
+    for i, token in enumerate(tokens):
+        if i % 2 == 1 and token not in valid_ops:
+            raise ValueError(f"Invalid operator: '{token}'")
 
     nums = [float(tokens[i]) for i in range(0, len(tokens), 2)]
     ops = [tokens[i] for i in range(1, len(tokens), 2)]

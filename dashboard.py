@@ -210,8 +210,10 @@ def populate_mock_data_if_empty():
         
         safe_ts = r["timestamp"].replace(":", "-").replace(".", "-")
         dest = HISTORY_DIR / f"run_{safe_ts}_{r['kv_quant']}.json"
-        with open(dest, "w") as f:
+        temp_dest = HISTORY_DIR / f"tmp_run_{safe_ts}_{r['kv_quant']}.json"
+        with open(temp_dest, "w") as f:
             json.dump(run_data, f, indent=4)
+        os.replace(temp_dest, dest)
 
 def map_repo_to_preset_alias(repo_or_id):
     presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
@@ -417,7 +419,7 @@ df = load_runs()
 
 # Sidebar filter implementation
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/000000/dashboard.png", width=50)
+    st.markdown("## 📊")
     st.markdown("### <span class='header-gradient'>Dashboard Filters</span>", unsafe_allow_html=True)
     
     if not df.empty:
@@ -778,25 +780,31 @@ with tab_compare:
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             st.markdown("#### Configuration A")
-            models_a = sorted(list(unique_combinations["Model"].unique()))
-            selected_model_a = st.selectbox("Select Profile A", models_a, key="model_a")
+            models_a = sorted(list(unique_combinations["Model"].unique())) if not unique_combinations.empty else []
+            selected_model_a = st.selectbox("Select Profile A", models_a, index=0 if models_a else None, key="model_a") if models_a else None
             
-            quants_a = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_a]["KV Quant"].unique()))
-            selected_quant_a = st.selectbox("Select Quant A", quants_a, key="quant_a")
+            quants_a = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_a]["KV Quant"].unique())) if selected_model_a else []
+            selected_quant_a = st.selectbox("Select Quant A", quants_a, index=0 if quants_a else None, key="quant_a") if quants_a else None
             
-            runA_candidates = df[(df["Model"] == selected_model_a) & (df["KV Quant"] == selected_quant_a)]
-            runA = runA_candidates.iloc[0] if not runA_candidates.empty else None
+            if selected_model_a and selected_quant_a:
+                runA_candidates = df[(df["Model"] == selected_model_a) & (df["KV Quant"] == selected_quant_a)]
+                runA = runA_candidates.iloc[0] if not runA_candidates.empty else None
+            else:
+                runA = None
             
         with col_c2:
             st.markdown("#### Configuration B")
-            models_b = sorted(list(unique_combinations["Model"].unique()))
-            selected_model_b = st.selectbox("Select Profile B", models_b, key="model_b")
+            models_b = sorted(list(unique_combinations["Model"].unique())) if not unique_combinations.empty else []
+            selected_model_b = st.selectbox("Select Profile B", models_b, index=0 if models_b else None, key="model_b") if models_b else None
             
-            quants_b = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_b]["KV Quant"].unique()))
-            selected_quant_b = st.selectbox("Select Quant B", quants_b, key="quant_b")
+            quants_b = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_b]["KV Quant"].unique())) if selected_model_b else []
+            selected_quant_b = st.selectbox("Select Quant B", quants_b, index=0 if quants_b else None, key="quant_b") if quants_b else None
             
-            runB_candidates = df[(df["Model"] == selected_model_b) & (df["KV Quant"] == selected_quant_b)]
-            runB = runB_candidates.iloc[0] if not runB_candidates.empty else None
+            if selected_model_b and selected_quant_b:
+                runB_candidates = df[(df["Model"] == selected_model_b) & (df["KV Quant"] == selected_quant_b)]
+                runB = runB_candidates.iloc[0] if not runB_candidates.empty else None
+            else:
+                runB = None
             
         if runA is not None and runB is not None:
             st.markdown("### Comparison Table")

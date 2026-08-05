@@ -26,10 +26,9 @@ TASK_FILTER="${1:-}"          # e.g., "terminal-bench/fix-git" or glob pattern
 NUM_TASKS="${2:-1}"           # number of tasks to run
 
 # --- Build task filter ---
+TASK_FILTER_FLAG=()
 if [ -n "$TASK_FILTER" ]; then
-    TASK_FILTER_FLAG="-i $TASK_FILTER"
-else
-    TASK_FILTER_FLAG=""
+    TASK_FILTER_FLAG=(-i "$TASK_FILTER")
 fi
 
 # --- Run ---
@@ -51,6 +50,6 @@ harbor run \
     -a "$AGENT" \
     -m "$MODEL" \
     -l "$NUM_TASKS" \
-    $TASK_FILTER_FLAG \
+    "${TASK_FILTER_FLAG[@]}" \
     --ae "OPENAI_BASE_URL=$OPENAI_BASE_URL" \
     --ae "OPENAI_API_KEY=$OPENAI_API_KEY"
