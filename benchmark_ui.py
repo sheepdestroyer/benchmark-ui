@@ -22,6 +22,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Initialize session state defaults at top-level
+if 'list_models' not in st.session_state:
+    st.session_state.list_models = False
+if 'run_benchmark' not in st.session_state:
+    st.session_state.run_benchmark = False
+if 'benchmark_history' not in st.session_state:
+    st.session_state.benchmark_history = []
+if 'benchmark_running' not in st.session_state:
+    st.session_state.benchmark_running = False
+
 # Initialize session state at top level
 if 'list_models' not in st.session_state:
     st.session_state.list_models = False

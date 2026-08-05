@@ -409,6 +409,7 @@ def load_runs():
     df = pd.DataFrame(runs)
     if not df.empty:
         df["KLD"] = pd.to_numeric(df["KLD"], errors="coerce")
+        df["PPL"] = pd.to_numeric(df["PPL"], errors="coerce")
         df = df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
     return df
 
