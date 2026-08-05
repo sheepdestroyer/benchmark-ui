@@ -32,6 +32,14 @@ VRAM_SAVINGS = {
     "Unknown": 0.0
 }
 
+def fmt_num(val, fmt="{:.2f}"):
+    if val is None or pd.isna(val) or val == "N/A":
+        return "N/A"
+    try:
+        return fmt.format(float(val))
+    except (ValueError, TypeError):
+        return str(val)
+
 # Inject premium CSS
 st.markdown("""
     <style>
@@ -301,7 +309,7 @@ def load_runs():
             loss = data.get("quantization_loss", {})
             
             # Parse context length
-            args = metadata.get("cli_arguments", [])
+            args = metadata.get("cli_arguments") or []
             ctx_len = 200000
             for i, arg in enumerate(args):
                 if arg == "--tokens" and i + 1 < len(args):
@@ -400,6 +408,8 @@ def load_runs():
             
     df = pd.DataFrame(runs)
     if not df.empty:
+        df["KLD"] = pd.to_numeric(df["KLD"], errors="coerce")
+        df["PPL"] = pd.to_numeric(df["PPL"], errors="coerce")
         df = df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
     return df
 
@@ -464,13 +474,14 @@ if not filtered_df.empty:
         st.metric("Total Registry Runs", len(unified_kpi_df))
     with col2:
         best_prefill = filtered_df["Prefill (t/s)"].dropna().max()
-        st.metric("Max Prefill Speed", f"{best_prefill:.1f} t/s" if pd.notna(best_prefill) else "N/A")
+        st.metric("Max Prefill Speed", f"{fmt_num(best_prefill, '{:.1f}')} t/s" if fmt_num(best_prefill, '{:.1f}') != "N/A" else "N/A")
     with col3:
         best_decode = filtered_df["Decode (t/s)"].dropna().max()
-        st.metric("Max Decode Speed", f"{best_decode:.1f} t/s" if pd.notna(best_decode) else "N/A")
+        st.metric("Max Decode Speed", f"{fmt_num(best_decode, '{:.1f}')} t/s" if fmt_num(best_decode, '{:.1f}') != "N/A" else "N/A")
     with col4:
-        min_kld = filtered_df[filtered_df["KLD"] > 0]["KLD"].min()
-        st.metric("Best non-zero KLD", f"{min_kld:.6f}" if pd.notna(min_kld) else "0.000000")
+        kld_numeric = pd.to_numeric(filtered_df["KLD"], errors='coerce')
+        min_kld = kld_numeric[kld_numeric > 0].min()
+        st.metric("Best non-zero KLD", fmt_num(min_kld, "{:.6f}") if fmt_num(min_kld, "{:.6f}") != "N/A" else "0.000000")
 
 # Tabs
 tab_history, tab_plots, tab_compare, tab_run = st.tabs([
@@ -716,9 +727,10 @@ with tab_plots:
         with col_plot3:
             st.markdown("#### Quantization Loss: KL Divergence vs. VRAM Savings")
             # Filter rows with KLD values
-            loss_df = filtered_df.dropna(subset=["KLD"])
-            # Remove zero baseline
-            loss_df = loss_df[loss_df["KLD"] > 0]
+            loss_df = filtered_df.copy()
+            loss_df["KLD"] = pd.to_numeric(loss_df["KLD"], errors='coerce')
+            loss_df["PPL"] = pd.to_numeric(loss_df["PPL"], errors='coerce')
+            loss_df = loss_df[(loss_df["KLD"] > 0) & (loss_df["PPL"].notna()) & (loss_df["PPL"] > 0)].copy()
             if not loss_df.empty:
                 # Add VRAM saving percentage
                 loss_df["VRAM Savings (%)"] = loss_df["KV Quant"].map(VRAM_SAVINGS).fillna(0.0)
@@ -797,16 +809,16 @@ with tab_compare:
                 ("KV Cache Quant", str(runA["KV Quant"]), str(runB["KV Quant"])),
                 ("Context Length (tks)", str(runA["Context Length"]), str(runB["Context Length"])),
                 ("Threads", str(runA["Threads"]) if pd.notna(runA["Threads"]) else "N/A", str(runB["Threads"]) if pd.notna(runB["Threads"]) else "N/A"),
-                ("Prefill Speed (t/s)", f"{runA['Prefill (t/s)']:.2f}" if pd.notna(runA['Prefill (t/s)']) else "N/A", f"{runB['Prefill (t/s)']:.2f}" if pd.notna(runB['Prefill (t/s)']) else "N/A"),
-                ("Decode Speed (t/s)", f"{runA['Decode (t/s)']:.2f}" if pd.notna(runA['Decode (t/s)']) else "N/A", f"{runB['Decode (t/s)']:.2f}" if pd.notna(runB['Decode (t/s)']) else "N/A"),
-                ("TTFT (s)", f"{runA['TTFT (s)']:.3f}" if pd.notna(runA['TTFT (s)']) else "N/A", f"{runB['TTFT (s)']:.3f}" if pd.notna(runB['TTFT (s)']) else "N/A"),
+                ("Prefill Speed (t/s)", fmt_num(runA['Prefill (t/s)'], "{:.2f}"), fmt_num(runB['Prefill (t/s)'], "{:.2f}")),
+                ("Decode Speed (t/s)", fmt_num(runA['Decode (t/s)'], "{:.2f}"), fmt_num(runB['Decode (t/s)'], "{:.2f}")),
+                ("TTFT (s)", fmt_num(runA['TTFT (s)'], "{:.3f}"), fmt_num(runB['TTFT (s)'], "{:.3f}")),
                 ("Needle Retrieval", str(runA["Needle"]), str(runB["Needle"])),
                 ("RULER Var Tracking", str(runA["RULER"]), str(runB["RULER"])),
                 ("LongBench Document QA", str(runA["LongBench"]), str(runB["LongBench"])),
                 ("SWE-bench Toy Debugging", str(runA["SWE-bench"]), str(runB["SWE-bench"])),
-                ("Perplexity (PPL)", f"{runA['PPL']:.4f}" if pd.notna(runA['PPL']) else "N/A", f"{runB['PPL']:.4f}" if pd.notna(runB['PPL']) else "N/A"),
-                ("KL Divergence (KLD)", f"{runA['KLD']:.6f}" if pd.notna(runA['KLD']) else "N/A", f"{runB['KLD']:.6f}" if pd.notna(runB['KLD']) else "N/A"),
-                ("Same Top Token %", f"{runA['Same Top %']:.2f}%" if pd.notna(runA['Same Top %']) else "N/A", f"{runB['Same Top %']:.2f}%" if pd.notna(runB['Same Top %']) else "N/A")
+                ("Perplexity (PPL)", fmt_num(runA['PPL'], "{:.4f}"), fmt_num(runB['PPL'], "{:.4f}")),
+                ("KL Divergence (KLD)", fmt_num(runA['KLD'], "{:.6f}"), fmt_num(runB['KLD'], "{:.6f}")),
+                ("Same Top Token %", f"{fmt_num(runA['Same Top %'], '{:.2f}')}%" if fmt_num(runA['Same Top %'], '{:.2f}') != "N/A" else "N/A", f"{fmt_num(runB['Same Top %'], '{:.2f}')}%" if fmt_num(runB['Same Top %'], '{:.2f}') != "N/A" else "N/A")
             ]
             
             comp_df = pd.DataFrame(compare_rows, columns=["Metric", "Configuration A", "Configuration B"])
@@ -873,6 +885,7 @@ with tab_run:
         
         proc = subprocess.Popen(
             args,
+            cwd=str(Path(__file__).parent),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -880,15 +893,23 @@ with tab_run:
         )
         
         output_lines = []
-        while True:
-            line = proc.stdout.readline()
-            if not line:
-                break
-            output_lines.append(line)
-            # Render lines
-            log_placeholder.code("".join(output_lines[-40:]), language="bash")
-            
-        proc.wait()
+        try:
+            while True:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                output_lines.append(line)
+                # Render lines
+                log_placeholder.code("".join(output_lines[-40:]), language="bash")
+                
+            proc.wait()
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         
         if proc.returncode == 0:
             st.success("Benchmark completed successfully! Refreshing historical registry runs...")

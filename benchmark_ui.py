@@ -22,6 +22,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Initialize session state defaults at top-level
+if 'list_models' not in st.session_state:
+    st.session_state.list_models = False
+if 'run_benchmark' not in st.session_state:
+    st.session_state.run_benchmark = False
+if 'benchmark_history' not in st.session_state:
+    st.session_state.benchmark_history = []
+if 'benchmark_running' not in st.session_state:
+    st.session_state.benchmark_running = False
+
 # Paths
 BENCH_SCRIPT = Path(__file__).parent / "benchmark.sh"
 WORK_DIR = Path(__file__).parent
@@ -97,12 +107,19 @@ def run_benchmark_stream(model, endpoint):
         bufsize=1
     )
     
-    for line in iter(proc.stdout.readline, ''):
-        yield line
-    
-    proc.wait()
-    if proc.returncode != 0:
-        yield f"\n[EXIT CODE: {proc.returncode}]"
+    try:
+        for line in iter(proc.stdout.readline, ''):
+            yield line
+        proc.wait()
+        if proc.returncode != 0:
+            yield f"\n[EXIT CODE: {proc.returncode}]"
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 def list_models(endpoint):
     """List available models at the endpoint."""
@@ -294,11 +311,11 @@ def main():
 
             with col1:
                 # Selection of runs
-                options = [f"{run['timestamp']} - {run['model']}" for run in st.session_state.benchmark_history]
-                selected_options = st.multiselect("Select Benchmark Runs to Compare", options, default=[options[-1]])
+                options = [f"#{idx + 1}: {run['timestamp']} - {run['model']}" for idx, run in enumerate(st.session_state.benchmark_history)]
+                selected_options = st.multiselect("Select Benchmark Runs to Compare", options, default=[options[-1]] if options else [])
 
-            selected_runs = [run for run in st.session_state.benchmark_history
-                             if f"{run['timestamp']} - {run['model']}" in selected_options]
+            selected_runs = [run for idx, run in enumerate(st.session_state.benchmark_history)
+                             if f"#{idx + 1}: {run['timestamp']} - {run['model']}" in selected_options]
 
             if not selected_runs:
                 st.warning("Please select at least one benchmark run.")
@@ -325,7 +342,9 @@ def main():
                     selected_metric = st.selectbox("Metric", metrics_to_plot)
 
                 with viz_col2:
-                    if chart_type == "Bar Chart":
+                    if df.empty or 'Turn' not in df.columns:
+                        st.warning("No valid turn data available for visualization.")
+                    elif chart_type == "Bar Chart":
                         fig = px.bar(df, x="Turn", y=selected_metric, color="Run ID", barmode="group",
                                      title=f"{selected_metric} Comparison")
                         st.plotly_chart(fig, use_container_width=True)
@@ -355,14 +374,4 @@ def main():
                     st.dataframe(df)
 
 if __name__ == "__main__":
-    # Initialize session state
-    if 'list_models' not in st.session_state:
-        st.session_state.list_models = False
-    if 'run_benchmark' not in st.session_state:
-        st.session_state.run_benchmark = False
-    if 'benchmark_history' not in st.session_state:
-        st.session_state.benchmark_history = []
-    if 'benchmark_running' not in st.session_state:
-        st.session_state.benchmark_running = False
-    
     main()
