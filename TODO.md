@@ -6,12 +6,12 @@ This document outlines the roadmap for implementing, executing, and visualizing 
 
 | Phase | Benchmark | Description | Type | Status | File |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Needle in a Haystack** | Find a custom fact ("needle") placed at a specific depth inside a synthetic corpus ("haystack"). | Synthetic | **COMPLETED** | [advanced_benchmarks.py](file:///home/sheepdestroyer/LAB/IA/bench/advanced_benchmarks.py) |
-| **Phase 2** | **RULER** | Run a representative multi-hop variable assignment tracking task over deep contexts. | Synthetic | **COMPLETED** | [advanced_benchmarks.py](file:///home/sheepdestroyer/LAB/IA/bench/advanced_benchmarks.py) |
-| **Phase 3** | **LongBench** | Load a long historical narrative QA task to verify document reading comprehension. | Real-world | **COMPLETED** | [advanced_benchmarks.py](file:///home/sheepdestroyer/LAB/IA/bench/advanced_benchmarks.py) |
-| **Phase 4** | **SWE-bench** | Local toy repository issue debugging and dynamic unit-test validation loop (`calculator.py`). | Real-world | **COMPLETED** | [advanced_benchmarks.py](file:///home/sheepdestroyer/LAB/IA/bench/advanced_benchmarks.py) |
-| **Phase 4.5**| **KLD / Perplexity** | Measure information loss (KL Divergence, Perplexity, Same Top Token matching) of quantized KV caches. | Quant Loss | **COMPLETED** | [kld_benchmark.py](file:///home/sheepdestroyer/LAB/IA/bench/kld_benchmark.py) |
-| **Phase 5** | **Unified Dashboard**| Regroup, unify running benchmarks, record historical runs, and plot comparative metrics. | WebUI / DB | **PLANNED** | *Pending* |
+| **Phase 1** | **Needle in a Haystack** | Find a custom fact ("needle") placed at a specific depth inside a synthetic corpus ("haystack"). | Synthetic | **COMPLETED** | [advanced_benchmarks.py](advanced_benchmarks.py) |
+| **Phase 2** | **RULER** | Run a representative multi-hop variable assignment tracking task over deep contexts. | Synthetic | **COMPLETED** | [advanced_benchmarks.py](advanced_benchmarks.py) |
+| **Phase 3** | **LongBench** | Load a long historical narrative QA task to verify document reading comprehension. | Real-world | **COMPLETED** | [advanced_benchmarks.py](advanced_benchmarks.py) |
+| **Phase 4** | **SWE-bench** | Local toy repository issue debugging and dynamic unit-test validation loop (`calculator.py`). | Real-world | **COMPLETED** | [advanced_benchmarks.py](advanced_benchmarks.py) |
+| **Phase 4.5**| **KLD / Perplexity** | Measure information loss (KL Divergence, Perplexity, Same Top Token matching) of quantized KV caches. | Quant Loss | **COMPLETED** | [kld_benchmark.py](kld_benchmark.py) |
+| **Phase 5** | **Unified Dashboard**| Regroup, unify running benchmarks, record historical runs, and plot comparative metrics. | WebUI / DB | **ACTIVE** | [dashboard.py](dashboard.py) |
 
 ---
 

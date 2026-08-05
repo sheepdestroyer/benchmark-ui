@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Convenience script to launch the Streamlit UI for LLM benchmarking
 
 # Change to the directory where this script is located

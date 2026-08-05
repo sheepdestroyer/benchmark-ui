@@ -1,8 +1,12 @@
 #!/bin/bash
+set -euo pipefail
 # Usage: ./benchmark.sh "Qwen3.6-35B-A3B-spec2" "http://127.0.0.1:8081"
 #        ./benchmark.sh --list [endpoint]
 
 export LC_NUMERIC=C
+
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
 if [[ "$1" == "--list" ]]; then
     ENDPOINT="${2:-http://127.0.0.1:8083}"
@@ -35,7 +39,7 @@ call_api() {
 
   local start_ts=$(date +%s.%N)
   local first_token_ts=""
-  local temp_file=$(mktemp)
+  local temp_file=$(mktemp -p "$TMP_DIR")
 
   curl -L -s -N -X POST "${ENDPOINT}/v1/chat/completions" \
     -H "Content-Type: application/json" \
@@ -71,8 +75,8 @@ call_api() {
 
   local p_s=0
   local t_s=0
-  if (( $(echo "$ttft > 0" | bc -l) )); then p_s=$(echo "scale=2; $prompt_tokens / $ttft" | bc -l); fi
-  if (( $(echo "$gen_time > 0" | bc -l) )); then t_s=$(echo "scale=2; $completion_tokens / $gen_time" | bc -l); fi
+  if [ "$(echo "${ttft:-0} > 0" | bc -l 2>/dev/null || echo 0)" -eq 1 ]; then p_s=$(echo "scale=2; $prompt_tokens / $ttft" | bc -l 2>/dev/null || echo 0); fi
+  if [ "$(echo "${gen_time:-0} > 0" | bc -l 2>/dev/null || echo 0)" -eq 1 ]; then t_s=$(echo "scale=2; $completion_tokens / $gen_time" | bc -l 2>/dev/null || echo 0); fi
 
   echo "---------------------------------------------------------"
   echo "Prompt Tokens      : $prompt_tokens"
@@ -167,7 +171,7 @@ echo -e "\n========================================================="
 echo " Final Model Metrics (from Prometheus endpoint)"
 echo "========================================================="
 # Pull metrics, strip out comments and empty lines
-curl -L -s "${ENDPOINT}/metrics?model=${MODEL}" | grep -v "^#" | awk NF
+curl -L -s "${ENDPOINT}/metrics?model=${MODEL}" | grep -v "^#" | awk NF || true
 echo "========================================================="
 echo " Note: Your journalctl logs hold the exact N-Gram Spec stats."
 echo " Run this to see the acceptance rates:"

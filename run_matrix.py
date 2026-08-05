@@ -5,6 +5,7 @@ import json
 import datetime
 import subprocess
 import time
+import atexit
 from pathlib import Path
 
 BENCH_DIR = Path(__file__).parent.resolve()
@@ -14,30 +15,67 @@ RUN_LOG = BENCH_DIR / "matrix_run.log"
 
 # Tee logger class to automatically redirect output to console and file
 class TeeLogger:
-    def __init__(self, filename, mode="a"):
-        self.terminal = sys.stdout
+    def __init__(self, original_stream, filename, mode="a"):
+        self.original_stream = original_stream
         self.log_file = open(filename, mode, encoding="utf-8")
         
     def write(self, message):
-        self.terminal.write(message)
-        self.log_file.write(message)
-        self.log_file.flush()
+        self.original_stream.write(message)
+        if hasattr(self, "log_file") and not self.log_file.closed:
+            self.log_file.write(message)
+            self.log_file.flush()
         
     def flush(self):
-        self.terminal.flush()
-        self.log_file.flush()
+        self.original_stream.flush()
+        if hasattr(self, "log_file") and not self.log_file.closed:
+            self.log_file.flush()
+
+    def close(self):
+        if hasattr(self, "log_file") and not self.log_file.closed:
+            self.log_file.close()
 
 # Setup Tee Logging
-sys.stdout = TeeLogger(RUN_LOG, "a")
-sys.stderr = sys.stdout  # Redirect stderr to the same logger
+stdout_logger = TeeLogger(sys.stdout, RUN_LOG, "a")
+stderr_logger = TeeLogger(sys.stderr, RUN_LOG, "a")
+sys.stdout = stdout_logger
+sys.stderr = stderr_logger
 
-# Local GGUF model paths for perplexity testing
-gguf_paths = {
-    "Qwen3.6-27B": "/home/sheepdestroyer/.cache/huggingface/hub/models--unsloth--Qwen3.6-27B-GGUF/snapshots/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-Q4_K_S.gguf",
-    "Qwen3.6-27B-spec3": "/home/sheepdestroyer/.cache/huggingface/hub/models--unsloth--Qwen3.6-27B-MTP-GGUF/snapshots/b3a58239d8d40b953e34936c9afeb28baa518230/Qwen3.6-27B-Q4_K_S.gguf",
-    "Qwen3.6-27B-spec4": "/home/sheepdestroyer/.cache/huggingface/hub/models--unsloth--Qwen3.6-27B-MTP-GGUF/snapshots/b3a58239d8d40b953e34936c9afeb28baa518230/Qwen3.6-27B-UD-Q4_K_XL.gguf",
-    "Qwen3.6-35B-A3B-spec": "/home/sheepdestroyer/.cache/huggingface/hub/models--unsloth--Qwen3.6-35B-A3B-GGUF/snapshots/a483e9e6cbd595906af30beda3187c2663a1118c/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"
-}
+def _cleanup_loggers():
+    stdout_logger.close()
+    stderr_logger.close()
+
+atexit.register(_cleanup_loggers)
+
+HOME_DIR = os.environ.get("HOME", os.path.expanduser("~"))
+DEFAULT_CACHE_DIR = os.environ.get("HF_HOME", os.path.join(HOME_DIR, ".cache", "huggingface"))
+
+def get_default_gguf_paths(cache_dir=None):
+    if cache_dir is None:
+        cache_dir = DEFAULT_CACHE_DIR
+    return {
+        "Qwen3.6-27B": os.environ.get("GGUF_PATH_QWEN27B", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-27B-GGUF/snapshots/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-Q4_K_S.gguf")),
+        "Qwen3.6-27B-spec3": os.environ.get("GGUF_PATH_QWEN27B_SPEC3", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-27B-MTP-GGUF/snapshots/b3a58239d8d40b953e34936c9afeb28baa518230/Qwen3.6-27B-Q4_K_S.gguf")),
+        "Qwen3.6-27B-spec4": os.environ.get("GGUF_PATH_QWEN27B_SPEC4", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-27B-MTP-GGUF/snapshots/b3a58239d8d40b953e34936c9afeb28baa518230/Qwen3.6-27B-UD-Q4_K_XL.gguf")),
+        "Qwen3.6-35B-A3B-spec": os.environ.get("GGUF_PATH_QWEN35B_SPEC", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-35B-A3B-GGUF/snapshots/a483e9e6cbd595906af30beda3187c2663a1118c/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"))
+    }
+
+def wait_for_endpoint_health(endpoint="http://127.0.0.1:8081", timeout=60, poll_interval=2):
+    import urllib.request
+    url = f"{endpoint.rstrip("/")}/v1/models"
+    start_time = time.time()
+    print(f"    [*] Polling health of {endpoint}...")
+    while time.time() - start_time < timeout:
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    print(f"    [+] Server endpoint {endpoint} is ready!")
+                    return True
+        except Exception:
+            pass
+        time.sleep(poll_interval)
+    print(f"    [-] Server endpoint {endpoint} did not respond within {timeout}s.")
+    return False
 
 def log_error(model, context, error_msg, stdout="", stderr=""):
     with open(ERROR_LOG, "a", encoding="utf-8") as f:
@@ -51,13 +89,14 @@ def log_error(model, context, error_msg, stdout="", stderr=""):
             f.write(f"STDERR:\n{stderr}\n")
         f.write("=" * 80 + "\n\n")
 
-def get_completed_runs():
+def get_completed_runs(presets_file=None):
     completed = set()
     if not HISTORY_DIR.exists():
         return completed
     
     # Read model_presets to support mapping if needed
-    presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+    if presets_file is None:
+        presets_file = os.environ.get("PRESETS_FILE", os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini")))
     presets_sections = set()
     if os.path.exists(presets_file):
         try:
@@ -110,7 +149,7 @@ def get_completed_runs():
             
     return completed
 
-def run_matrix():
+def run_matrix(endpoint="http://127.0.0.1:8081", presets_file=None, cache_dir=None):
     # Make sure history directory exists
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     if not (HISTORY_DIR / ".gitkeep").exists():
@@ -118,7 +157,8 @@ def run_matrix():
             f.write("")
             
     # Get previously completed runs for resuming
-    completed_runs = get_completed_runs()
+    completed_runs = get_completed_runs(presets_file=presets_file)
+    gguf_paths = get_default_gguf_paths(cache_dir=cache_dir)
     
     models = ["Qwen3.6-27B", "Qwen3.6-27B-spec3", "Qwen3.6-27B-spec4", "Qwen3.6-35B-A3B-spec"]
     contexts = [1024, 8192, 32000, 64000, 128000, 228000]
@@ -154,7 +194,8 @@ def run_matrix():
                 sys.executable, "run_suite.py",
                 "--mode", "all",
                 "--model", m,
-                "--tokens", str(c)
+                "--tokens", str(c),
+                "--endpoint", endpoint
             ]
             if m in gguf_paths and os.path.exists(gguf_paths[m]):
                 cmd.extend(["--gguf-path", gguf_paths[m]])
@@ -173,7 +214,7 @@ def run_matrix():
                 # Limit each run dynamically to prevent blocking forever on real hangs
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=run_timeout)
                 if result.returncode == 0:
-                    print(f"    [+] Success! Run saved in history/.")
+                    print("    [+] Success! Run saved in history/.")
                     completed_runs.add((m, c))
                 else:
                     err_msg = f"run_suite.py returned exit code {result.returncode}"
@@ -183,7 +224,7 @@ def run_matrix():
                     
                     # Restart server router service to clear locks
                     subprocess.run(["systemctl", "--user", "restart", "llama-router"])
-                    time.sleep(20)
+                    wait_for_endpoint_health(endpoint=endpoint)
             except subprocess.TimeoutExpired as e:
                 err_msg = f"Subprocess timed out (exceeded {run_timeout} seconds limit)"
                 print(f"    [-] Timeout: {err_msg}. Marking model as broken, and restarting llama-router...")
@@ -192,7 +233,7 @@ def run_matrix():
                 
                 # Restart server router service to clear locks
                 subprocess.run(["systemctl", "--user", "restart", "llama-router"])
-                time.sleep(20)
+                wait_for_endpoint_health(endpoint=endpoint)
             except Exception as e:
                 err_msg = f"Subprocess exception: {e}"
                 print(f"    [-] Execution error: {err_msg}. Marking model as broken, and restarting llama-router...")
@@ -201,12 +242,22 @@ def run_matrix():
                 
                 # Restart server router service to clear locks
                 subprocess.run(["systemctl", "--user", "restart", "llama-router"])
-                time.sleep(20)
+                wait_for_endpoint_health(endpoint=endpoint)
                 
     print("\n" + "=" * 80)
     print(f" LLM MATRIX RUNNER COMPLETE - END TIME: {datetime.datetime.now().isoformat()}")
     print(f" Successfully evaluated: {len(completed_runs)} | Total matrix: {total_runs} runs.")
     print("=" * 80 + "\n")
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="LLM Matrix Runner")
+    parser.add_argument("--endpoint", default=os.environ.get("LLM_ENDPOINT", "http://127.0.0.1:8081"), help="LLM server API endpoint")
+    parser.add_argument("--presets-file", default=os.environ.get("PRESETS_FILE", None), help="Path to model_presets.ini")
+    parser.add_argument("--cache-dir", default=os.environ.get("HF_HOME", None), help="Cache directory for HuggingFace models")
+    args = parser.parse_args()
+    
+    run_matrix(endpoint=args.endpoint, presets_file=args.presets_file, cache_dir=args.cache_dir)
+
 if __name__ == "__main__":
-    run_matrix()
+    main()

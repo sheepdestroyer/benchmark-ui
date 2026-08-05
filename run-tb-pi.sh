@@ -6,7 +6,7 @@ set -euo pipefail
 
 # --- Configuration ---
 # Podman socket (user-level, avoids docker.sock permission issues)
-export DOCKER_HOST="unix:///run/user/1000/podman/podman.sock"
+export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
 
 # Local llama.cpp server
 export OPENAI_BASE_URL="http://host.containers.internal:8081/v1"

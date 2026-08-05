@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+from pathlib import Path
 import datetime
 import json
 import os
@@ -39,7 +40,7 @@ def get_model_settings(endpoint, target_model):
             data = response.json()
             model_info = None
             for item in data.get("data", []):
-                if item.get("id") == target_model or target_model in item.get("id", ""):
+                if item.get("id") == target_model:
                     model_info = item
                     break
             
@@ -294,13 +295,15 @@ def main():
     }
     
     # Write output to history/
-    history_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "history"))
-    os.makedirs(history_dir, exist_ok=True)
+    history_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "history")))
+    history_dir.mkdir(parents=True, exist_ok=True)
     safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
-    output_file = os.path.join(history_dir, f"run_{safe_timestamp}.json")
+    output_file = history_dir / f"run_{safe_timestamp}.json"
+    tmp_file = output_file.with_suffix(".tmp")
     
-    with open(output_file, "w") as f:
+    with open(tmp_file, "w") as f:
         json.dump(run_data, f, indent=4)
+    os.replace(tmp_file, output_file)
         
     print(f"\n[+] Unified benchmark run completed and logged to {output_file}")
 
