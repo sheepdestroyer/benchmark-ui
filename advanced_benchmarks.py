@@ -89,8 +89,10 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
                             
                         if chunk.get("usage"):
                             usage = chunk["usage"]
-                    except Exception:
+                    except json.JSONDecodeError:
                         pass
+                    except Exception as e:
+                        print(f"Warning: Unexpected error parsing SSE chunk: {e}")
     except Exception as e:
         print(f"Request failed: {e}")
         return None
@@ -132,7 +134,10 @@ def run_needle_test(endpoint, model, tokens=200000, depth=0.5):
     needle = "The secret code word is: BANANA_SPLIT. Remember this code word, as it is required to pass the test."
     query = "What is the secret code word? Provide only the code word and nothing else."
     
-    insert_index = int(len(paragraphs) * depth)
+    try:
+        insert_index = int(len(paragraphs) * depth)
+    except (ValueError, TypeError):
+        insert_index = 0
     paragraphs.insert(insert_index, needle)
     
     full_context = "\n\n".join(paragraphs)
@@ -174,9 +179,21 @@ def run_ruler_test(endpoint, model, tokens=200000):
     
     # Insert facts at 75%, 50%, and 25% depth
     p_len = len(paragraphs)
-    paragraphs.insert(int(p_len * 0.75), fact_3)
-    paragraphs.insert(int(p_len * 0.50), fact_2)
-    paragraphs.insert(int(p_len * 0.25), fact_1)
+    try:
+        idx75 = int(p_len * 0.75)
+    except (ValueError, TypeError):
+        idx75 = 0
+    try:
+        idx50 = int(p_len * 0.50)
+    except (ValueError, TypeError):
+        idx50 = 0
+    try:
+        idx25 = int(p_len * 0.25)
+    except (ValueError, TypeError):
+        idx25 = 0
+    paragraphs.insert(idx75, fact_3)
+    paragraphs.insert(idx50, fact_2)
+    paragraphs.insert(idx25, fact_1)
     
     full_context = "\n\n".join(paragraphs)
     prompt = f"Context:\n{full_context}\n\nQuestion: {query}"
@@ -214,7 +231,11 @@ def run_longbench_test(endpoint, model, tokens=200000):
     query = "In what year did King Elidor sign the Treaty of Oakhaven? Provide only the year and nothing else."
     
     # Insert at 50% depth
-    paragraphs.insert(int(len(paragraphs) * 0.5), fact)
+    try:
+        lb_idx = int(len(paragraphs) * 0.5)
+    except (ValueError, TypeError):
+        lb_idx = 0
+    paragraphs.insert(lb_idx, fact)
     
     full_context = "\n\n".join(paragraphs)
     prompt = f"Context:\n{full_context}\n\nQuestion: {query}"
@@ -443,11 +464,20 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                     # Check args
                     for i, arg in enumerate(args):
                         if arg == "--threads" and i + 1 < len(args):
-                            settings["threads"] = int(args[i+1])
+                            try:
+                                settings["threads"] = int(args[i+1])
+                            except (ValueError, TypeError):
+                                settings["threads"] = None
                         elif arg == "--batch-size" and i + 1 < len(args):
-                            settings["batch_size"] = int(args[i+1])
+                            try:
+                                settings["batch_size"] = int(args[i+1])
+                            except (ValueError, TypeError):
+                                settings["batch_size"] = None
                         elif arg == "--ubatch-size" and i + 1 < len(args):
-                            settings["ubatch_size"] = int(args[i+1])
+                            try:
+                                settings["ubatch_size"] = int(args[i+1])
+                            except (ValueError, TypeError):
+                                settings["ubatch_size"] = None
                         elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
                             settings["kv_cache_quant"] = args[i+1]
                     
@@ -459,11 +489,20 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                 k, v = line.split("=", 1)
                                 k, v = k.strip(), v.strip()
                                 if k == "threads":
-                                    settings["threads"] = int(v)
+                                    try:
+                                        settings["threads"] = int(v)
+                                    except (ValueError, TypeError):
+                                        settings["threads"] = None
                                 elif k == "batch-size":
-                                    settings["batch_size"] = int(v)
+                                    try:
+                                        settings["batch_size"] = int(v)
+                                    except (ValueError, TypeError):
+                                        settings["batch_size"] = None
                                 elif k == "ubatch-size":
-                                    settings["ubatch_size"] = int(v)
+                                    try:
+                                        settings["ubatch_size"] = int(v)
+                                    except (ValueError, TypeError):
+                                        settings["ubatch_size"] = None
                                 elif k in ["cache-type-k", "cache-type-v"]:
                                     settings["kv_cache_quant"] = v
                                     

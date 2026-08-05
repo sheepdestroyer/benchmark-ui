@@ -52,11 +52,20 @@ def get_model_settings(endpoint, target_model):
                 # Check args
                 for i, arg in enumerate(args):
                     if arg == "--threads" and i + 1 < len(args):
-                        settings["threads"] = int(args[i+1])
+                        try:
+                            settings["threads"] = int(args[i+1])
+                        except (ValueError, TypeError):
+                            settings["threads"] = None
                     elif arg == "--batch-size" and i + 1 < len(args):
-                        settings["batch_size"] = int(args[i+1])
+                        try:
+                            settings["batch_size"] = int(args[i+1])
+                        except (ValueError, TypeError):
+                            settings["batch_size"] = None
                     elif arg == "--ubatch-size" and i + 1 < len(args):
-                        settings["ubatch_size"] = int(args[i+1])
+                        try:
+                            settings["ubatch_size"] = int(args[i+1])
+                        except (ValueError, TypeError):
+                            settings["ubatch_size"] = None
                     elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
                         settings["kv_cache_quant"] = args[i+1]
                 
@@ -68,11 +77,20 @@ def get_model_settings(endpoint, target_model):
                             k, v = line.split("=", 1)
                             k, v = k.strip(), v.strip()
                             if k == "threads":
-                                settings["threads"] = int(v)
+                                try:
+                                    settings["threads"] = int(v)
+                                except (ValueError, TypeError):
+                                    settings["threads"] = None
                             elif k == "batch-size":
-                                settings["batch_size"] = int(v)
+                                try:
+                                    settings["batch_size"] = int(v)
+                                except (ValueError, TypeError):
+                                    settings["batch_size"] = None
                             elif k == "ubatch-size":
-                                settings["ubatch_size"] = int(v)
+                                try:
+                                    settings["ubatch_size"] = int(v)
+                                except (ValueError, TypeError):
+                                    settings["ubatch_size"] = None
                             elif k in ["cache-type-k", "cache-type-v"]:
                                 settings["kv_cache_quant"] = v
                                 
@@ -86,7 +104,7 @@ def get_model_settings(endpoint, target_model):
                     settings["speculative_draft_type"] = "ngram"
                 else:
                     settings["speculative_draft_type"] = "None"
-    except Exception as e:
+    except (requests.RequestException, ConnectionError, ValueError) as e:
         print(f"[*] Could not fetch model settings from endpoint: {e}")
         
     if advanced_benchmarks:
@@ -113,6 +131,14 @@ def run_throughput(endpoint, model):
     print(result.stdout)
     if result.stderr:
         print("Error/Stderr:", result.stderr)
+        
+    if result.returncode != 0:
+        print(f"[-] benchmark.sh failed with exit code {result.returncode}")
+        return {
+            "prefill_speed": 0.0,
+            "decode_speed": 0.0,
+            "ttft": 0.0
+        }
         
     # Parse turns
     p_evals = []

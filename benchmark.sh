@@ -5,6 +5,13 @@ set -euo pipefail
 
 export LC_NUMERIC=C
 
+for cmd in bc jq curl; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: Required dependency '$cmd' is missing or not executable." >&2
+    exit 1
+  fi
+done
+
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
@@ -62,6 +69,12 @@ call_api() {
   local end_ts=$(date +%s.%N)
   first_token_ts=$(cat "${temp_file}_first" 2>/dev/null)
   if [[ -z "$first_token_ts" ]]; then first_token_ts=$end_ts; fi
+
+  if [[ ! -f "${temp_file}_usage" || ! -s "${temp_file}_usage" ]]; then
+    echo "Error: Usage temp file is missing or empty after curl stream for $turn_name." >&2
+    rm -f "$temp_file" "${temp_file}_first" "${temp_file}_usage"
+    exit 1
+  fi
 
   local usage_json=$(cat "${temp_file}_usage" 2>/dev/null)
   local prompt_tokens=$(echo "$usage_json" | jq -r '.usage.prompt_tokens // 0' 2>/dev/null)

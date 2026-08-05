@@ -61,12 +61,17 @@ def run_perplexity(binary, model, corpus, cache_k, cache_v, base_kld=None, evalu
     print(f"[*] Running: {' '.join(cmd)}")
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600)
+        if result.returncode != 0:
+            print(f"[-] llama-perplexity failed with exit code {result.returncode}")
+            if result.stderr:
+                print(f"STDERR:\n{result.stderr}")
+            return None, result.stderr
         return result.stdout, result.stderr
     except subprocess.TimeoutExpired as e:
         print("[-] Execution of llama-perplexity timed out after 600 seconds.")
         stdout = e.stdout if isinstance(e.stdout, str) else (e.stdout.decode('utf-8') if e.stdout else "")
         stderr = e.stderr if isinstance(e.stderr, str) else (e.stderr.decode('utf-8') if e.stderr else "")
-        return stdout, stderr
+        return None, stderr
 
 def parse_metrics(output):
     metrics = {
@@ -139,6 +144,10 @@ def main():
         # 1. Generate Baseline Logits (f16 / unquantized cache)
         print("\n[1/2] Generating baseline logits (f16 KV cache)...")
         stdout, stderr = run_perplexity(binary, model_path, corpus_file, "f16", "f16", base_kld=baseline_kld_file)
+        if stdout is None:
+            print("[-] Failed to generate baseline perplexity. Check logs:")
+            print(stderr)
+            sys.exit(1)
         baseline_metrics = parse_metrics(stdout + "\n" + stderr)
         
         if not baseline_metrics["ppl"]:
@@ -167,7 +176,10 @@ def main():
                 binary, model_path, corpus_file, cache_k, cache_v, 
                 base_kld=baseline_kld_file, evaluate=True
             )
-            m = parse_metrics(stdout + "\n" + stderr)
+            if stdout is None:
+                m = {"ppl": None, "kld": None, "same_top": None}
+            else:
+                m = parse_metrics(stdout + "\n" + stderr)
             results.append({
                 "name": name,
                 "ppl": m["ppl"],

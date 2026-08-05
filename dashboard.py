@@ -245,7 +245,7 @@ def map_repo_to_preset_alias(repo_or_id):
                     
             if section_alias and section_alias.lower() in repo_or_id.lower():
                 return section
-    except Exception:
+    except (configparser.Error, OSError):
         pass
         
     # Fallback overrides
@@ -289,7 +289,7 @@ def get_preset_metadata(profile_name):
                 for key in config[profile_name]:
                     clean_key = key.replace("-", "_")
                     metadata[clean_key] = config[profile_name][key]
-        except Exception:
+        except (configparser.Error, OSError):
             pass
             
     return metadata
@@ -851,10 +851,13 @@ with tab_run:
             url = f"{new_endpoint}/v1/models"
             resp = requests.get(url, timeout=2)
             if resp.status_code == 200:
-                data = resp.json()
-                models = [item.get("id") for item in data.get("data", [])]
-                if models:
-                    available_models = sorted(models)
+                try:
+                    data = resp.json()
+                    models = [item.get("id") for item in data.get("data", [])]
+                    if models:
+                        available_models = sorted(models)
+                except (json.JSONDecodeError, ValueError):
+                    pass
         except Exception:
             pass
             

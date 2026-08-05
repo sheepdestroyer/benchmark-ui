@@ -100,6 +100,16 @@ def parse_benchmark_output(output_text):
 
         turns.append(metrics)
 
+    all_defaults = True
+    if turns:
+        for t in turns:
+            if any(t[k] != 0 for k in ["Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)"]):
+                all_defaults = False
+                break
+
+    if all_defaults:
+        st.warning("Warning: Benchmark output parsing produced only default metric values (0.0). Check execution logs for errors.")
+
     return turns
 
 def run_benchmark_stream(model, endpoint):

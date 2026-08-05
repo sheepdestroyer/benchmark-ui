@@ -137,7 +137,10 @@ def get_completed_runs(presets_file=None):
                 if arg == "--model" and i + 1 < len(args):
                     profile = args[i+1]
                 elif arg == "--tokens" and i + 1 < len(args):
-                    ctx = int(args[i+1])
+                    try:
+                        ctx = int(args[i+1])
+                    except (ValueError, TypeError):
+                        ctx = 0
                     
             # Fallback to settings profile_alias or model_name if CLI args not parsed
             if not profile:
