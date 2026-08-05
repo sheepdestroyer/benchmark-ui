@@ -289,12 +289,8 @@ def main():
         }
         
         safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
-<<<<<<< HEAD
-        output_file = os.path.join(history_dir, f"run_{safe_timestamp}_{kv_quant}.json")
-        run_data = sanitize_nan_inf(run_data)
-=======
         output_file = history_dir / f"run_{safe_timestamp}_{kv_quant}.json"
->>>>>>> 8937156 (Fix infrastructure issues — TeeLogger, file paths, history management, and thread counts)
+        run_data = sanitize_nan_inf(run_data)
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(run_data, f, indent=4)
         print(f"[+] Saved structured KLD historical run to {output_file}")
