@@ -69,21 +69,23 @@ def parse_metrics(output):
         "same_top": None
     }
     
+    float_pattern = r"[-+]?(?:[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?|inf|nan)"
+    
     # Parse final perplexity (PPL)
     # Output matches: "Final perplexity: 7.2345", "Final estimate: PPL = 3.9645" or "Mean PPL(Q)                   :   3.948214"
-    ppl_match = re.search(r"(?:Final perplexity:\s*|Final estimate:\s*PPL\s*=\s*|Mean PPL\(Q\)\s*:\s*)([0-9.]+)", output)
+    ppl_match = re.search(r"(?:Final perplexity:\s*|Final estimate:\s*PPL\s*=\s*|Mean PPL\(Q\)\s*:\s*)(" + float_pattern + ")", output, re.IGNORECASE)
     if ppl_match:
         metrics["ppl"] = float(ppl_match.group(1))
         
     # Parse Mean KL divergence
     # Output matches: "Mean    KLD:   0.001158"
-    kld_match = re.search(r"Mean\s+KLD:\s*([0-9.e-]+)", output)
+    kld_match = re.search(r"Mean\s+KLD:\s*(" + float_pattern + ")", output, re.IGNORECASE)
     if kld_match:
         metrics["kld"] = float(kld_match.group(1))
         
     # Parse Same top token percentage
     # Output matches: "Same top p: 100.000 ± 0.000 %"
-    top_match = re.search(r"Same top p:\s*([0-9.]+)", output)
+    top_match = re.search(r"Same top p:\s*(" + float_pattern + ")", output, re.IGNORECASE)
     if top_match:
         metrics["same_top"] = float(top_match.group(1))
         
@@ -127,48 +129,49 @@ def main():
     if os.path.exists(baseline_kld_file):
         os.remove(baseline_kld_file)
 
-    # 1. Generate Baseline Logits (f16 / unquantized cache)
-    print("\n[1/2] Generating baseline logits (f16 KV cache)...")
-    stdout, stderr = run_perplexity(binary, model_path, corpus_file, "f16", "f16", base_kld=baseline_kld_file)
-    baseline_metrics = parse_metrics(stdout + "\n" + stderr)
-    
-    if not baseline_metrics["ppl"]:
-        print("[-] Failed to generate baseline perplexity. Check logs:")
-        print(stderr)
-        sys.exit(1)
+    try:
+        # 1. Generate Baseline Logits (f16 / unquantized cache)
+        print("\n[1/2] Generating baseline logits (f16 KV cache)...")
+        stdout, stderr = run_perplexity(binary, model_path, corpus_file, "f16", "f16", base_kld=baseline_kld_file)
+        baseline_metrics = parse_metrics(stdout + "\n" + stderr)
         
-    print(f"[+] Baseline PPL: {baseline_metrics['ppl']:.4f}")
+        if not baseline_metrics["ppl"]:
+            print("[-] Failed to generate baseline perplexity. Check logs:")
+            print(stderr)
+            sys.exit(1)
+            
+        print(f"[+] Baseline PPL: {baseline_metrics['ppl']:.4f}")
 
-    # 2. Evaluate Target Configurations
-    targets = [
-        ("q8_0", "q8_0"),
-        ("q5_1", "q5_1"),
-        ("q4_0", "q4_0")
-    ]
-    
-    results = [
-        {"name": "f16 (Baseline)", "ppl": baseline_metrics["ppl"], "kld": 0.0, "same_top": 100.0}
-    ]
-    
-    print("\n[2/2] Evaluating quantized target caches...")
-    for cache_k, cache_v in targets:
-        name = f"{cache_k}"
-        print(f"\n---> Evaluating {name}...")
-        stdout, stderr = run_perplexity(
-            binary, model_path, corpus_file, cache_k, cache_v, 
-            base_kld=baseline_kld_file, evaluate=True
-        )
-        m = parse_metrics(stdout + "\n" + stderr)
-        results.append({
-            "name": name,
-            "ppl": m["ppl"],
-            "kld": m["kld"],
-            "same_top": m["same_top"]
-        })
-
-    # Cleanup temp baseline file
-    if os.path.exists(baseline_kld_file):
-        os.remove(baseline_kld_file)
+        # 2. Evaluate Target Configurations
+        targets = [
+            ("q8_0", "q8_0"),
+            ("q5_1", "q5_1"),
+            ("q4_0", "q4_0")
+        ]
+        
+        results = [
+            {"name": "f16 (Baseline)", "ppl": baseline_metrics["ppl"], "kld": 0.0, "same_top": 100.0}
+        ]
+        
+        print("\n[2/2] Evaluating quantized target caches...")
+        for cache_k, cache_v in targets:
+            name = f"{cache_k}"
+            print(f"\n---> Evaluating {name}...")
+            stdout, stderr = run_perplexity(
+                binary, model_path, corpus_file, cache_k, cache_v, 
+                base_kld=baseline_kld_file, evaluate=True
+            )
+            m = parse_metrics(stdout + "\n" + stderr)
+            results.append({
+                "name": name,
+                "ppl": m["ppl"],
+                "kld": m["kld"],
+                "same_top": m["same_top"]
+            })
+    finally:
+        # Cleanup temp baseline file
+        if os.path.exists(baseline_kld_file):
+            os.remove(baseline_kld_file)
 
     # 3. Print Results Table
     print("\n" + "="*70)
@@ -182,7 +185,7 @@ def main():
     print("="*70)
     
     # Save output to markdown log
-    with open("kld_results.md", "w") as f:
+    with open("kld_results.md", "w", encoding="utf-8") as f:
         f.write("# KV Cache Quantization KLD Results\n\n")
         f.write(f"**Model**: `{os.path.basename(model_path)}`\n\n")
         f.write("| KV Cache Quant | Perplexity (PPL) | KL Divergence | Same Top % |\n")
@@ -193,7 +196,7 @@ def main():
             top_str = f"{r['same_top']:.2f}%" if r['same_top'] is not None else "N/A"
             f.write(f"| {r['name']} | {ppl_str} | {kld_str} | {top_str} |\n")
             
-    print("[+] Saved markdown summary to bench/kld_results.md")
+    print("[+] Saved markdown summary to kld_results.md")
 
     # Save output to historical run registry JSON files
     import datetime
@@ -250,7 +253,7 @@ def main():
         
         safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
         output_file = os.path.join(history_dir, f"run_{safe_timestamp}_{kv_quant}.json")
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             json_lib.dump(run_data, f, indent=4)
         print(f"[+] Saved structured KLD historical run to {output_file}")
 
