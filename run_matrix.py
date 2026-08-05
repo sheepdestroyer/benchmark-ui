@@ -9,54 +9,67 @@ import atexit
 from pathlib import Path
 
 BENCH_DIR = Path(__file__).parent.resolve()
-HISTORY_DIR = BENCH_DIR / "history"
-ERROR_LOG = BENCH_DIR / "matrix_errors.log"
-RUN_LOG = BENCH_DIR / "matrix_run.log"
+HISTORY_DIR = (BENCH_DIR / "history").resolve()
+ERROR_LOG = (BENCH_DIR / "matrix_errors.log").resolve()
+RUN_LOG = (BENCH_DIR / "matrix_run.log").resolve()
 
 # Tee logger class to automatically redirect output to console and file
 class TeeLogger:
-    def __init__(self, original_stream, filename, mode="a"):
+    def __init__(self, original_stream, log_file_or_path, mode="a"):
         self.original_stream = original_stream
-        self.log_file = open(filename, mode, encoding="utf-8")
+        if isinstance(log_file_or_path, (str, Path)):
+            self.log_file = open(log_file_or_path, mode, encoding="utf-8")
+            self._owns_file = True
+        else:
+            self.log_file = log_file_or_path
+            self._owns_file = False
         
     def write(self, message):
         self.original_stream.write(message)
-        if hasattr(self, "log_file") and not self.log_file.closed:
+        if hasattr(self, "log_file") and self.log_file and not self.log_file.closed:
             self.log_file.write(message)
             self.log_file.flush()
         
     def flush(self):
         self.original_stream.flush()
-        if hasattr(self, "log_file") and not self.log_file.closed:
+        if hasattr(self, "log_file") and self.log_file and not self.log_file.closed:
             self.log_file.flush()
 
     def close(self):
-        if hasattr(self, "log_file") and not self.log_file.closed:
-            self.log_file.close()
+        if hasattr(self, "log_file") and self.log_file and not self.log_file.closed:
+            if getattr(self, "_owns_file", True):
+                self.log_file.close()
 
-# Setup Tee Logging
-stdout_logger = TeeLogger(sys.stdout, RUN_LOG, "a")
-stderr_logger = TeeLogger(sys.stderr, RUN_LOG, "a")
-sys.stdout = stdout_logger
-sys.stderr = stderr_logger
+    def fileno(self):
+        return self.original_stream.fileno()
 
-def _cleanup_loggers():
-    stdout_logger.close()
-    stderr_logger.close()
+    def isatty(self):
+        return self.original_stream.isatty()
 
-atexit.register(_cleanup_loggers)
+    @property
+    def encoding(self):
+        return getattr(self.original_stream, "encoding", "utf-8")
 
 HOME_DIR = os.environ.get("HOME", os.path.expanduser("~"))
 DEFAULT_CACHE_DIR = os.environ.get("HF_HOME", os.path.join(HOME_DIR, ".cache", "huggingface"))
+
+def resolve_latest_snapshot(cache_dir, repo_folder, gguf_filename, fallback_hash):
+    snapshots_dir = Path(cache_dir) / "hub" / repo_folder / "snapshots"
+    if snapshots_dir.exists() and snapshots_dir.is_dir():
+        subdirs = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+        if subdirs:
+            latest = max(subdirs, key=lambda d: d.stat().st_mtime)
+            return str(latest / gguf_filename)
+    return str(Path(cache_dir) / "hub" / repo_folder / "snapshots" / fallback_hash / gguf_filename)
 
 def get_default_gguf_paths(cache_dir=None):
     if cache_dir is None:
         cache_dir = DEFAULT_CACHE_DIR
     return {
-        "Qwen3.6-27B": os.environ.get("GGUF_PATH_QWEN27B", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-27B-GGUF/snapshots/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-Q4_K_S.gguf")),
-        "Qwen3.6-27B-spec3": os.environ.get("GGUF_PATH_QWEN27B_SPEC3", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-27B-MTP-GGUF/snapshots/b3a58239d8d40b953e34936c9afeb28baa518230/Qwen3.6-27B-Q4_K_S.gguf")),
-        "Qwen3.6-27B-spec4": os.environ.get("GGUF_PATH_QWEN27B_SPEC4", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-27B-MTP-GGUF/snapshots/b3a58239d8d40b953e34936c9afeb28baa518230/Qwen3.6-27B-UD-Q4_K_XL.gguf")),
-        "Qwen3.6-35B-A3B-spec": os.environ.get("GGUF_PATH_QWEN35B_SPEC", os.path.join(cache_dir, "hub/models--unsloth--Qwen3.6-35B-A3B-GGUF/snapshots/a483e9e6cbd595906af30beda3187c2663a1118c/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"))
+        "Qwen3.6-27B": os.environ.get("GGUF_PATH_QWEN27B", resolve_latest_snapshot(cache_dir, "models--unsloth--Qwen3.6-27B-GGUF", "Qwen3.6-27B-Q4_K_S.gguf", "82d411acf4a06cfb8d9b073a5211bf410bfc29bf")),
+        "Qwen3.6-27B-spec3": os.environ.get("GGUF_PATH_QWEN27B_SPEC3", resolve_latest_snapshot(cache_dir, "models--unsloth--Qwen3.6-27B-MTP-GGUF", "Qwen3.6-27B-Q4_K_S.gguf", "b3a58239d8d40b953e34936c9afeb28baa518230")),
+        "Qwen3.6-27B-spec4": os.environ.get("GGUF_PATH_QWEN27B_SPEC4", resolve_latest_snapshot(cache_dir, "models--unsloth--Qwen3.6-27B-MTP-GGUF", "Qwen3.6-27B-UD-Q4_K_XL.gguf", "b3a58239d8d40b953e34936c9afeb28baa518230")),
+        "Qwen3.6-35B-A3B-spec": os.environ.get("GGUF_PATH_QWEN35B_SPEC", resolve_latest_snapshot(cache_dir, "models--unsloth--Qwen3.6-35B-A3B-GGUF", "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf", "a483e9e6cbd595906af30beda3187c2663a1118c"))
     }
 
 def wait_for_endpoint_health(endpoint="http://127.0.0.1:8081", timeout=60, poll_interval=2):
@@ -257,6 +270,19 @@ def main():
     parser.add_argument("--cache-dir", default=os.environ.get("HF_HOME", None), help="Cache directory for HuggingFace models")
     args = parser.parse_args()
     
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = open(RUN_LOG, "a", encoding="utf-8")
+    stdout_logger = TeeLogger(sys.stdout, log_file)
+    stderr_logger = TeeLogger(sys.stderr, log_file)
+    sys.stdout = stdout_logger
+    sys.stderr = stderr_logger
+
+    def _cleanup_loggers():
+        if not log_file.closed:
+            log_file.close()
+
+    atexit.register(_cleanup_loggers)
+
     run_matrix(endpoint=args.endpoint, presets_file=args.presets_file, cache_dir=args.cache_dir)
 
 if __name__ == "__main__":

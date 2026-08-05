@@ -9,9 +9,13 @@ BENCH_DIR = Path(__file__).parent.resolve()
 HISTORY_DIR = BENCH_DIR / "history"
 
 def populate(force=False):
-    # Purge existing history if --force is passed
+    # Purge existing history run_*.json files if --force is passed
     if force and HISTORY_DIR.exists():
-        shutil.rmtree(HISTORY_DIR)
+        for run_file in HISTORY_DIR.glob("run_*.json"):
+            try:
+                run_file.unlink()
+            except Exception:
+                pass
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     
     # Keep gitkeep
@@ -119,6 +123,7 @@ def populate(force=False):
                 "run_metadata": {
                     "timestamp": run_time_str,
                     "target_endpoint": "http://127.0.0.1:8081",
+                    "synthetic": True,
                     "cli_arguments": [
                         "--mode", "all",
                         "--model", profile_alias,

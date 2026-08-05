@@ -401,7 +401,6 @@ def load_runs():
                 "KLD": loss.get("mean_kld"),
                 "Same Top %": loss.get("same_top_match_percent"),
                 "Context Length": ctx_len,
-                "raw_data": data
             })
         except Exception as e:
             st.error(f"Error loading {filepath.name}: {e}")

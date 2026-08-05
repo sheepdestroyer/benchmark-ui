@@ -243,6 +243,8 @@ def main():
                     "turns": parse_benchmark_output(full_output)
                 }
                 st.session_state.benchmark_history.append(run_data)
+                if len(st.session_state.benchmark_history) > 50:
+                    st.session_state.benchmark_history = st.session_state.benchmark_history[-50:]
                 st.session_state.benchmark_running = False
                 st.session_state.last_benchmark_output = full_output
                 st.success(f"Benchmark results saved to history! (Total runs: {len(st.session_state.benchmark_history)})")
