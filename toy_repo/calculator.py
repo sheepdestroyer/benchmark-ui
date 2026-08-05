@@ -7,10 +7,10 @@ def parse_and_eval(expression):
     tokens = expression.split()
     if not tokens:
         return 0
-    
+
     nums = [float(tokens[i]) for i in range(0, len(tokens), 2)]
     ops = [tokens[i] for i in range(1, len(tokens), 2)]
-    
+
     # Handle multiplication and division first
     i = 0
     while i < len(ops):
@@ -19,6 +19,26 @@ def parse_and_eval(expression):
             nums.pop(i+1)
             ops.pop(i)
         elif ops[i] == '/':
+            if nums[i+1] == 0:
+                raise ZeroDivisionError("division by zero")
             nums[i] /= nums[i+1]
             nums.pop(i+1)
-            ops
+            ops.pop(i)
+        else:
+            i += 1
+
+    # Handle addition and subtraction
+    i = 0
+    while i < len(ops):
+        if ops[i] == '+':
+            nums[i] += nums[i+1]
+            nums.pop(i+1)
+            ops.pop(i)
+        elif ops[i] == '-':
+            nums[i] -= nums[i+1]
+            nums.pop(i+1)
+            ops.pop(i)
+        else:
+            i += 1
+
+    return nums[0]
