@@ -53,7 +53,7 @@ Or run either UI dashboard manually:
 To run all benchmarks (throughput, reasoning, and local KLD quantization analysis) under a single command:
 
 ```bash
-python3 run_suite.py --mode all --endpoint http://127.0.0.1:8081 --model Qwen3.6-35B-A3B
+python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6-35B-A3B
 ```
 
 #### Run Modes:
@@ -63,7 +63,7 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8081 --model Qwen3.6
 - `--mode all`: Orchestrates all of the above sequentially.
 
 #### CLI Arguments:
-- `--endpoint`: Server endpoint URL (default: `http://127.0.0.1:8081`).
+- `--endpoint`: Server endpoint URL (default: `http://127.0.0.1:8083`).
 - `--model`: Model alias or name loaded on the endpoint.
 - `--tokens`: Target token context length for reasoning tests (e.g. 5000 for validation, 200000 for full scaling).
 - `--gguf-path`: Local GGUF file path (for KLD mode, auto-detects Hugging Face cache if blank).
@@ -79,7 +79,7 @@ All benchmark executions export structured JSON logs saved under `history/run_[t
 {
     "run_metadata": {
         "timestamp": "2026-07-08T02:48:25.506401",
-        "target_endpoint": "http://127.0.0.1:8081",
+        "target_endpoint": "http://127.0.0.1:8083",
         "cli_arguments": ["--mode", "throughput", "--model", "Qwen3.6-35B-A3B"]
     },
     "model_settings": {
