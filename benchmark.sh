@@ -50,7 +50,9 @@ call_api() {
 
   curl -L -s -N -X POST "${ENDPOINT}/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d "$payload" | while read -r line; do
+    -d "$payload" | {
+    local all_content=""
+    while read -r line; do
       line="${line%$'\r'}"
       
       if [[ -z "$first_token_ts" && "$line" == data:* && "$line" != *"data: [DONE]"* ]]; then
@@ -59,13 +61,16 @@ call_api() {
       fi
       
       if [[ "$line" == data:* && "$line" != *"data: [DONE]"* ]]; then
-         content=$(echo "$line" | sed 's/^data: //')
-         has_usage=$(echo "$content" | jq -r 'has("usage")' 2>/dev/null)
-         if [[ "$has_usage" == "true" ]]; then
-            echo "$content" > "${temp_file}_usage"
-         fi
+         all_content+="${line#data: }"$'\n'
       fi
-  done
+    done
+    if [[ -n "$all_content" ]]; then
+       local usage_json=$(echo "$all_content" | grep -F '"usage"' | jq -c 'select(has("usage")?)' 2>/dev/null | tail -n 1)
+       if [[ -n "$usage_json" ]]; then
+           echo "$usage_json" > "${temp_file}_usage"
+       fi
+    fi
+  }
   
   local end_ts=$(date +%s.%N)
   first_token_ts=$(cat "${temp_file}_first" 2>/dev/null)
