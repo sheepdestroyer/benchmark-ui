@@ -150,33 +150,26 @@ END_MSG
 # PAYLOAD CONSTRUCTION
 # ==============================================================================
 
-PAYLOAD_1=$(cat <<EOF
+create_payload() {
+  local messages="$1"
+  cat <<PAYLOAD_EOF
 {"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages":[$SYS_MSG, $USER_1]}
-EOF
-)
+ "messages":[$messages]}
+PAYLOAD_EOF
+}
+
+PAYLOAD_1=$(create_payload "$SYS_MSG, $USER_1")
 call_api "Turn 1 (Cold Start -> Python ORMs)" "$PAYLOAD_1"
 
-PAYLOAD_2=$(cat <<EOF
-{"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages": [$SYS_MSG, $USER_1, $AST_1, $USER_2]}
-EOF
-)
+PAYLOAD_2=$(create_payload "$SYS_MSG, $USER_1, $AST_1, $USER_2")
 call_api "Turn 2 (KV Cache Hit -> Repetitive Python ORMs)" "$PAYLOAD_2"
 
-PAYLOAD_3=$(cat <<EOF
-{"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages":[$SYS_MSG, $USER_1, $AST_1, $USER_2, $AST_2, $USER_3]}
-EOF
-)
+PAYLOAD_3=$(create_payload "$SYS_MSG, $USER_1, $AST_1, $USER_2, $AST_2, $USER_3")
 call_api "Turn 3 (KV Cache Hit -> Repetitive JSON Tool Calls)" "$PAYLOAD_3"
 
-PAYLOAD_4=$(cat <<EOF
-{"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages":[$SYS_MSG, $USER_1, $AST_1, $USER_2, $AST_2, $USER_3, $AST_3, $USER_4]}
-EOF
-)
+PAYLOAD_4=$(create_payload "$SYS_MSG, $USER_1, $AST_1, $USER_2, $AST_2, $USER_3, $AST_3, $USER_4")
 call_api "Turn 4 (KV Cache Hit -> Repetitive Markdown)" "$PAYLOAD_4"
+
 
 # ==============================================================================
 # END METRICS DUMP
