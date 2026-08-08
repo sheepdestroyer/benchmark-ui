@@ -112,25 +112,18 @@ def parse_benchmark_output(output_text):
         }
 
         # Extract metrics using regex
-        p_tokens = re.search(r'Prompt Tokens\s+:\s+(\d+)', content)
-        c_tokens = re.search(r'Completion Tokens\s+:\s+(\d+)', content)
-        p_eval = re.search(r'Prompt Eval \(p/s\)\s+:\s+([\d.]+)', content)
-        ttft = re.search(r'TTFT:\s+([\d.]+)', content)
-        gen_ts = re.search(r'Generation\s+\(t/s\)\s+:\s+([\d.]+)', content)
-        decode = re.search(r'Decode:\s+([\d.]+)', content)
-
-        if p_tokens:
-            metrics["Prompt Tokens"] = int(p_tokens.group(1))
-        if c_tokens:
-            metrics["Completion Tokens"] = int(c_tokens.group(1))
-        if p_eval:
-            metrics["Prompt Eval (p/s)"] = float(p_eval.group(1))
-        if ttft:
-            metrics["TTFT (s)"] = float(ttft.group(1))
-        if gen_ts:
-            metrics["Generation (t/s)"] = float(gen_ts.group(1))
-        if decode:
-            metrics["Decode Time (s)"] = float(decode.group(1))
+        metric_patterns = {
+            "Prompt Tokens": (r'Prompt Tokens\s+:\s+(\d+)', int),
+            "Completion Tokens": (r'Completion Tokens\s+:\s+(\d+)', int),
+            "Prompt Eval (p/s)": (r'Prompt Eval \(p/s\)\s+:\s+([\d.]+)', float),
+            "TTFT (s)": (r'TTFT:\s+([\d.]+)', float),
+            "Generation (t/s)": (r'Generation\s+\(t/s\)\s+:\s+([\d.]+)', float),
+            "Decode Time (s)": (r'Decode:\s+([\d.]+)', float),
+        }
+        for metric_name, (pattern, cast_type) in metric_patterns.items():
+            match = re.search(pattern, content)
+            if match:
+                metrics[metric_name] = cast_type(match.group(1))
 
         turns.append(metrics)
 
