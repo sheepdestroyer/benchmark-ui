@@ -18,6 +18,10 @@ trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 if [[ "${1:-}" == "--list" ]]; then
     ENDPOINT="${2:-http://127.0.0.1:8083}"
     ENDPOINT="${ENDPOINT%/}"
+    if [[ ! "$ENDPOINT" =~ ^https?://[^[:space:]]+$ ]]; then
+        echo "Error: Invalid ENDPOINT format. Must start with http:// or https://" >&2
+        exit 1
+    fi
     echo "========================================================="
     echo " Available Models at: $ENDPOINT"
     echo "========================================================="
@@ -27,8 +31,16 @@ if [[ "${1:-}" == "--list" ]]; then
 fi
 
 MODEL="${1:-Qwen3.6-27B}"
+if [[ ! "$MODEL" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
+    echo "Error: Invalid MODEL format. Contains unsafe characters." >&2
+    exit 1
+fi
 ENDPOINT="${2:-http://127.0.0.1:8083}"
 ENDPOINT="${ENDPOINT%/}"
+if [[ ! "$ENDPOINT" =~ ^https?://[^[:space:]]+$ ]]; then
+    echo "Error: Invalid ENDPOINT format. Must start with http:// or https://" >&2
+    exit 1
+fi
 
 echo "========================================================="
 echo " Benchmarking Model: $MODEL"
