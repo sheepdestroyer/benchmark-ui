@@ -303,14 +303,18 @@ def main():
 
             # Check if it was just started or already completed
             if st.session_state.get('benchmark_running', False):
+                last_update_time = 0
                 for line in run_benchmark_stream(model, endpoint):
                     all_lines.append(line)
-                    elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
+                    current_time = time.time()
 
-                    # Show live output with elapsed time
-                    full_output = "".join(all_lines)
-                    status_placeholder.caption(f"⏱️ Running... {elapsed:.1f}s elapsed")
-                    output_placeholder.code(full_output, language="bash")
+                    if current_time - last_update_time > 0.1:
+                        elapsed = current_time - st.session_state.get('benchmark_start', current_time)
+                        # Show live output with elapsed time
+                        full_output = "".join(all_lines)
+                        status_placeholder.caption(f"⏱️ Running... {elapsed:.1f}s elapsed")
+                        output_placeholder.code(full_output, language="bash")
+                        last_update_time = current_time
 
                 # Final display
                 elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
