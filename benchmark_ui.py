@@ -20,6 +20,11 @@ import ipaddress
 def validate_endpoint_url(url_str):
     if not url_str:
         raise ValueError("Endpoint URL cannot be empty.")
+
+    # Security check: strict regex to prevent command/argument injection
+    if not re.match(r'^[a-zA-Z0-9\-\._~:/\?#\[\]@!\*\+,=%]+$', url_str):
+        raise ValueError("URL contains invalid characters")
+
     parsed = urllib.parse.urlparse(url_str)
     if parsed.scheme not in ('http', 'https'):
         raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Only http and https are allowed.")
