@@ -9,12 +9,10 @@ class TestKLDBenchmark(unittest.TestCase):
         Mean KLD: 0.00123
         Same top p: 98.76
         """
-        expected = {
-            "ppl": 5.4321,
-            "kld": 0.00123,
-            "same_top": 98.76
-        }
-        self.assertEqual(parse_metrics(output), expected)
+        metrics = parse_metrics(output)
+        self.assertAlmostEqual(metrics["ppl"], 5.4321)
+        self.assertAlmostEqual(metrics["kld"], 0.00123)
+        self.assertAlmostEqual(metrics["same_top"], 98.76)
 
     def test_parse_metrics_missing(self):
         output = "Some random text that does not contain metrics"
@@ -25,18 +23,22 @@ class TestKLDBenchmark(unittest.TestCase):
         }
         self.assertEqual(parse_metrics(output), expected)
 
+    def test_parse_metrics_partially_missing(self):
+        metrics = parse_metrics("Mean KLD: 0.5")
+        self.assertIsNone(metrics["ppl"])
+        self.assertAlmostEqual(metrics["kld"], 0.5)
+        self.assertIsNone(metrics["same_top"])
+
     def test_parse_metrics_ppl_formats(self):
-        # Format 1
-        out1 = "Final perplexity: 1.23"
-        self.assertEqual(parse_metrics(out1)["ppl"], 1.23)
-
-        # Format 2
-        out2 = "Final estimate: PPL = 2.34"
-        self.assertEqual(parse_metrics(out2)["ppl"], 2.34)
-
-        # Format 3
-        out3 = "Mean PPL(Q) : 3.45"
-        self.assertEqual(parse_metrics(out3)["ppl"], 3.45)
+        test_cases = [
+            ("Final perplexity: 1.23", 1.23),
+            ("Final estimate: PPL = 2.34", 2.34),
+            ("Mean PPL(Q) : 3.45", 3.45),
+        ]
+        for out_str, expected_ppl in test_cases:
+            with self.subTest(output=out_str):
+                metrics = parse_metrics(out_str)
+                self.assertAlmostEqual(metrics["ppl"], expected_ppl)
 
     def test_parse_metrics_scientific_notation(self):
         output = """
@@ -45,9 +47,9 @@ class TestKLDBenchmark(unittest.TestCase):
         Same top p: +9.9E1
         """
         metrics = parse_metrics(output)
-        self.assertEqual(metrics["ppl"], 1200.0)
-        self.assertEqual(metrics["kld"], 0.054)
-        self.assertEqual(metrics["same_top"], 99.0)
+        self.assertAlmostEqual(metrics["ppl"], 1200.0)
+        self.assertAlmostEqual(metrics["kld"], 0.054)
+        self.assertAlmostEqual(metrics["same_top"], 99.0)
 
     def test_parse_metrics_special_values(self):
         output = """
