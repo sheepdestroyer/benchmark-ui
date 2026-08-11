@@ -771,9 +771,9 @@ with tab_plots:
             # Map Pass/Fail/NA to numeric values for bar charting
             acc_data = []
             for _, row in filtered_df.iterrows():
-                for test in ["Needle", "RULER", "LongBench", "SWE-bench"]:
+                for test in ("Needle", "RULER", "LongBench", "SWE-bench"):
                     val = row[test]
-                    if val in ["Pass", "Fail"]:
+                    if val in {"Pass", "Fail"}:
                         acc_data.append({
                             "Model_Quant": f"{row['Model']} ({row['KV Quant']})",
                             "Test Suite": test,
