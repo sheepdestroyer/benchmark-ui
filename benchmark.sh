@@ -59,10 +59,12 @@ call_api() {
       fi
       
       if [[ "$line" == data:* && "$line" != *"data: [DONE]"* ]]; then
-         content=$(echo "$line" | sed 's/^data: //')
-         has_usage=$(echo "$content" | jq -r 'has("usage")' 2>/dev/null)
-         if [[ "$has_usage" == "true" ]]; then
-            echo "$content" > "${temp_file}_usage"
+         content="${line#data: }"
+         if [[ "$content" == *"\"usage\""* ]]; then
+            has_usage=$(echo "$content" | jq -r 'has("usage")' 2>/dev/null || true)
+            if [[ "$has_usage" == "true" ]]; then
+               echo "$content" > "${temp_file}_usage"
+            fi
          fi
       fi
   done
