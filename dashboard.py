@@ -419,8 +419,9 @@ def load_runs():
                 if ":" in str(model_name):
                     base_quant = str(model_name).split(":")[-1]
                 else:
-                    for q in ["Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M"]:
-                        if q.lower() in str(model_name).lower():
+                    model_name_lower = str(model_name).lower()
+                    for q_lower, q in (("q4_k_xl", "Q4_K_XL"), ("q6_k_xl", "Q6_K_XL"), ("q4_k_s", "Q4_K_S"), ("q8_0", "Q8_0"), ("q5_1", "Q5_1"), ("q4_0", "Q4_0"), ("f16", "F16"), ("q5_k_m", "Q5_K_M")):
+                        if q_lower in model_name_lower:
                             base_quant = q
                             break
                 if not base_quant or base_quant == "Unknown":
