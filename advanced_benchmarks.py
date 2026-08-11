@@ -560,7 +560,6 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                     repo_or_id = model_info.get("id", "")
                     repo_or_id_lower = repo_or_id.lower()
                     for q_lower, q in QUANTIZATIONS:
-                    for q, q_lower in QUANTIZATION_OPTIONS_LOWER:
                         if q_lower in repo_or_id_lower:
                             settings["base_quantization"] = q
                             break
