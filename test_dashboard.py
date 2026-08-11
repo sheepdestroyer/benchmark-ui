@@ -1,6 +1,6 @@
 import unittest
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 class StreamlitMock(MagicMock):
     def columns(self, num, *args, **kwargs):
@@ -8,7 +8,7 @@ class StreamlitMock(MagicMock):
             return [MagicMock() for _ in range(num)]
         if isinstance(num, (list, tuple)):
             return [MagicMock() for _ in num]
-        return [MagicMock(), MagicMock()] # fallback
+        return [MagicMock(), MagicMock()]
 
     def tabs(self, tabs, *args, **kwargs):
         return [MagicMock() for _ in tabs]
@@ -23,13 +23,19 @@ class StreamlitMock(MagicMock):
 
 mock_st = StreamlitMock()
 
-sys.modules['streamlit'] = mock_st
-sys.modules['pandas'] = MagicMock()
-sys.modules['plotly'] = MagicMock()
-sys.modules['plotly.express'] = MagicMock()
-sys.modules['plotly.graph_objects'] = MagicMock()
-
+modules_patcher = patch.dict(
+    sys.modules,
+    {
+        "streamlit": mock_st,
+        "pandas": MagicMock(),
+        "plotly": MagicMock(),
+        "plotly.express": MagicMock(),
+        "plotly.graph_objects": MagicMock(),
+    }
+)
+modules_patcher.start()
 import dashboard
+modules_patcher.stop()
 
 class TestDashboard(unittest.TestCase):
     def test_validate_model_name_valid(self):
@@ -74,8 +80,8 @@ class TestDashboard(unittest.TestCase):
         ]
         for name in invalid_names:
             with self.subTest(name=name):
-                with self.assertRaises((ValueError, TypeError)):
+                with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
