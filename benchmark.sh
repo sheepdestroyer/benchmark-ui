@@ -13,11 +13,31 @@ for cmd in bc jq curl; do
 done
 
 TMP_DIR=$(mktemp -d)
+
+ENDPOINT_REGEX="^https?://[^[:space:]]+$"
+MODEL_REGEX="^[a-zA-Z0-9_./-]+$"
+
+validate_endpoint() {
+    local ep="$1"
+    if [[ ! "$ep" =~ $ENDPOINT_REGEX ]]; then
+        echo "Error: Invalid ENDPOINT format. Must start with http:// or https://" >&2
+        exit 1
+    fi
+}
+
+validate_model() {
+    local m="$1"
+    if [[ ! "$m" =~ $MODEL_REGEX ]]; then
+        echo "Error: Invalid MODEL format. Contains unsafe characters." >&2
+        exit 1
+    fi
+}
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
 if [[ "${1:-}" == "--list" ]]; then
     ENDPOINT="${2:-http://127.0.0.1:8083}"
     ENDPOINT="${ENDPOINT%/}"
+    validate_endpoint "$ENDPOINT"
     echo "========================================================="
     echo " Available Models at: $ENDPOINT"
     echo "========================================================="
@@ -27,8 +47,10 @@ if [[ "${1:-}" == "--list" ]]; then
 fi
 
 MODEL="${1:-Qwen3.6-27B}"
+validate_model "$MODEL"
 ENDPOINT="${2:-http://127.0.0.1:8083}"
 ENDPOINT="${ENDPOINT%/}"
+validate_endpoint "$ENDPOINT"
 
 echo "========================================================="
 echo " Benchmarking Model: $MODEL"
@@ -62,6 +84,9 @@ call_api() {
          content="${line#data: }"
          if [[ "$content" =~ \"usage\"[[:space:]]*: ]]; then
             if echo "$content" | jq -e 'has("usage")' >/dev/null 2>&1; then
+         if [[ "$content" == *"\"usage\""* ]]; then
+            has_usage=$(echo "$content" | jq -r 'has("usage")' 2>/dev/null || true)
+            if [[ "$has_usage" == "true" ]]; then
                echo "$content" > "${temp_file}_usage"
             fi
          fi
@@ -151,33 +176,27 @@ END_MSG
 # PAYLOAD CONSTRUCTION
 # ==============================================================================
 
-PAYLOAD_1=$(cat <<EOF
+create_payload() {
+  local messages
+  messages=$(IFS=,; echo "$*")
+  cat <<PAYLOAD_EOF
 {"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages":[$SYS_MSG, $USER_1]}
-EOF
-)
+ "messages": [$messages]}
+PAYLOAD_EOF
+}
+
+PAYLOAD_1=$(create_payload "$SYS_MSG" "$USER_1")
 call_api "Turn 1 (Cold Start -> Python ORMs)" "$PAYLOAD_1"
 
-PAYLOAD_2=$(cat <<EOF
-{"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages": [$SYS_MSG, $USER_1, $AST_1, $USER_2]}
-EOF
-)
+PAYLOAD_2=$(create_payload "$SYS_MSG" "$USER_1" "$AST_1" "$USER_2")
 call_api "Turn 2 (KV Cache Hit -> Repetitive Python ORMs)" "$PAYLOAD_2"
 
-PAYLOAD_3=$(cat <<EOF
-{"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages":[$SYS_MSG, $USER_1, $AST_1, $USER_2, $AST_2, $USER_3]}
-EOF
-)
+PAYLOAD_3=$(create_payload "$SYS_MSG" "$USER_1" "$AST_1" "$USER_2" "$AST_2" "$USER_3")
 call_api "Turn 3 (KV Cache Hit -> Repetitive JSON Tool Calls)" "$PAYLOAD_3"
 
-PAYLOAD_4=$(cat <<EOF
-{"model": "${MODEL}", "max_tokens": 2048, "stream": true, "stream_options": {"include_usage": true},
- "messages":[$SYS_MSG, $USER_1, $AST_1, $USER_2, $AST_2, $USER_3, $AST_3, $USER_4]}
-EOF
-)
+PAYLOAD_4=$(create_payload "$SYS_MSG" "$USER_1" "$AST_1" "$USER_2" "$AST_2" "$USER_3" "$AST_3" "$USER_4")
 call_api "Turn 4 (KV Cache Hit -> Repetitive Markdown)" "$PAYLOAD_4"
+
 
 # ==============================================================================
 # END METRICS DUMP
