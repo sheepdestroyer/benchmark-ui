@@ -133,7 +133,7 @@ def get_completed_runs(presets_file=None):
     for filepath in HISTORY_DIR.glob("run_*.json"):
         # Filter out individual KLD files (which end in quantization formats, e.g. _f16.json)
         parts = filepath.stem.split("_")
-        if len(parts) > 1 and parts[-1] in ["f16", "q8_0", "q5_1", "q4_0"]:
+        if len(parts) > 1 and parts[-1] in {"f16", "q8_0", "q5_1", "q4_0"}:
             continue
             
         try:
