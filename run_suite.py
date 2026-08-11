@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+
+# Tuple of (lowercase_quant, original_quant)
+QUANT_TYPES = (
+    ("q4_k_s", "Q4_K_S"),
+    ("q4_k_m", "Q4_K_M"),
+    ("q4_k_l", "Q4_K_L"),
+    ("q4_k_xl", "Q4_K_XL"),
+    ("q5_k_s", "Q5_K_S"),
+    ("q5_k_m", "Q5_K_M"),
+    ("q8_0", "Q8_0"),
+    ("f16", "f16")
+)
+
 import argparse
 from pathlib import Path
 import datetime
@@ -32,9 +45,10 @@ def get_model_settings(endpoint, target_model):
     }
     
     # Try parsing base quantization from target_model name if it's there
-    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
-        if q.lower() in target_model.lower():
-            settings["base_quantization"] = q
+    target_model_lower = target_model.lower()
+    for q_lower, q_orig in QUANT_TYPES:
+        if q_lower in target_model_lower:
+            settings["base_quantization"] = q_orig
             break
             
     try:
@@ -109,12 +123,13 @@ def get_model_settings(endpoint, target_model):
                                     settings["kv_cache_quant"] = v
                                 
                 repo_or_id = model_info.get("id", "")
-                for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
-                    if q.lower() in repo_or_id.lower():
-                        settings["base_quantization"] = q
+                repo_or_id_lower = repo_or_id.lower()
+                for q_lower, q_orig in QUANT_TYPES:
+                    if q_lower in repo_or_id_lower:
+                        settings["base_quantization"] = q_orig
                         break
                 
-                if "mtp" in repo_or_id.lower() or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
+                if "mtp" in repo_or_id_lower or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
                     settings["speculative_draft_type"] = "ngram"
                 else:
                     settings["speculative_draft_type"] = "None"
