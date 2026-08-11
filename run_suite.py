@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# Tuple of (lowercase_quant, original_quant)
 QUANT_TYPES = (
     ("q4_k_s", "Q4_K_S"),
     ("q4_k_m", "Q4_K_M"),
@@ -126,7 +127,7 @@ def get_model_settings(endpoint, target_model):
                         settings["base_quantization"] = q_orig
                         break
                 
-                if "mtp" in repo_or_id.lower() or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
+                if "mtp" in repo_or_id_lower or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
                     settings["speculative_draft_type"] = "ngram"
                 else:
                     settings["speculative_draft_type"] = "None"
