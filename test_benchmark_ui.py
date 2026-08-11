@@ -1,10 +1,9 @@
-import unittest
 import sys
+import unittest
 import importlib
 from unittest.mock import MagicMock, patch
 
-
-class TestBenchmarkUI_Functions(unittest.TestCase):
+class TestBenchmarkUI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.modules_patcher = patch.dict(
@@ -14,7 +13,8 @@ class TestBenchmarkUI_Functions(unittest.TestCase):
                 "pandas": MagicMock(),
                 "plotly": MagicMock(),
                 "plotly.express": MagicMock(),
-            }
+                "plotly.graph_objects": MagicMock(),
+            },
         )
         cls.modules_patcher.start()
         cls.benchmark_ui = importlib.import_module("benchmark_ui")
@@ -74,47 +74,61 @@ class TestBenchmarkUI_Functions(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Invalid model name"):
                     self.benchmark_ui.validate_model_name(model)
 
-    def test_parse_benchmark_output(self):
-        sample_output = """
-Some initial text that should be ignored.
----> Running Turn 1 (Cold Start)...
-Prompt Tokens   : 150
+    def test_parse_benchmark_output_happy_path(self):
+        output = """
+---> Running Turn 1 (test)...
+Prompt Tokens   : 100
 Completion Tokens : 50
-Prompt Eval (p/s) : 120.5
-TTFT: 0.85
-Generation (t/s) : 45.2
-Decode: 1.1
-
----> Running Turn 2 (KV Cache Hit)...
-Prompt Tokens   : 150
+Prompt Eval (p/s) : 20.5
+TTFT: 0.5
+Generation (t/s) : 10.0
+Decode: 5.0
+---> Running Turn 2 (test2)...
+Prompt Tokens   : 200
 Completion Tokens : 100
-Prompt Eval (p/s) : 2500.0
-TTFT: 0.15
-Generation (t/s) : 48.5
-Decode: 2.05
+Prompt Eval (p/s) : 15.5
+TTFT: 1.0
+Generation (t/s) : 8.0
+Decode: 10.0
 """
-        parsed = self.benchmark_ui.parse_benchmark_output(sample_output)
+        turns = self.benchmark_ui.parse_benchmark_output(output)
+        self.assertEqual(len(turns), 2)
+        self.assertEqual(turns[0]["Turn"], "Turn 1 (test)")
+        self.assertEqual(turns[0]["Prompt Tokens"], 100)
+        self.assertEqual(turns[0]["Completion Tokens"], 50)
+        self.assertEqual(turns[0]["Prompt Eval (p/s)"], 20.5)
+        self.assertEqual(turns[0]["TTFT (s)"], 0.5)
+        self.assertEqual(turns[0]["Generation (t/s)"], 10.0)
+        self.assertEqual(turns[0]["Decode Time (s)"], 5.0)
 
-        self.assertEqual(len(parsed), 2)
+        self.assertEqual(turns[1]["Turn"], "Turn 2 (test2)")
+        self.assertEqual(turns[1]["Prompt Tokens"], 200)
+        self.assertEqual(turns[1]["Completion Tokens"], 100)
+        self.assertEqual(turns[1]["Prompt Eval (p/s)"], 15.5)
+        self.assertEqual(turns[1]["TTFT (s)"], 1.0)
+        self.assertEqual(turns[1]["Generation (t/s)"], 8.0)
+        self.assertEqual(turns[1]["Decode Time (s)"], 10.0)
 
-        # Turn 1 Checks
-        self.assertEqual(parsed[0]["Turn"], "Turn 1 (Cold Start)")
-        self.assertEqual(parsed[0]["Prompt Tokens"], 150)
-        self.assertEqual(parsed[0]["Completion Tokens"], 50)
-        self.assertEqual(parsed[0]["Prompt Eval (p/s)"], 120.5)
-        self.assertEqual(parsed[0]["TTFT (s)"], 0.85)
-        self.assertEqual(parsed[0]["Generation (t/s)"], 45.2)
-        self.assertEqual(parsed[0]["Decode Time (s)"], 1.1)
+    def test_parse_benchmark_output_missing_matches(self):
+        output = """
+---> Running Turn 1 (test)...
+Prompt Tokens   : 100
+Prompt Eval (p/s) : 20.5
+"""
+        turns = self.benchmark_ui.parse_benchmark_output(output)
+        self.assertEqual(len(turns), 1)
+        self.assertEqual(turns[0]["Turn"], "Turn 1 (test)")
+        self.assertEqual(turns[0]["Prompt Tokens"], 100)
+        self.assertEqual(turns[0]["Completion Tokens"], 0)
+        self.assertEqual(turns[0]["Prompt Eval (p/s)"], 20.5)
+        self.assertEqual(turns[0]["TTFT (s)"], 0.0)
+        self.assertEqual(turns[0]["Generation (t/s)"], 0.0)
+        self.assertEqual(turns[0]["Decode Time (s)"], 0.0)
 
-        # Turn 2 Checks
-        self.assertEqual(parsed[1]["Turn"], "Turn 2 (KV Cache Hit)")
-        self.assertEqual(parsed[1]["Prompt Tokens"], 150)
-        self.assertEqual(parsed[1]["Completion Tokens"], 100)
-        self.assertEqual(parsed[1]["Prompt Eval (p/s)"], 2500.0)
-        self.assertEqual(parsed[1]["TTFT (s)"], 0.15)
-        self.assertEqual(parsed[1]["Generation (t/s)"], 48.5)
-        self.assertEqual(parsed[1]["Decode Time (s)"], 2.05)
-
+    def test_parse_benchmark_output_no_turns(self):
+        output = "Just some random output without turn indicators."
+        turns = self.benchmark_ui.parse_benchmark_output(output)
+        self.assertEqual(len(turns), 0)
 
 if __name__ == "__main__":
     unittest.main()
