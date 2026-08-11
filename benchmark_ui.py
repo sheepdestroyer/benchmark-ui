@@ -21,8 +21,9 @@ def validate_endpoint_url(url_str):
     if not url_str:
         raise ValueError("Endpoint URL cannot be empty.")
 
-    if not re.match(r'^https?://[a-zA-Z0-9.-]+(:\d+)?(/[\w/.-]*)?\Z', url_str):
-        raise ValueError("Invalid URL format. Must be a valid http/https URL without special characters or parameters.")
+    # Security check: strict regex to prevent command/argument injection
+    if not re.fullmatch(r'^[a-zA-Z0-9\-\._~:/\?#\[\]@!\*\+,=%]+$', url_str):
+        raise ValueError("URL contains invalid characters")
 
     parsed = urllib.parse.urlparse(url_str)
     if parsed.scheme not in ('http', 'https'):
@@ -46,7 +47,7 @@ def validate_endpoint_url(url_str):
     return url_str
 
 def validate_model_name(model_name):
-    if not model_name or not re.match(r'^[a-zA-Z0-9._:/-]+\Z', model_name):
+    if not model_name or not re.fullmatch(r'^[a-zA-Z0-9._:/-]+$', model_name):
         raise ValueError(f"Invalid model name '{model_name}'. Must match ^[a-zA-Z0-9._:/-]+$")
     return model_name
 
