@@ -17,6 +17,8 @@ from pathlib import Path
 import urllib.parse
 import ipaddress
 
+UI_THROTTLE_INTERVAL = 0.1  # Seconds between UI updates during streaming
+
 def validate_endpoint_url(url_str):
     if not url_str:
         raise ValueError("Endpoint URL cannot be empty.")
@@ -303,13 +305,13 @@ def main():
 
             # Check if it was just started or already completed
             if st.session_state.get('benchmark_running', False):
-                last_update_time = 0
+                last_update_time = 0.0
                 for line in run_benchmark_stream(model, endpoint):
                     all_lines.append(line)
-                    current_time = time.time()
+                    current_time = time.monotonic()
 
-                    if current_time - last_update_time > 0.1:
-                        elapsed = current_time - st.session_state.get('benchmark_start', current_time)
+                    if current_time - last_update_time >= UI_THROTTLE_INTERVAL:
+                        elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
                         # Show live output with elapsed time
                         full_output = "".join(all_lines)
                         status_placeholder.caption(f"⏱️ Running... {elapsed:.1f}s elapsed")
