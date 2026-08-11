@@ -10,6 +10,18 @@ import subprocess
 import shutil
 import ast
 
+# Pre-built mapping of (lowercase_search_string, canonical_quantization)
+QUANTIZATIONS = (
+    ("q4_k_s", "Q4_K_S"),
+    ("q4_k_m", "Q4_K_M"),
+    ("q4_k_l", "Q4_K_L"),
+    ("q4_k_xl", "Q4_K_XL"),
+    ("q5_k_s", "Q5_K_S"),
+    ("q5_k_m", "Q5_K_M"),
+    ("q8_0", "Q8_0"),
+    ("f16", "f16"),
+)
+
 def is_safe_code(code_str):
     try:
         tree = ast.parse(code_str)
@@ -481,13 +493,8 @@ def get_model_settings_from_endpoint(endpoint, target_model):
     }
     
     # Try parsing base quantization from target_model name if it's there
-    _quantizations = (
-        ("q4_k_s", "Q4_K_S"), ("q4_k_m", "Q4_K_M"), ("q4_k_l", "Q4_K_L"),
-        ("q4_k_xl", "Q4_K_XL"), ("q5_k_s", "Q5_K_S"), ("q5_k_m", "Q5_K_M"),
-        ("q8_0", "Q8_0"), ("f16", "f16")
-    )
     target_model_lower = target_model.lower()
-    for q_lower, q in _quantizations:
+    for q_lower, q in QUANTIZATIONS:
         if q_lower in target_model_lower:
             settings["base_quantization"] = q
             break
@@ -554,8 +561,9 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                     settings["kv_cache_quant"] = v
                                     
                     repo_or_id = model_info.get("id", "")
-                    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
-                        if q.lower() in repo_or_id.lower():
+                    repo_or_id_lower = repo_or_id.lower()
+                    for q_lower, q in QUANTIZATIONS:
+                        if q_lower in repo_or_id_lower:
                             settings["base_quantization"] = q
                             break
                     
