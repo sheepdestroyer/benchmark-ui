@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import urllib.parse
 import ipaddress
+import socket
 import re
 import streamlit as st
 import os
@@ -31,9 +32,14 @@ def validate_endpoint_url(url_str):
         return url_str
     
     try:
-        ip = ipaddress.ip_address(hostname)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or not ip.is_global:
-            raise ValueError(f"Forbidden IP address range: {hostname}")
+        addrs = socket.getaddrinfo(hostname, None)
+        for addr in addrs:
+            ip_str = addr[4][0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or not ip.is_global:
+                raise ValueError(f"Forbidden IP address range: {hostname} ({ip_str})")
+    except socket.gaierror:
+        raise ValueError(f"Could not resolve hostname: {hostname}")
     except ValueError as e:
         if "Forbidden IP address range" in str(e):
             raise
