@@ -137,7 +137,7 @@ def parse_benchmark_output(output_text):
     all_defaults = True
     if turns:
         for t in turns:
-            if any(t[k] != 0 for k in ["Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)"]):
+            if any(t[k] != 0 for k in ("Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)")):
                 all_defaults = False
                 break
 
