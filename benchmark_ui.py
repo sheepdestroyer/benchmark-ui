@@ -14,6 +14,8 @@ import re
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
+
+METRIC_KEYS = ("Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)")
 import urllib.parse
 import ipaddress
 
@@ -138,7 +140,7 @@ def parse_benchmark_output(output_text):
     all_defaults = True
     if turns:
         for t in turns:
-            if any(t[k] != 0 for k in ["Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)"]):
+            if any(t[k] != 0 for k in METRIC_KEYS):
                 all_defaults = False
                 break
 
