@@ -30,7 +30,6 @@ except ImportError:
     advanced_benchmarks = None
 
 QUANT_PRIORITIES = ("q5_1", "q8_0", "q4_0", "f16")
-
 def get_model_settings(endpoint, target_model):
     settings = {
         "model_name": target_model,
