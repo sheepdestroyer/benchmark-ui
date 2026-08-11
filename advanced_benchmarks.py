@@ -17,6 +17,8 @@ QUANTIZATIONS = tuple((q.lower(), q) for q in QUANTIZATION_OPTIONS)
 CACHE_TYPE_CLI_ARGS = {"--cache-type-k", "--cache-type-v"}
 CACHE_TYPE_KEYS = {"cache-type-k", "cache-type-v"}
 SWE_BENCH_KEYS = {"swe-bench", "swe_bench"}
+QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
+QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
 
 def is_safe_code(code_str):
     try:
@@ -559,11 +561,12 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                     repo_or_id = model_info.get("id", "")
                     repo_or_id_lower = repo_or_id.lower()
                     for q_lower, q in QUANTIZATIONS:
+                    for q, q_lower in QUANTIZATION_OPTIONS_LOWER:
                         if q_lower in repo_or_id_lower:
                             settings["base_quantization"] = q
                             break
                     
-                    if "mtp" in repo_or_id.lower() or any("spec" in str(arg).lower() for arg in args):
+                    if "mtp" in repo_or_id_lower or any("spec" in str(arg).lower() for arg in args):
                         settings["speculative_draft_type"] = "ngram"
                     else:
                         settings["speculative_draft_type"] = "None"
