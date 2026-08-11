@@ -1,18 +1,29 @@
 import unittest
 import sys
-from unittest.mock import MagicMock
-
-# Mock Streamlit, Pandas, and Plotly to prevent import errors and st.set_page_config issues
-sys.modules['streamlit'] = MagicMock()
-sys.modules['pandas'] = MagicMock()
-sys.modules['plotly'] = MagicMock()
-sys.modules['plotly.express'] = MagicMock()
-
-# Now we can safely import benchmark_ui
-import benchmark_ui
+import importlib
+from unittest.mock import MagicMock, patch
 
 
 class TestBenchmarkUI_Functions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.modules_patcher = patch.dict(
+            sys.modules,
+            {
+                "streamlit": MagicMock(),
+                "pandas": MagicMock(),
+                "plotly": MagicMock(),
+                "plotly.express": MagicMock(),
+            }
+        )
+        cls.modules_patcher.start()
+        cls.benchmark_ui = importlib.import_module("benchmark_ui")
+
+    @classmethod
+    def tearDownClass(cls):
+        if "benchmark_ui" in sys.modules:
+            del sys.modules["benchmark_ui"]
+        cls.modules_patcher.stop()
 
     def test_validate_endpoint_url_valid(self):
         valid_urls = [
@@ -23,27 +34,21 @@ class TestBenchmarkUI_Functions(unittest.TestCase):
             "https://api.openai.com/v1"
         ]
         for url in valid_urls:
-            self.assertEqual(benchmark_ui.validate_endpoint_url(url), url)
+            with self.subTest(url=url):
+                self.assertEqual(self.benchmark_ui.validate_endpoint_url(url), url)
 
     def test_validate_endpoint_url_invalid(self):
-        # Empty url
-        with self.assertRaisesRegex(ValueError, "Endpoint URL cannot be empty"):
-            benchmark_ui.validate_endpoint_url("")
-
-        # Invalid scheme
-        with self.assertRaisesRegex(ValueError, "Invalid URL scheme"):
-            benchmark_ui.validate_endpoint_url("ftp://example.com")
-
-        # Missing hostname
-        with self.assertRaisesRegex(ValueError, "Invalid URL: missing hostname"):
-            benchmark_ui.validate_endpoint_url("http://")
-
-        # Forbidden IPs (private)
-        with self.assertRaisesRegex(ValueError, "Forbidden IP address range"):
-            benchmark_ui.validate_endpoint_url("http://192.168.1.1")
-
-        with self.assertRaisesRegex(ValueError, "Forbidden IP address range"):
-            benchmark_ui.validate_endpoint_url("http://10.0.0.1")
+        cases = [
+            ("", "Endpoint URL cannot be empty"),
+            ("ftp://example.com", "Invalid URL scheme"),
+            ("http://", "Invalid URL: missing hostname"),
+            ("http://192.168.1.1", "Forbidden IP address range"),
+            ("http://10.0.0.1", "Forbidden IP address range")
+        ]
+        for url, expected_error in cases:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(ValueError, expected_error):
+                    self.benchmark_ui.validate_endpoint_url(url)
 
     def test_validate_model_name_valid(self):
         valid_models = [
@@ -54,7 +59,8 @@ class TestBenchmarkUI_Functions(unittest.TestCase):
             "model-name"
         ]
         for model in valid_models:
-            self.assertEqual(benchmark_ui.validate_model_name(model), model)
+            with self.subTest(model=model):
+                self.assertEqual(self.benchmark_ui.validate_model_name(model), model)
 
     def test_validate_model_name_invalid(self):
         invalid_models = [
@@ -64,8 +70,9 @@ class TestBenchmarkUI_Functions(unittest.TestCase):
             "model<name>"
         ]
         for model in invalid_models:
-            with self.assertRaisesRegex(ValueError, "Invalid model name"):
-                benchmark_ui.validate_model_name(model)
+            with self.subTest(model=model):
+                with self.assertRaisesRegex(ValueError, "Invalid model name"):
+                    self.benchmark_ui.validate_model_name(model)
 
     def test_parse_benchmark_output(self):
         sample_output = """
@@ -86,7 +93,7 @@ TTFT: 0.15
 Generation (t/s) : 48.5
 Decode: 2.05
 """
-        parsed = benchmark_ui.parse_benchmark_output(sample_output)
+        parsed = self.benchmark_ui.parse_benchmark_output(sample_output)
 
         self.assertEqual(len(parsed), 2)
 
@@ -109,5 +116,5 @@ Decode: 2.05
         self.assertEqual(parsed[1]["Decode Time (s)"], 2.05)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
