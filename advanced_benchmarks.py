@@ -548,12 +548,13 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                     settings["kv_cache_quant"] = v
                                     
                     repo_or_id = model_info.get("id", "")
-                    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
-                        if q.lower() in repo_or_id.lower():
+                    repo_or_id_lower = repo_or_id.lower()
+                    for q in ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"):
+                        if q.lower() in repo_or_id_lower:
                             settings["base_quantization"] = q
                             break
                     
-                    if "mtp" in repo_or_id.lower() or any("spec" in str(arg).lower() for arg in args):
+                    if "mtp" in repo_or_id_lower or any("spec" in str(arg).lower() for arg in args):
                         settings["speculative_draft_type"] = "ngram"
                     else:
                         settings["speculative_draft_type"] = "None"
