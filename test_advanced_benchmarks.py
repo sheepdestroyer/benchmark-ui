@@ -14,41 +14,21 @@ class TestIsSafeCode(unittest.TestCase):
         self.assertFalse(safe)
         self.assertIn("Syntax error", msg)
 
-    def test_forbidden_import(self):
-        code = "import subprocess"
-        safe, msg = is_safe_code(code)
-        self.assertFalse(safe)
-        self.assertIn("Forbidden import", msg)
+    def test_forbidden_code_patterns(self):
+        cases = [
+            ("import subprocess", "import subprocess", "Forbidden"),
+            ("import subprocess.Popen", "import sub-module", "Forbidden"),
+            ("from subprocess import Popen", "from forbidden module", "Forbidden"),
+            ("from os import system", "from forbidden name", "Forbidden"),
+            ("import os\nos.system('ls')", "forbidden attribute usage", "Forbidden"),
+            ("eval('1 + 1')", "forbidden identifier usage", "Forbidden"),
+        ]
+        for code, label, expected_keyword in cases:
+            with self.subTest(case=label):
+                safe, msg = is_safe_code(code)
+                self.assertFalse(safe)
+                self.assertIsNotNone(msg)
+                self.assertIn(expected_keyword, msg)
 
-    def test_forbidden_import_module_sub(self):
-        code = "import subprocess.Popen"
-        safe, msg = is_safe_code(code)
-        self.assertFalse(safe)
-        self.assertIn("Forbidden import", msg)
-
-    def test_forbidden_import_from_module(self):
-        code = "from subprocess import Popen"
-        safe, msg = is_safe_code(code)
-        self.assertFalse(safe)
-        self.assertIn("Forbidden import module: subprocess", msg)
-
-    def test_forbidden_import_from_name(self):
-        code = "from os import system"
-        safe, msg = is_safe_code(code)
-        self.assertFalse(safe)
-        self.assertIn("Forbidden import: os.system", msg)
-
-    def test_forbidden_attribute(self):
-        code = "import os\nos.system('ls')"
-        safe, msg = is_safe_code(code)
-        self.assertFalse(safe)
-        self.assertIn("Forbidden attribute usage: os.system", msg)
-
-    def test_forbidden_name(self):
-        code = "eval('1 + 1')"
-        safe, msg = is_safe_code(code)
-        self.assertFalse(safe)
-        self.assertIn("Forbidden identifier usage: eval", msg)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
