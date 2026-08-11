@@ -20,6 +20,7 @@ METRIC_KEYS = ("Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT 
 import urllib.parse
 import ipaddress
 
+from url_validation import validate_endpoint_url
 UI_THROTTLE_INTERVAL = 0.1  # Seconds between UI updates during streaming
 
 def validate_endpoint_url(url_str):
