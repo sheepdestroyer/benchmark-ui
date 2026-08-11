@@ -14,6 +14,7 @@ import re
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
+from utils import validate_endpoint_url, validate_model_name
 
 METRIC_KEYS = ("Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)")
 import urllib.parse

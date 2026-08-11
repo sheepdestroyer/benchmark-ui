@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import urllib.parse
-import ipaddress
 import re
 import streamlit as st
 import os
@@ -14,6 +13,7 @@ import requests
 import queue
 import threading
 from pathlib import Path
+from utils import validate_endpoint_url, validate_model_name
 
 from url_validation import validate_endpoint_url
 BASE_QUANT_TYPES = ("Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M")
