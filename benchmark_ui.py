@@ -22,6 +22,11 @@ UI_THROTTLE_INTERVAL = 0.1  # Seconds between UI updates during streaming
 def validate_endpoint_url(url_str):
     if not url_str:
         raise ValueError("Endpoint URL cannot be empty.")
+
+    # Security check: strict regex to prevent command/argument injection
+    if not re.fullmatch(r'^[a-zA-Z0-9\-\._~:/\?#\[\]@!\*\+,=%]+$', url_str):
+        raise ValueError("URL contains invalid characters")
+
     parsed = urllib.parse.urlparse(url_str)
     if parsed.scheme not in ('http', 'https'):
         raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Only http and https are allowed.")
@@ -44,7 +49,7 @@ def validate_endpoint_url(url_str):
     return url_str
 
 def validate_model_name(model_name):
-    if not model_name or not re.match(r'^[a-zA-Z0-9._:/-]+$', model_name):
+    if not model_name or not re.fullmatch(r'^[a-zA-Z0-9._:/-]+$', model_name):
         raise ValueError(f"Invalid model name '{model_name}'. Must match ^[a-zA-Z0-9._:/-]+$")
     return model_name
 
