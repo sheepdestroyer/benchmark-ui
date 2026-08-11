@@ -481,7 +481,7 @@ def get_model_settings_from_endpoint(endpoint, target_model):
     }
     
     # Try parsing base quantization from target_model name if it's there
-    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
+    for q in ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"):
         if q.lower() in target_model.lower():
             settings["base_quantization"] = q
             break
@@ -519,7 +519,7 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                 settings["ubatch_size"] = int(args[i+1])
                             except (ValueError, TypeError):
                                 settings["ubatch_size"] = None
-                        elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
+                        elif arg in {"--cache-type-k", "--cache-type-v"} and i + 1 < len(args):
                             settings["kv_cache_quant"] = args[i+1]
                     
                     # Try preset parsing
@@ -544,11 +544,11 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                         settings["ubatch_size"] = int(v)
                                     except (ValueError, TypeError):
                                         settings["ubatch_size"] = None
-                                elif k in ["cache-type-k", "cache-type-v"]:
+                                elif k in {"cache-type-k", "cache-type-v"}:
                                     settings["kv_cache_quant"] = v
                                     
                     repo_or_id = model_info.get("id", "")
-                    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
+                    for q in ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"):
                         if q.lower() in repo_or_id.lower():
                             settings["base_quantization"] = q
                             break
@@ -641,7 +641,7 @@ def main():
         }
         for r in results:
             bench_key = r["benchmark"].lower().replace("-", "_")
-            if bench_key in ["swe-bench", "swe_bench"]:
+            if bench_key in {"swe-bench", "swe_bench"}:
                 bench_key = "swe_bench"
             if bench_key in reasoning_accuracy:
                 reasoning_accuracy[bench_key] = "Pass" if r["passed"] else "Fail"
