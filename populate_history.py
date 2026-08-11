@@ -2,7 +2,6 @@
 import os
 import json
 import datetime
-import shutil
 from pathlib import Path
 
 BENCH_DIR = Path(__file__).parent.resolve()
