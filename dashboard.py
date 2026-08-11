@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import urllib.parse
-import ipaddress
-import socket
 import re
 import streamlit as st
 import os
