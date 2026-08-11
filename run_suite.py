@@ -17,16 +17,8 @@ except ImportError:
     advanced_benchmarks = None
 
 
-QUANT_TYPES = (
-    ("Q4_K_S", "q4_k_s"),
-    ("Q4_K_M", "q4_k_m"),
-    ("Q4_K_L", "q4_k_l"),
-    ("Q4_K_XL", "q4_k_xl"),
-    ("Q5_K_S", "q5_k_s"),
-    ("Q5_K_M", "q5_k_m"),
-    ("Q8_0", "q8_0"),
-    ("f16", "f16")
-)
+BASE_QUANT_FORMATS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
+BASE_QUANT_TYPES = tuple((q, q.lower()) for q in BASE_QUANT_FORMATS)
 def get_model_settings(endpoint, target_model):
     settings = {
         "model_name": target_model,
@@ -42,7 +34,7 @@ def get_model_settings(endpoint, target_model):
     
     # Try parsing base quantization from target_model name if it's there
     target_lower = target_model.lower()
-    for q_orig, q_lower in QUANT_TYPES:
+    for q_orig, q_lower in BASE_QUANT_TYPES:
         if q_lower in target_lower:
             settings["base_quantization"] = q_orig
             break
@@ -120,12 +112,12 @@ def get_model_settings(endpoint, target_model):
                                 
                 repo_or_id = model_info.get("id", "")
                 repo_lower = repo_or_id.lower()
-                for q_orig, q_lower in QUANT_TYPES:
+                for q_orig, q_lower in BASE_QUANT_TYPES:
                     if q_lower in repo_lower:
                         settings["base_quantization"] = q_orig
                         break
                 
-                if "mtp" in repo_or_id.lower() or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
+                if "mtp" in repo_lower or any(term in str(arg).lower() for arg in args for term in ["spec", "draft", "ngram", "lookup"]) or any(term in preset.lower() for term in ["spec", "draft", "ngram", "mtp"]):
                     settings["speculative_draft_type"] = "ngram"
                 else:
                     settings["speculative_draft_type"] = "None"
