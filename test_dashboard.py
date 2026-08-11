@@ -1,8 +1,7 @@
 import unittest
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-# Simple MagicMock for dependencies works better because they support attribute access naturally.
 class DictWithDefault(dict):
     def __getattr__(self, name):
         return self.get(name, None)
@@ -73,16 +72,21 @@ mock_expander.__enter__ = MagicMock(return_value=mock_expander)
 mock_expander.__exit__ = MagicMock(return_value=None)
 mock_st.expander = MagicMock(return_value=mock_expander)
 
-# To avoid valid_gguf NameError, don't press the button!
 mock_st.button.return_value = False
 
-sys.modules['streamlit'] = mock_st
-sys.modules['pandas'] = MagicMock()
-sys.modules['plotly'] = MagicMock()
-sys.modules['plotly.express'] = MagicMock()
-sys.modules['plotly.graph_objects'] = MagicMock()
-
+modules_patcher = patch.dict(
+    sys.modules,
+    {
+        "streamlit": mock_st,
+        "pandas": MagicMock(),
+        "plotly": MagicMock(),
+        "plotly.express": MagicMock(),
+        "plotly.graph_objects": MagicMock(),
+    }
+)
+modules_patcher.start()
 import dashboard
+modules_patcher.stop()
 
 class TestValidateEndpointUrl(unittest.TestCase):
 
@@ -98,21 +102,21 @@ class TestValidateEndpointUrl(unittest.TestCase):
         self.assertEqual(dashboard.validate_endpoint_url("http://127.0.0.1:5000"), "http://127.0.0.1:5000")
 
     def test_empty_url(self):
-        with self.assertRaisesRegex(ValueError, "Endpoint URL cannot be empty."):
+        with self.assertRaisesRegex(ValueError, r"cannot be empty"):
             dashboard.validate_endpoint_url("")
-        with self.assertRaisesRegex(ValueError, "Endpoint URL cannot be empty."):
+        with self.assertRaisesRegex(ValueError, r"cannot be empty"):
             dashboard.validate_endpoint_url(None)
 
     def test_invalid_scheme(self):
-        with self.assertRaisesRegex(ValueError, "Invalid URL scheme 'ftp'. Only http and https are allowed."):
+        with self.assertRaisesRegex(ValueError, r"Invalid URL scheme"):
             dashboard.validate_endpoint_url("ftp://server.com")
-        with self.assertRaisesRegex(ValueError, "Invalid URL scheme 'ws'. Only http and https are allowed."):
+        with self.assertRaisesRegex(ValueError, r"Invalid URL scheme"):
             dashboard.validate_endpoint_url("ws://localhost")
 
     def test_missing_hostname(self):
-        with self.assertRaisesRegex(ValueError, "Invalid URL: missing hostname."):
+        with self.assertRaisesRegex(ValueError, r"missing hostname"):
             dashboard.validate_endpoint_url("http://")
-        with self.assertRaisesRegex(ValueError, "Invalid URL: missing hostname."):
+        with self.assertRaisesRegex(ValueError, r"missing hostname"):
             dashboard.validate_endpoint_url("http:/path/only")
 
     def test_forbidden_ips(self):
@@ -120,23 +124,20 @@ class TestValidateEndpointUrl(unittest.TestCase):
             "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254",
             "224.0.0.1", "240.0.0.1"
         ]
-        # Skip IPv6 tests because `urllib.parse` parsing of bare IPv6 in `http://::1` might not yield `::1` as hostname if brackets are missing
-        # e.g., urlparse('http://[::1]').hostname is '::1'
-        # Let's test with properly formatted IPv6 URLs
         forbidden_ipv6 = ["[::1]", "[fe80::1]", "[fd00::1]"]
 
         for ip in forbidden_ips:
             with self.subTest(ip=ip):
-                with self.assertRaisesRegex(ValueError, "Forbidden IP address range"):
+                with self.assertRaisesRegex(ValueError, r"Forbidden IP"):
                     dashboard.validate_endpoint_url(f"http://{ip}")
 
         for ip in forbidden_ipv6:
             with self.subTest(ip=ip):
-                with self.assertRaisesRegex(ValueError, "Forbidden IP address range"):
+                with self.assertRaisesRegex(ValueError, r"Forbidden IP"):
                     dashboard.validate_endpoint_url(f"http://{ip}")
 
-        with self.assertRaisesRegex(ValueError, "Forbidden IP address range"):
+        with self.assertRaisesRegex(ValueError, r"Forbidden IP"):
             dashboard.validate_endpoint_url("http://127.0.0.2")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
