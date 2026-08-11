@@ -149,8 +149,16 @@ def main():
 
     # Setup Corpus
     corpus_file = args.corpus
-    if not os.path.isabs(corpus_file):
-        corpus_file = str(BENCH_DIR / corpus_file)
+    corpus_path = Path(corpus_file)
+    if not corpus_path.is_absolute():
+        corpus_path = BENCH_DIR / corpus_path
+    corpus_path = corpus_path.resolve()
+
+    if BENCH_DIR != corpus_path and BENCH_DIR not in corpus_path.parents:
+        print(f"[-] Error: Corpus path must be within the benchmark directory.")
+        sys.exit(1)
+
+    corpus_file = str(corpus_path)
 
     if not os.path.exists(corpus_file):
         with open(corpus_file, "w", encoding="utf-8") as f:
