@@ -10,10 +10,9 @@ import subprocess
 import shutil
 import ast
 
-# Module constants for quantization options and cache types
+# Pre-built mapping of (lowercase_search_string, canonical_quantization)
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
 QUANTIZATIONS = tuple((q.lower(), q) for q in QUANTIZATION_OPTIONS)
-
 CACHE_TYPE_CLI_ARGS = {"--cache-type-k", "--cache-type-v"}
 CACHE_TYPE_KEYS = {"cache-type-k", "cache-type-v"}
 SWE_BENCH_KEYS = {"swe-bench", "swe_bench"}

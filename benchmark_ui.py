@@ -14,11 +14,13 @@ import re
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
+from utils import validate_endpoint_url, validate_model_name
 
 METRIC_KEYS = ("Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)")
 import urllib.parse
 import ipaddress
 
+from url_validation import validate_endpoint_url
 UI_THROTTLE_INTERVAL = 0.1  # Seconds between UI updates during streaming
 
 def validate_endpoint_url(url_str):

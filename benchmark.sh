@@ -82,6 +82,8 @@ call_api() {
       
       if [[ "$line" == data:* && "$line" != *"data: [DONE]"* ]]; then
          content="${line#data: }"
+         if [[ "$content" =~ \"usage\"[[:space:]]*: ]]; then
+            if echo "$content" | jq -e 'has("usage")' >/dev/null 2>&1; then
          if [[ "$content" == *"\"usage\""* ]]; then
             has_usage=$(echo "$content" | jq -r 'has("usage")' 2>/dev/null || true)
             if [[ "$has_usage" == "true" ]]; then
