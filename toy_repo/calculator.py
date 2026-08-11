@@ -1,3 +1,6 @@
+ALLOWED_OPS = {"+", "-", "*", "/"}
+
+
 def parse_and_eval(expression: str) -> float:
     """
     Parses and evaluates a simple math expression.
@@ -14,13 +17,16 @@ def parse_and_eval(expression: str) -> float:
     if len(tokens) % 2 == 0:
         raise ValueError(f"Invalid expression syntax: '{expression}'")
 
-    allowed_ops = {"+", "-", "*", "/"}
     for i, token in enumerate(tokens):
-        if i % 2 == 1 and token not in allowed_ops:
+        if i % 2 == 1 and token not in ALLOWED_OPS:
             raise ValueError(f"Unsupported operator: '{token}'")
     nums = [float(tokens[i]) for i in range(0, len(tokens), 2)]
     ops = [tokens[i] for i in range(1, len(tokens), 2)]
 
+    if not set(ops).issubset(ALLOWED_OPS):
+        for op in ops:
+            if op not in ALLOWED_OPS:
+                raise ValueError(f"Unsupported operator: {op}")
 
     # Handle multiplication and division first
     i = 0
