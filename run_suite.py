@@ -157,12 +157,15 @@ def run_throughput(endpoint, model):
     gens = []
     ttfts = []
     
+    peval_re = re.compile(r"Prompt Eval \(p/s\)\s*:\s*([0-9.]+)\s*tokens/sec\s*\(TTFT:\s*([0-9.]+)s\)")
+    gen_re = re.compile(r"Generation\s*\(t/s\)\s*:\s*([0-9.]+)\s*tokens/sec")
+
     for line in result.stdout.split("\n"):
-        peval_match = re.search(r"Prompt Eval \(p/s\)\s*:\s*([0-9.]+)\s*tokens/sec\s*\(TTFT:\s*([0-9.]+)s\)", line)
+        peval_match = peval_re.search(line)
         if peval_match:
             p_evals.append(float(peval_match.group(1)))
             ttfts.append(float(peval_match.group(2)))
-        gen_match = re.search(r"Generation\s*\(t/s\)\s*:\s*([0-9.]+)\s*tokens/sec", line)
+        gen_match = gen_re.search(line)
         if gen_match:
             gens.append(float(gen_match.group(1)))
             
