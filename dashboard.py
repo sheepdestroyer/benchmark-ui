@@ -5,7 +5,6 @@ import re
 import streamlit as st
 import os
 import json
-import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -17,6 +16,32 @@ import threading
 from pathlib import Path
 
 from url_validation import validate_endpoint_url
+BASE_QUANT_TYPES = ("Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M")
+BASE_QUANT_ALIASES = tuple((q.lower(), q) for q in BASE_QUANT_TYPES)
+
+def validate_endpoint_url(url_str):
+    if not url_str:
+        raise ValueError("Endpoint URL cannot be empty.")
+    parsed = urllib.parse.urlparse(url_str)
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Only http and https are allowed.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+    
+    hostname_lower = hostname.lower()
+    if hostname_lower == "localhost" or hostname == "127.0.0.1":
+        return url_str
+    
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or not ip.is_global:
+            raise ValueError(f"Forbidden IP address range: {hostname}")
+    except ValueError as e:
+        if "Forbidden IP address range" in str(e):
+            raise
+        pass
+    return url_str
 
 def validate_model_name(model_name):
     if not model_name or not re.match(r'^[a-zA-Z0-9._:/-]+$', model_name):
@@ -69,6 +94,9 @@ st.set_page_config(
 # Paths
 HISTORY_DIR = Path(__file__).parent / "history"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+TEST_SUITES = ("Needle", "RULER", "LongBench", "SWE-bench")
+PASS_FAIL_STATUSES = frozenset({"Pass", "Fail"})
 
 # VRAM savings helper
 VRAM_SAVINGS = {
@@ -127,145 +155,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Generate mock data if directory is empty
-def populate_mock_data_if_empty():
-    existing_jsons = list(HISTORY_DIR.glob("run_*.json"))
-    if len(existing_jsons) >= 3:
-        return
-        
-    mock_runs = [
-        {
-            "timestamp": "2026-07-08T01:00:00.000000",
-            "endpoint": "http://127.0.0.1:8081",
-            "model": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
-            "base_quant": "Q4_K_S",
-            "kv_quant": "f16",
-            "prefill": 120.5,
-            "decode": 28.2,
-            "ttft": 0.35,
-            "needle": "Pass",
-            "ruler": "Pass",
-            "longbench": "Pass",
-            "swe": "Fail",
-            "ppl": 3.9645,
-            "kld": 0.0,
-            "same_top": 100.0,
-            "args": ["--tokens", "200000"]
-        },
-        {
-            "timestamp": "2026-07-08T01:05:00.000000",
-            "endpoint": "http://127.0.0.1:8081",
-            "model": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
-            "base_quant": "Q4_K_S",
-            "kv_quant": "q8_0",
-            "prefill": 135.2,
-            "decode": 32.1,
-            "ttft": 0.32,
-            "needle": "Pass",
-            "ruler": "Pass",
-            "longbench": "Pass",
-            "swe": "Fail",
-            "ppl": 3.9650,
-            "kld": 0.00012,
-            "same_top": 99.4,
-            "args": ["--tokens", "200000"]
-        },
-        {
-            "timestamp": "2026-07-08T01:10:00.000000",
-            "endpoint": "http://127.0.0.1:8081",
-            "model": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
-            "base_quant": "Q4_K_S",
-            "kv_quant": "q5_1",
-            "prefill": 148.4,
-            "decode": 35.6,
-            "ttft": 0.29,
-            "needle": "Pass",
-            "ruler": "Pass",
-            "longbench": "Fail",
-            "swe": "Fail",
-            "ppl": 3.9682,
-            "kld": 0.00115,
-            "same_top": 98.1,
-            "args": ["--tokens", "200000"]
-        },
-        {
-            "timestamp": "2026-07-08T01:15:00.000000",
-            "endpoint": "http://127.0.0.1:8081",
-            "model": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
-            "base_quant": "Q4_K_S",
-            "kv_quant": "q4_0",
-            "prefill": 155.1,
-            "decode": 38.2,
-            "ttft": 0.27,
-            "needle": "Pass",
-            "ruler": "Fail",
-            "longbench": "Fail",
-            "swe": "Fail",
-            "ppl": 3.9854,
-            "kld": 0.00482,
-            "same_top": 95.2,
-            "args": ["--tokens", "200000"]
-        },
-        {
-            "timestamp": "2026-07-08T01:20:00.000000",
-            "endpoint": "http://127.0.0.1:8081",
-            "model": "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_S",
-            "base_quant": "Q4_K_S",
-            "kv_quant": "q5_1",
-            "prefill": 90.1,
-            "decode": 22.4,
-            "ttft": 0.48,
-            "needle": "Pass",
-            "ruler": "Pass",
-            "longbench": "Pass",
-            "swe": "Pass",
-            "ppl": 3.8210,
-            "kld": 0.00095,
-            "same_top": 98.5,
-            "args": ["--tokens", "200000"]
-        }
-    ]
-    
-    for r in mock_runs:
-        run_data = {
-            "run_metadata": {
-                "timestamp": r["timestamp"],
-                "target_endpoint": r["endpoint"],
-                "cli_arguments": r["args"]
-            },
-            "model_settings": {
-                "model_name": r["model"],
-                "base_quantization": r["base_quant"],
-                "kv_cache_quant": r["kv_quant"],
-                "threads": 16,
-                "ubatch_size": 512,
-                "batch_size": 2048,
-                "speculative_draft_type": "ngram" if "mtp" in r["model"].lower() else "None"
-            },
-            "throughput_metrics": {
-                "prefill_speed": r["prefill"],
-                "decode_speed": r["decode"],
-                "ttft": r["ttft"]
-            },
-            "reasoning_accuracy": {
-                "needle": r["needle"],
-                "ruler": r["ruler"],
-                "longbench": r["longbench"],
-                "swe_bench": r["swe"]
-            },
-            "quantization_loss": {
-                "perplexity": r["ppl"],
-                "mean_kld": r["kld"],
-                "same_top_match_percent": r["same_top"]
-            }
-        }
-        
-        safe_ts = r["timestamp"].replace(":", "-").replace(".", "-")
-        dest = HISTORY_DIR / f"run_{safe_ts}_{r['kv_quant']}.json"
-        temp_dest = HISTORY_DIR / f"tmp_run_{safe_ts}_{r['kv_quant']}.json"
-        with open(temp_dest, "w") as f:
-            json.dump(run_data, f, indent=4)
-        os.replace(temp_dest, dest)
 
 def map_repo_to_preset_alias(repo_or_id):
     presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
@@ -346,7 +235,6 @@ def get_preset_metadata(profile_name):
             
     return metadata
 
-# populate_mock_data_if_empty()
 
 # Load all runs
 def load_runs():
@@ -397,8 +285,9 @@ def load_runs():
                 if ":" in str(model_name):
                     base_quant = str(model_name).split(":")[-1]
                 else:
-                    for q in ["Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M"]:
-                        if q.lower() in str(model_name).lower():
+                    model_name_lower = str(model_name).lower()
+                    for q_lower, q in BASE_QUANT_ALIASES:
+                        if q_lower in model_name_lower:
                             base_quant = q
                             break
                 if not base_quant or base_quant == "Unknown":
@@ -749,9 +638,9 @@ with tab_plots:
             # Map Pass/Fail/NA to numeric values for bar charting
             acc_data = []
             for _, row in filtered_df.iterrows():
-                for test in ["Needle", "RULER", "LongBench", "SWE-bench"]:
+                for test in TEST_SUITES:
                     val = row[test]
-                    if val in ["Pass", "Fail"]:
+                    if val in PASS_FAIL_STATUSES:
                         acc_data.append({
                             "Model_Quant": f"{row['Model']} ({row['KV Quant']})",
                             "Test Suite": test,
