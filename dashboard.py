@@ -16,6 +16,9 @@ import queue
 import threading
 from pathlib import Path
 
+BASE_QUANT_TYPES = ("Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M")
+BASE_QUANT_ALIASES = tuple((q.lower(), q) for q in BASE_QUANT_TYPES)
+
 def validate_endpoint_url(url_str):
     if not url_str:
         raise ValueError("Endpoint URL cannot be empty.")
@@ -419,8 +422,9 @@ def load_runs():
                 if ":" in str(model_name):
                     base_quant = str(model_name).split(":")[-1]
                 else:
-                    for q in ["Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M"]:
-                        if q.lower() in str(model_name).lower():
+                    model_name_lower = str(model_name).lower()
+                    for q_lower, q in BASE_QUANT_ALIASES:
+                        if q_lower in model_name_lower:
                             base_quant = q
                             break
                 if not base_quant or base_quant == "Unknown":
