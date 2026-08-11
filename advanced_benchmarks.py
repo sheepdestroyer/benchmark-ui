@@ -10,6 +10,9 @@ import subprocess
 import shutil
 import ast
 
+QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
+QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
+
 def is_safe_code(code_str):
     try:
         tree = ast.parse(code_str)
@@ -549,8 +552,8 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                     
                     repo_or_id = model_info.get("id", "")
                     repo_or_id_lower = repo_or_id.lower()
-                    for q in ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"):
-                        if q.lower() in repo_or_id_lower:
+                    for q, q_lower in QUANTIZATION_OPTIONS_LOWER:
+                        if q_lower in repo_or_id_lower:
                             settings["base_quantization"] = q
                             break
                     
