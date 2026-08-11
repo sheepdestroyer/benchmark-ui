@@ -11,16 +11,11 @@ import shutil
 import ast
 
 # Pre-built mapping of (lowercase_search_string, canonical_quantization)
-QUANTIZATIONS = (
-    ("q4_k_s", "Q4_K_S"),
-    ("q4_k_m", "Q4_K_M"),
-    ("q4_k_l", "Q4_K_L"),
-    ("q4_k_xl", "Q4_K_XL"),
-    ("q5_k_s", "Q5_K_S"),
-    ("q5_k_m", "Q5_K_M"),
-    ("q8_0", "Q8_0"),
-    ("f16", "f16"),
-)
+QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
+QUANTIZATIONS = tuple((q.lower(), q) for q in QUANTIZATION_OPTIONS)
+CACHE_TYPE_CLI_ARGS = {"--cache-type-k", "--cache-type-v"}
+CACHE_TYPE_KEYS = {"cache-type-k", "cache-type-v"}
+SWE_BENCH_KEYS = {"swe-bench", "swe_bench"}
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
 QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
 
@@ -534,7 +529,7 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                 settings["ubatch_size"] = int(args[i+1])
                             except (ValueError, TypeError):
                                 settings["ubatch_size"] = None
-                        elif arg in ["--cache-type-k", "--cache-type-v"] and i + 1 < len(args):
+                        elif arg in CACHE_TYPE_CLI_ARGS and i + 1 < len(args):
                             settings["kv_cache_quant"] = args[i+1]
                     
                     # Try preset parsing
@@ -559,7 +554,7 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                         settings["ubatch_size"] = int(v)
                                     except (ValueError, TypeError):
                                         settings["ubatch_size"] = None
-                                elif k in ["cache-type-k", "cache-type-v"]:
+                                elif k in CACHE_TYPE_KEYS:
                                     settings["kv_cache_quant"] = v
                                     
                     repo_or_id = model_info.get("id", "")
@@ -658,7 +653,7 @@ def main():
         }
         for r in results:
             bench_key = r["benchmark"].lower().replace("-", "_")
-            if bench_key in ["swe-bench", "swe_bench"]:
+            if bench_key in SWE_BENCH_KEYS:
                 bench_key = "swe_bench"
             if bench_key in reasoning_accuracy:
                 reasoning_accuracy[bench_key] = "Pass" if r["passed"] else "Fail"
