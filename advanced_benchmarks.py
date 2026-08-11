@@ -10,6 +10,17 @@ import subprocess
 import shutil
 import ast
 
+# Pre-built mapping of (lowercase_search_string, canonical_quantization)
+QUANTIZATIONS = (
+    ("q4_k_s", "Q4_K_S"),
+    ("q4_k_m", "Q4_K_M"),
+    ("q4_k_l", "Q4_K_L"),
+    ("q4_k_xl", "Q4_K_XL"),
+    ("q5_k_s", "Q5_K_S"),
+    ("q5_k_m", "Q5_K_M"),
+    ("q8_0", "Q8_0"),
+    ("f16", "f16"),
+)
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
 QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
 
@@ -484,8 +495,9 @@ def get_model_settings_from_endpoint(endpoint, target_model):
     }
     
     # Try parsing base quantization from target_model name if it's there
-    for q in ["Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16"]:
-        if q.lower() in target_model.lower():
+    target_model_lower = target_model.lower()
+    for q_lower, q in QUANTIZATIONS:
+        if q_lower in target_model_lower:
             settings["base_quantization"] = q
             break
             
@@ -552,6 +564,7 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                                     
                     repo_or_id = model_info.get("id", "")
                     repo_or_id_lower = repo_or_id.lower()
+                    for q_lower, q in QUANTIZATIONS:
                     for q, q_lower in QUANTIZATION_OPTIONS_LOWER:
                         if q_lower in repo_or_id_lower:
                             settings["base_quantization"] = q
