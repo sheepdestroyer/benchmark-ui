@@ -89,6 +89,15 @@ def cleanup_current_proc():
                 proc.wait(timeout=1)
         st.session_state.current_proc = None
 
+METRIC_PATTERNS = {
+    "Prompt Tokens": (re.compile(r"Prompt Tokens\s+:\s+(\d+)"), int),
+    "Completion Tokens": (re.compile(r"Completion Tokens\s+:\s+(\d+)"), int),
+    "Prompt Eval (p/s)": (re.compile(r"Prompt Eval \(p/s\)\s+:\s+([\d.]+)"), float),
+    "TTFT (s)": (re.compile(r"TTFT:\s+([\d.]+)"), float),
+    "Generation (t/s)": (re.compile(r"Generation\s+\(t/s\)\s+:\s+([\d.]+)"), float),
+    "Decode Time (s)": (re.compile(r"Decode:\s+([\d.]+)"), float),
+}
+
 def parse_benchmark_output(output_text):
     """Parse the benchmark output to extract metrics for each turn."""
     turns = []
@@ -112,16 +121,8 @@ def parse_benchmark_output(output_text):
         }
 
         # Extract metrics using regex
-        metric_patterns = {
-            "Prompt Tokens": (r'Prompt Tokens\s+:\s+(\d+)', int),
-            "Completion Tokens": (r'Completion Tokens\s+:\s+(\d+)', int),
-            "Prompt Eval (p/s)": (r'Prompt Eval \(p/s\)\s+:\s+([\d.]+)', float),
-            "TTFT (s)": (r'TTFT:\s+([\d.]+)', float),
-            "Generation (t/s)": (r'Generation\s+\(t/s\)\s+:\s+([\d.]+)', float),
-            "Decode Time (s)": (r'Decode:\s+([\d.]+)', float),
-        }
-        for metric_name, (pattern, cast_type) in metric_patterns.items():
-            match = re.search(pattern, content)
+        for metric_name, (pattern, cast_type) in METRIC_PATTERNS.items():
+            match = pattern.search(content)
             if match:
                 metrics[metric_name] = cast_type(match.group(1))
 
