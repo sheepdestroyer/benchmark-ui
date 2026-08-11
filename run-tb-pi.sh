@@ -10,7 +10,7 @@ export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
 
 # Local llama.cpp server
 export OPENAI_BASE_URL="http://host.containers.internal:8081/v1"
-export OPENAI_API_KEY="${OPENAI_API_KEY:-llama-cpp-local}"  # dummy key, pi requires it for openai provider
+export OPENAI_API_KEY="${OPENAI_API_KEY:-dummy}"  # dummy key, pi requires it for openai provider
 
 # Model (must be in provider/name format)
 MODEL="${3:-local-llama/Qwen3.6-35B-A3B-spec2}"

@@ -14,12 +14,21 @@ import re
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
+
+METRIC_KEYS = ("Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)")
 import urllib.parse
 import ipaddress
+
+UI_THROTTLE_INTERVAL = 0.1  # Seconds between UI updates during streaming
 
 def validate_endpoint_url(url_str):
     if not url_str:
         raise ValueError("Endpoint URL cannot be empty.")
+
+    # Security check: strict regex to prevent command/argument injection
+    if not re.fullmatch(r'^[a-zA-Z0-9\-\._~:/\?#\[\]@!\*\+,=%]+$', url_str):
+        raise ValueError("URL contains invalid characters")
+
     parsed = urllib.parse.urlparse(url_str)
     if parsed.scheme not in ('http', 'https'):
         raise ValueError(f"Invalid URL scheme '{parsed.scheme}'. Only http and https are allowed.")
@@ -42,7 +51,7 @@ def validate_endpoint_url(url_str):
     return url_str
 
 def validate_model_name(model_name):
-    if not model_name or not re.match(r'^[a-zA-Z0-9._:/-]+$', model_name):
+    if not model_name or not re.fullmatch(r'^[a-zA-Z0-9._:/-]+$', model_name):
         raise ValueError(f"Invalid model name '{model_name}'. Must match ^[a-zA-Z0-9._:/-]+$")
     return model_name
 
@@ -89,6 +98,15 @@ def cleanup_current_proc():
                 proc.wait(timeout=1)
         st.session_state.current_proc = None
 
+METRIC_PATTERNS = {
+    "Prompt Tokens": (re.compile(r"Prompt Tokens\s+:\s+(\d+)"), int),
+    "Completion Tokens": (re.compile(r"Completion Tokens\s+:\s+(\d+)"), int),
+    "Prompt Eval (p/s)": (re.compile(r"Prompt Eval \(p/s\)\s+:\s+([\d.]+)"), float),
+    "TTFT (s)": (re.compile(r"TTFT:\s+([\d.]+)"), float),
+    "Generation (t/s)": (re.compile(r"Generation\s+\(t/s\)\s+:\s+([\d.]+)"), float),
+    "Decode Time (s)": (re.compile(r"Decode:\s+([\d.]+)"), float),
+}
+
 def parse_benchmark_output(output_text):
     """Parse the benchmark output to extract metrics for each turn."""
     turns = []
@@ -112,32 +130,17 @@ def parse_benchmark_output(output_text):
         }
 
         # Extract metrics using regex
-        p_tokens = re.search(r'Prompt Tokens\s+:\s+(\d+)', content)
-        c_tokens = re.search(r'Completion Tokens\s+:\s+(\d+)', content)
-        p_eval = re.search(r'Prompt Eval \(p/s\)\s+:\s+([\d.]+)', content)
-        ttft = re.search(r'TTFT:\s+([\d.]+)', content)
-        gen_ts = re.search(r'Generation\s+\(t/s\)\s+:\s+([\d.]+)', content)
-        decode = re.search(r'Decode:\s+([\d.]+)', content)
-
-        if p_tokens:
-            metrics["Prompt Tokens"] = int(p_tokens.group(1))
-        if c_tokens:
-            metrics["Completion Tokens"] = int(c_tokens.group(1))
-        if p_eval:
-            metrics["Prompt Eval (p/s)"] = float(p_eval.group(1))
-        if ttft:
-            metrics["TTFT (s)"] = float(ttft.group(1))
-        if gen_ts:
-            metrics["Generation (t/s)"] = float(gen_ts.group(1))
-        if decode:
-            metrics["Decode Time (s)"] = float(decode.group(1))
+        for metric_name, (pattern, cast_type) in METRIC_PATTERNS.items():
+            match = pattern.search(content)
+            if match:
+                metrics[metric_name] = cast_type(match.group(1))
 
         turns.append(metrics)
 
     all_defaults = True
     if turns:
         for t in turns:
-            if any(t[k] != 0 for k in ["Prompt Tokens", "Completion Tokens", "Prompt Eval (p/s)", "TTFT (s)", "Generation (t/s)", "Decode Time (s)"]):
+            if any(t[k] != 0 for k in METRIC_KEYS):
                 all_defaults = False
                 break
 
@@ -303,14 +306,18 @@ def main():
 
             # Check if it was just started or already completed
             if st.session_state.get('benchmark_running', False):
+                last_update_time = 0.0
                 for line in run_benchmark_stream(model, endpoint):
                     all_lines.append(line)
-                    elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
+                    current_time = time.monotonic()
 
-                    # Show live output with elapsed time
-                    full_output = "".join(all_lines)
-                    status_placeholder.caption(f"⏱️ Running... {elapsed:.1f}s elapsed")
-                    output_placeholder.code(full_output, language="bash")
+                    if current_time - last_update_time >= UI_THROTTLE_INTERVAL:
+                        elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
+                        # Show live output with elapsed time
+                        full_output = "".join(all_lines)
+                        status_placeholder.caption(f"⏱️ Running... {elapsed:.1f}s elapsed")
+                        output_placeholder.code(full_output, language="bash")
+                        last_update_time = current_time
 
                 # Final display
                 elapsed = time.time() - st.session_state.get('benchmark_start', time.time())
