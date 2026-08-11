@@ -21,9 +21,10 @@ def parse_and_eval(expression: str) -> float:
     nums = [float(tokens[i]) for i in range(0, len(tokens), 2)]
     ops = [tokens[i] for i in range(1, len(tokens), 2)]
 
-    for op in ops:
-        if op not in allowed_ops:
-            raise ValueError(f"Unsupported operator: {op}")
+    if not set(ops).issubset(allowed_ops):
+        for op in ops:
+            if op not in allowed_ops:
+                raise ValueError(f"Unsupported operator: {op}")
 
     # Handle multiplication and division first
     i = 0
