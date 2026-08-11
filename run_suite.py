@@ -310,7 +310,7 @@ def main():
             kv_quant = "q5_1"
         match_quant = kv_quant
         if match_quant not in kld_results:
-            for k in ["q5_1", "q8_0", "q4_0", "f16"]:
+            for k in ("q5_1", "q8_0", "q4_0", "f16"):
                 if k in kld_results:
                     match_quant = k
                     break
