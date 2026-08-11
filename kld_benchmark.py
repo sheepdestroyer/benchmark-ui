@@ -154,16 +154,16 @@ def main():
         corpus_path = BENCH_DIR / corpus_path
     corpus_path = corpus_path.resolve()
 
-    if BENCH_DIR != corpus_path and BENCH_DIR not in corpus_path.parents:
-        print(f"[-] Error: Corpus path must be within the benchmark directory.")
+    bench_dir_resolved = BENCH_DIR.resolve()
+    if bench_dir_resolved != corpus_path and bench_dir_resolved not in corpus_path.parents:
+        print("[-] Error: Corpus path must be within the benchmark directory.")
         sys.exit(1)
 
-    corpus_file = str(corpus_path)
+    if not corpus_path.exists():
+        corpus_path.write_text(DEFAULT_CORPUS.strip(), encoding="utf-8")
+        print(f"[*] Created default corpus at {corpus_path}")
 
-    if not os.path.exists(corpus_file):
-        with open(corpus_file, "w", encoding="utf-8") as f:
-            f.write(DEFAULT_CORPUS.strip())
-        print(f"[*] Created default corpus at {corpus_file}")
+    corpus_file = str(corpus_path)
 
     tmp_kld_file = tempfile.NamedTemporaryFile(delete=False, suffix=".kld")
     baseline_kld_file = tmp_kld_file.name
