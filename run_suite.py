@@ -16,6 +16,8 @@ try:
 except ImportError:
     advanced_benchmarks = None
 
+QUANT_PRIORITIES = ("q5_1", "q8_0", "q4_0", "f16")
+
 def get_model_settings(endpoint, target_model):
     settings = {
         "model_name": target_model,
@@ -310,7 +312,7 @@ def main():
             kv_quant = "q5_1"
         match_quant = kv_quant
         if match_quant not in kld_results:
-            for k in ["q5_1", "q8_0", "q4_0", "f16"]:
+            for k in QUANT_PRIORITIES:
                 if k in kld_results:
                     match_quant = k
                     break
