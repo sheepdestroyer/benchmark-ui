@@ -94,6 +94,9 @@ st.set_page_config(
 HISTORY_DIR = Path(__file__).parent / "history"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
+TEST_SUITES = ("Needle", "RULER", "LongBench", "SWE-bench")
+PASS_FAIL_STATUSES = frozenset({"Pass", "Fail"})
+
 # VRAM savings helper
 VRAM_SAVINGS = {
     "f16": 0.0, "F16": 0.0,
@@ -634,9 +637,9 @@ with tab_plots:
             # Map Pass/Fail/NA to numeric values for bar charting
             acc_data = []
             for _, row in filtered_df.iterrows():
-                for test in ["Needle", "RULER", "LongBench", "SWE-bench"]:
+                for test in TEST_SUITES:
                     val = row[test]
-                    if val in ["Pass", "Fail"]:
+                    if val in PASS_FAIL_STATUSES:
                         acc_data.append({
                             "Model_Quant": f"{row['Model']} ({row['KV Quant']})",
                             "Test Suite": test,
