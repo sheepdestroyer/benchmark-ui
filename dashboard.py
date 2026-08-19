@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import urllib.parse
-import re
 import streamlit as st
 import os
 import json
