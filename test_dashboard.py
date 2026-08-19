@@ -204,5 +204,42 @@ class TestDashboard(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
 
+
+    def test_fmt_num(self):
+        original_isna = dashboard.pd.isna
+
+        def isna_mock(val):
+            if val is None:
+                return True
+            if isinstance(val, float) and val != val:
+                return True
+            return False
+
+        dashboard.pd.isna = isna_mock
+
+        # Test formatting floats
+        self.assertEqual(dashboard.fmt_num(10.1234), "10.12")
+        self.assertEqual(dashboard.fmt_num(10.126), "10.13")
+
+        # Test formatting integers
+        self.assertEqual(dashboard.fmt_num(10), "10.00")
+
+        # Test string representation of numbers
+        self.assertEqual(dashboard.fmt_num("12.34"), "12.34")
+
+        # Test N/A values
+        self.assertEqual(dashboard.fmt_num(None), "N/A")
+        self.assertEqual(dashboard.fmt_num("N/A"), "N/A")
+
+        # Test non-numeric strings
+        self.assertEqual(dashboard.fmt_num("string_val"), "string_val")
+
+        # Test custom format
+        self.assertEqual(dashboard.fmt_num(10.1234, fmt="{:.1f}"), "10.1")
+        self.assertEqual(dashboard.fmt_num(10, fmt="{:.0f}"), "10")
+
+        # Restore original mock
+        dashboard.pd.isna = original_isna
+
 if __name__ == "__main__":
     unittest.main()
