@@ -609,15 +609,22 @@ with tab_plots:
             st.markdown("#### Reasoning Benchmarks Pass Rates")
             # Map Pass/Fail/NA to numeric values for bar charting
             acc_data = []
-            for _, row in filtered_df.iterrows():
-                for test in TEST_SUITES:
-                    val = row[test]
-                    if val in PASS_FAIL_STATUSES:
-                        acc_data.append({
-                            "Model_Quant": f"{row['Model']} ({row['KV Quant']})",
-                            "Test Suite": test,
-                            "Score": 1.0 if val == "Pass" else 0.0
-                        })
+            if not filtered_df.empty:
+                model_idx = filtered_df.columns.get_loc('Model')
+                kv_quant_idx = filtered_df.columns.get_loc('KV Quant')
+                test_idxs = {test: filtered_df.columns.get_loc(test) for test in TEST_SUITES if test in filtered_df.columns}
+
+                for row in filtered_df.itertuples(index=False, name=None):
+                    model_val = row[model_idx]
+                    kv_quant_val = row[kv_quant_idx]
+                    for test, idx in test_idxs.items():
+                        val = row[idx]
+                        if val in PASS_FAIL_STATUSES:
+                            acc_data.append({
+                                "Model_Quant": f"{model_val} ({kv_quant_val})",
+                                "Test Suite": test,
+                                "Score": 1.0 if val == "Pass" else 0.0
+                            })
             if acc_data:
                 acc_df = pd.DataFrame(acc_data)
                 # Plot summary pass rates
