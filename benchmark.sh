@@ -34,6 +34,23 @@ validate_model() {
 }
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    echo "========================================================="
+    echo " LLM Benchmark Suite"
+    echo "========================================================="
+    echo "Usage: $0 [MODEL] [ENDPOINT]"
+    echo "       $0 --list [ENDPOINT]"
+    echo "       $0 --help | -h"
+    echo ""
+    echo "Arguments:"
+    echo "  MODEL       Model identifier (default: Qwen3.6-27B)"
+    echo "  ENDPOINT    Base API endpoint URL (default: http://127.0.0.1:8083)"
+    echo "  --list      List available models at the endpoint"
+    echo "  --help, -h  Display this help message"
+    echo "========================================================="
+    exit 0
+fi
+
 if [[ "${1:-}" == "--list" ]]; then
     ENDPOINT="${2:-http://127.0.0.1:8083}"
     ENDPOINT="${ENDPOINT%/}"
@@ -84,9 +101,6 @@ call_api() {
          content="${line#data: }"
          if [[ "$content" =~ \"usage\"[[:space:]]*: ]]; then
             if echo "$content" | jq -e 'has("usage")' >/dev/null 2>&1; then
-         if [[ "$content" == *"\"usage\""* ]]; then
-            has_usage=$(echo "$content" | jq -r 'has("usage")' 2>/dev/null || true)
-            if [[ "$has_usage" == "true" ]]; then
                echo "$content" > "${temp_file}_usage"
             fi
          fi
