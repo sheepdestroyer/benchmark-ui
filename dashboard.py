@@ -381,7 +381,7 @@ st.markdown("Phase 5 visualizer dashboard for multi-GPU performance, quantizatio
 
 # KPI metrics
 if not filtered_df.empty:
-    is_kld_file = filtered_df["Filename"].str.contains(r"_(f16|q8_0|q5_1|q4_0)\.json$")
+    is_kld_file = filtered_df["Filename"].str.contains(r"_(?:f16|q8_0|q5_1|q4_0)\.json$")
     unified_kpi_df = filtered_df[~is_kld_file]
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -409,7 +409,7 @@ with tab_history:
     st.subheader("Historical Benchmark Runs")
     if not filtered_df.empty:
         # Filter out the raw KLD individual files from history tables (keep only unified complete runs)
-        is_kld_file = filtered_df["Filename"].str.contains(r"_(f16|q8_0|q5_1|q4_0)\.json$")
+        is_kld_file = filtered_df["Filename"].str.contains(r"_(?:f16|q8_0|q5_1|q4_0)\.json$")
         unified_df = filtered_df[~is_kld_file]
         
         # Grouped Summary table
@@ -450,7 +450,6 @@ with tab_history:
                 "LongBench Pass Rate": "{:.0%}",
                 "SWE-bench Pass Rate": "{:.0%}"
             }),
-            use_container_width=True
         )
         
         st.markdown("### 🗂️ Detailed Flat Logs")
@@ -468,7 +467,6 @@ with tab_history:
                 "PPL": "{:.4f}",
                 "KLD": "{:.6f}"
             }),
-            use_container_width=True
         )
     else:
         st.info("No runs match the filter criteria.")
@@ -601,7 +599,7 @@ with tab_plots:
                 # Right Y-axis (TG)
                 fig1.update_yaxes(title_text="Token Generation (TG) Speed (tokens/sec)", secondary_y=True)
                 
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig1)
             else:
                 st.info("No throughput metrics available for plots.")
                 
@@ -631,7 +629,7 @@ with tab_plots:
                     labels={"Score": "Pass Rate (0 or 1)"}
                 )
                 fig2.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2)
             else:
                 st.info("No reasoning accuracy data available for plots.")
                 
@@ -660,7 +658,7 @@ with tab_plots:
                 )
                 fig3.update_traces(textposition='top center')
                 fig3.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig3, use_container_width=True)
+                st.plotly_chart(fig3)
             else:
                 st.info("No KL Divergence data available for plots.")
                 
@@ -677,7 +675,7 @@ with tab_plots:
                     title="Perplexity Shift (Lower is better)"
                 )
                 fig4.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig4, use_container_width=True)
+                st.plotly_chart(fig4)
             else:
                 st.info("No Perplexity metrics available for plots.")
     else:
@@ -786,7 +784,7 @@ with tab_run:
         new_gguf = st.text_input("Local GGUF Path (for KLD mode, auto-detects if blank)", value="")
         new_corpus = st.text_input("Corpus Text File (for KLD mode)", value="kld_corpus.txt")
         
-    if st.button("▶️ Launch Benchmark Process", type="primary", use_container_width=True):
+    if st.button("▶️ Launch Benchmark Process", type="primary", width="stretch"):
         try:
             valid_endpoint = validate_endpoint_url(new_endpoint)
             valid_model = validate_model_name(new_model)
