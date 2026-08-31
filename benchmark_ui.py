@@ -235,13 +235,13 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("📋 List Models", use_container_width=True):
+            if st.button("📋 List Models", width="stretch"):
                 cleanup_current_proc()
                 st.session_state.list_models = True
                 st.session_state.run_benchmark = False
         
         with col2:
-            if st.button("▶️ Run Benchmark", use_container_width=True, type="primary"):
+            if st.button("▶️ Run Benchmark", width="stretch", type="primary"):
                 cleanup_current_proc()
                 st.session_state.run_benchmark = True
                 st.session_state.list_models = False
@@ -367,7 +367,7 @@ def main():
         else:
             col1, col2 = st.columns([3, 1])
             with col2:
-                if st.button("🗑️ Clear History", use_container_width=True):
+                if st.button("🗑️ Clear History", width="stretch"):
                     st.session_state.benchmark_history = []
                     st.rerun()
 
@@ -409,12 +409,12 @@ def main():
                     elif chart_type == "Bar Chart":
                         fig = px.bar(df, x="Turn", y=selected_metric, color="Run ID", barmode="group",
                                      title=f"{selected_metric} Comparison")
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig)
 
                     elif chart_type == "Line Chart":
                         fig = px.line(df, x="Turn", y=selected_metric, color="Run ID", markers=True,
                                       title=f"{selected_metric} Trend across Turns")
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig)
 
                     elif chart_type == "Pie Chart":
                         if len(selected_runs) > 1:
@@ -432,7 +432,7 @@ def main():
                         else:
                             fig = px.pie(pie_df, values="Tokens", names="Category",
                                          title=f"Token Distribution across Turns: {run['model']} ({run['timestamp']})")
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig)
 
                 # Show raw data
                 with st.expander("View Comparative Data Table"):
