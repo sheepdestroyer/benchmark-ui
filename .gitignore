@@ -11,3 +11,5 @@ jobs/
 *.diff
 .pytest_cache/
 
+
+*.log

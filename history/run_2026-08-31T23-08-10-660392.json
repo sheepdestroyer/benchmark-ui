@@ -1,0 +1,53 @@
+{
+    "run_metadata": {
+        "timestamp": "2026-08-31T23:08:10.660392",
+        "target_endpoint": "http://127.0.0.1:8081",
+        "cli_arguments": [
+            "--mode",
+            "all",
+            "--endpoint",
+            "http://127.0.0.1:8081",
+            "--model",
+            "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
+            "--tokens",
+            "1",
+            "--corpus",
+            "kld_corpus.txt"
+        ]
+    },
+    "model_settings": {
+        "model_name": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
+        "base_quantization": "Q4_K_S",
+        "kv_cache_quant": "Unknown",
+        "kv_cache_quant_k": "Unknown",
+        "kv_cache_quant_v": "Unknown",
+        "threads": null,
+        "ubatch_size": null,
+        "batch_size": null,
+        "speculative_draft_type": "None",
+        "spec_type": "None",
+        "spec_draft_type_k": "None",
+        "spec_draft_type_v": "None",
+        "flash_attn": "true",
+        "parallel": "1",
+        "n_gpu_layers": "99",
+        "fit": "true",
+        "profile_alias": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S"
+    },
+    "throughput_metrics": {
+        "prefill_speed": 0.0,
+        "decode_speed": 0.0,
+        "ttft": 0.0
+    },
+    "reasoning_accuracy": {
+        "needle": "Fail",
+        "ruler": "Fail",
+        "longbench": "Fail",
+        "swe_bench": "Fail"
+    },
+    "quantization_loss": {
+        "perplexity": null,
+        "mean_kld": null,
+        "same_top_match_percent": null
+    }
+}

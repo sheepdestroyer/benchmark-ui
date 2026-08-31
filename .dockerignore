@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.egg-info
+.pytest_cache
+.coverage
+dist
+build
+jobs
+matrix_*.log
+.github
