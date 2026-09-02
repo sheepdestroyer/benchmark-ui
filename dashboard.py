@@ -2,6 +2,7 @@
 import urllib.parse
 import re
 import streamlit as st
+import functools
 import os
 import json
 import pandas as pd
@@ -128,15 +129,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def map_repo_to_preset_alias(repo_or_id):
+
+@functools.lru_cache(maxsize=1)
+def _get_presets_config():
+    import os
     presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
     if not os.path.exists(presets_file):
-        return repo_or_id
+        return None
         
     try:
         import configparser
         config = configparser.ConfigParser(strict=False)
         config.read(presets_file)
+        return config
+    except Exception:
+        return None
+
+def map_repo_to_preset_alias(repo_or_id):
+    config = _get_presets_config()
+    if not config:
+        return repo_or_id
+
+    try:
         
         # Exact section check first
         for section in config.sections():
@@ -184,12 +198,9 @@ def get_preset_metadata(profile_name):
         "fit": "true"
     }
     
-    presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-    if os.path.exists(presets_file):
+    config = _get_presets_config()
+    if config:
         try:
-            import configparser
-            config = configparser.ConfigParser(strict=False)
-            config.read(presets_file)
             
             # Load globals if they exist
             if "*" in config.sections():
