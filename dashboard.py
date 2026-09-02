@@ -12,6 +12,7 @@ import time
 import requests
 import queue
 import threading
+import functools
 from pathlib import Path
 from utils import validate_endpoint_url, validate_model_name
 
@@ -128,6 +129,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+@functools.lru_cache(maxsize=None)
 def map_repo_to_preset_alias(repo_or_id):
     presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
     if not os.path.exists(presets_file):
