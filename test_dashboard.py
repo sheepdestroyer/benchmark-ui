@@ -1,6 +1,9 @@
 import configparser
-import unittest
+import os
 import sys
+import tempfile
+import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 class DictWithDefault(dict):
@@ -426,6 +429,59 @@ class TestExtractReasoningAccData(unittest.TestCase):
         res = dashboard.extract_reasoning_acc_data(MockDataFrame())
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0]["Model_Quant"], "Model-A (q4)")
+
+
+class TestValidateGgufPath(unittest.TestCase):
+    def test_empty_input(self):
+        self.assertEqual(dashboard.validate_gguf_path(""), "")
+        self.assertIsNone(dashboard.validate_gguf_path(None))
+
+    def test_valid_file_in_allowed_parent(self):
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as tmp:
+            resolved = dashboard.validate_gguf_path(tmp.name)
+            self.assertEqual(resolved, str(Path(tmp.name).resolve()))
+
+    def test_non_existent_file(self):
+        non_existent = "non_existent_gguf_file_12345.gguf"
+        with self.assertRaisesRegex(ValueError, r"does not exist"):
+            dashboard.validate_gguf_path(non_existent)
+
+    def test_directory_path(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmpdir:
+            with self.assertRaisesRegex(ValueError, r"is not a file"):
+                dashboard.validate_gguf_path(tmpdir)
+
+    def test_path_escapes_allowed_parents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_file = Path(tmpdir) / "test.gguf"
+            tmp_file.touch()
+            with patch("dashboard.Path.cwd", return_value=Path("/nonexistent_parent_1")), \
+                 patch("dashboard.Path.home", return_value=Path("/nonexistent_parent_2")):
+                with self.assertRaisesRegex(ValueError, r"escapes allowed parent directories"):
+                    dashboard.validate_gguf_path(str(tmp_file))
+
+
+class TestValidateCorpusName(unittest.TestCase):
+    def test_valid_corpus_name(self):
+        self.assertEqual(dashboard.validate_corpus_name("kld_corpus.txt"), "kld_corpus.txt")
+        self.assertEqual(dashboard.validate_corpus_name("my_corpus"), "my_corpus")
+
+    def test_basename_extraction(self):
+        self.assertEqual(dashboard.validate_corpus_name("path/to/my_corpus.txt"), "my_corpus.txt")
+        self.assertEqual(dashboard.validate_corpus_name("../../secret/corpus.txt"), "corpus.txt")
+
+    def test_empty_input(self):
+        with self.assertRaisesRegex(ValueError, r"cannot be empty"):
+            dashboard.validate_corpus_name("")
+        with self.assertRaisesRegex(ValueError, r"cannot be empty"):
+            dashboard.validate_corpus_name(None)
+
+    def test_invalid_dot_names(self):
+        invalid_inputs = [".", "..", "path/to/.", "path/to/..", "/"]
+        for input_str in invalid_inputs:
+            with self.subTest(input_str=input_str):
+                with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+                    dashboard.validate_corpus_name(input_str)
 
 
 if __name__ == "__main__":
