@@ -204,5 +204,27 @@ class TestDashboard(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
 
+class TestFmtNum(unittest.TestCase):
+    def setUp(self):
+        # Since pandas is mocked, we need to explicitly set return_value for pd.isna
+        dashboard.pd.isna.return_value = False
+
+    def test_fmt_num_valid_numbers(self):
+        self.assertEqual(dashboard.fmt_num(10), "10.00")
+        self.assertEqual(dashboard.fmt_num(10.5), "10.50")
+        self.assertEqual(dashboard.fmt_num("10.5"), "10.50")
+        self.assertEqual(dashboard.fmt_num(10.556), "10.56")
+        self.assertEqual(dashboard.fmt_num(10, fmt="{:.1f}"), "10.0")
+
+    def test_fmt_num_invalid_numbers(self):
+        self.assertEqual(dashboard.fmt_num("invalid"), "invalid")
+        self.assertEqual(dashboard.fmt_num([1, 2]), "[1, 2]")
+        self.assertEqual(dashboard.fmt_num({"a": 1}), "{'a': 1}")
+
+    def test_fmt_num_na_values(self):
+        self.assertEqual(dashboard.fmt_num(None), "N/A")
+        self.assertEqual(dashboard.fmt_num("N/A"), "N/A")
+
+
 if __name__ == "__main__":
     unittest.main()
