@@ -48,9 +48,9 @@ def validate_gguf_path(gguf_path_str):
     return str(resolved)
 
 def validate_corpus_name(corpus_str):
-    if not corpus_str:
+    if not corpus_str or not str(corpus_str).strip():
         raise ValueError("Corpus name cannot be empty.")
-    safe_name = os.path.basename(corpus_str)
+    safe_name = os.path.basename(str(corpus_str).strip()).strip()
     if not safe_name or safe_name in ('.', '..'):
         raise ValueError(f"Invalid corpus name: {corpus_str}")
     return safe_name
