@@ -1,9 +1,10 @@
 import configparser
 import json
+import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
-import sys
 from unittest.mock import MagicMock, patch
 
 class DictWithDefault(dict):
@@ -643,6 +644,104 @@ class TestLoadRuns(unittest.TestCase):
             current_time = 111.0
             self.assertEqual(simple_cached_ttl(4), 12)
             self.assertEqual(call_count, 2)
+
+
+class TestDashboardValidators(unittest.TestCase):
+    def test_validate_gguf_path_none_or_empty(self):
+        self.assertIsNone(dashboard.validate_gguf_path(None))
+        self.assertEqual(dashboard.validate_gguf_path(""), "")
+
+    def test_validate_gguf_path_existing_allowed_file(self):
+        # Tempfile inside cwd
+        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as tmp:
+            self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+
+        # Relative path inside cwd
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), prefix="test_gguf_", suffix=".gguf") as tmp:
+            rel_name = os.path.basename(tmp.name)
+            self.assertEqual(dashboard.validate_gguf_path(rel_name), str(Path(tmp.name).resolve()))
+
+        # Tempfile inside Path(__file__).parent
+        with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve()) as tmp:
+            self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+
+        # Tempfile inside patched Path.home() temporary directory (without touching user home)
+        with tempfile.TemporaryDirectory() as fake_home:
+            with patch.object(Path, "home", return_value=Path(fake_home)):
+                with tempfile.NamedTemporaryFile(dir=fake_home) as tmp:
+                    self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+
+    def test_validate_gguf_path_symlink(self):
+        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as target:
+            symlink = Path.cwd() / f"test_symlink_{os.path.basename(target.name)}.gguf"
+            try:
+                symlink.symlink_to(target.name)
+                self.assertEqual(
+                    dashboard.validate_gguf_path(str(symlink)),
+                    str(Path(target.name).resolve())
+                )
+            finally:
+                if symlink.is_symlink() or symlink.exists():
+                    symlink.unlink(missing_ok=True)
+
+    def test_validate_gguf_path_nonexistent_file(self):
+        with self.assertRaisesRegex(ValueError, r"GGUF file path does not exist"):
+            dashboard.validate_gguf_path("non_existent_file.gguf")
+        with self.assertRaisesRegex(ValueError, r"GGUF file path does not exist"):
+            dashboard.validate_gguf_path("/path/to/nowhere/model.gguf")
+
+    def test_validate_gguf_path_directory(self):
+        with self.assertRaisesRegex(ValueError, r"GGUF path is not a file"):
+            dashboard.validate_gguf_path(str(Path.cwd()))
+        with self.assertRaisesRegex(ValueError, r"GGUF path is not a file"):
+            dashboard.validate_gguf_path(".")
+
+    def test_validate_gguf_path_escapes_allowed_parents(self):
+        # Deterministically trigger escapes using temp directories and mocked allowed parents
+        with tempfile.TemporaryDirectory() as mock_parent_dir:
+            with tempfile.TemporaryDirectory() as outside_dir:
+                outside_file = Path(outside_dir) / "escaped.gguf"
+                outside_file.write_text("dummy model content")
+                with patch.object(Path, "cwd", return_value=Path(mock_parent_dir)), \
+                     patch.object(Path, "home", return_value=Path(mock_parent_dir)):
+                    with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
+                        dashboard.validate_gguf_path(str(outside_file))
+
+    def test_validate_corpus_name_valid(self):
+        self.assertEqual(dashboard.validate_corpus_name("kld_corpus.txt"), "kld_corpus.txt")
+        self.assertEqual(dashboard.validate_corpus_name("corpus.json"), "corpus.json")
+        self.assertEqual(dashboard.validate_corpus_name("custom_eval"), "custom_eval")
+        # Leading and trailing whitespace should be stripped
+        self.assertEqual(dashboard.validate_corpus_name("  kld_corpus.txt  "), "kld_corpus.txt")
+
+    def test_validate_corpus_name_empty_or_none(self):
+        with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
+            dashboard.validate_corpus_name("")
+        with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
+            dashboard.validate_corpus_name(None)
+        with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
+            dashboard.validate_corpus_name("   ")
+        with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
+            dashboard.validate_corpus_name(" \t \n ")
+
+    def test_validate_corpus_name_dot_or_dotdot(self):
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name(".")
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name("..")
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name("./")
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name("../")
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name("/")
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name(" / ")
+
+    def test_validate_corpus_name_directory_path(self):
+        self.assertEqual(dashboard.validate_corpus_name("/path/to/kld_corpus.txt"), "kld_corpus.txt")
+        self.assertEqual(dashboard.validate_corpus_name("corpora/nested/dataset.csv"), "dataset.csv")
+        self.assertEqual(dashboard.validate_corpus_name("./local/dir/test_corpus"), "test_corpus")
 
 
 if __name__ == "__main__":

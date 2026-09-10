@@ -112,6 +112,49 @@ def log_error(model, context, error_msg, stdout="", stderr=""):
             f.write(f"STDERR:\n{stderr}\n")
         f.write("=" * 80 + "\n\n")
 
+def extract_run_identifiers(data, presets_sections=None):
+    if presets_sections is None:
+        presets_sections = set()
+    settings = data.get("model_settings", {})
+    
+    # Find profile from CLI arguments first as the source of truth
+    metadata = data.get("run_metadata", {})
+    args = metadata.get("cli_arguments", [])
+    profile = None
+    ctx = 0
+    for i, arg in enumerate(args):
+        if arg == "--model" and i + 1 < len(args):
+            profile = args[i+1]
+        elif arg == "--tokens" and i + 1 < len(args):
+            try:
+                ctx = int(args[i+1])
+            except (ValueError, TypeError):
+                ctx = 0
+            
+    # Fallback to settings profile_alias or model_name if CLI args not parsed
+    if not profile:
+        profile = settings.get("profile_alias")
+    if not profile:
+        profile = settings.get("model_name", "")
+        
+    # If the profile name contains unsloth repo prefix, try mapping it
+    if profile and ("/" in profile or ":" in profile):
+        matched = False
+        for section in presets_sections:
+            if section.lower() == profile.lower():
+                profile = section
+                matched = True
+                break
+        if not matched:
+            for section in presets_sections:
+                if section.lower() in profile.lower() or profile.lower() in section.lower():
+                    profile = section
+                    break
+            
+    if profile and ctx:
+        return (profile, ctx)
+    return None
+
 def get_completed_runs(presets_file=None):
     completed = set()
     if not HISTORY_DIR.exists():
@@ -132,51 +175,15 @@ def get_completed_runs(presets_file=None):
 
     for filepath in HISTORY_DIR.glob("run_*.json"):
         # Filter out individual KLD files (which end in quantization formats, e.g. _f16.json)
-        parts = filepath.stem.split("_")
-        if len(parts) > 1 and parts[-1] in {"f16", "q8_0", "q5_1", "q4_0"}:
+        if filepath.stem.endswith(("_f16", "_q8_0", "_q5_1", "_q4_0")):
             continue
             
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
-            settings = data.get("model_settings", {})
-            
-            # Find profile from CLI arguments first as the source of truth
-            metadata = data.get("run_metadata", {})
-            args = metadata.get("cli_arguments", [])
-            profile = None
-            ctx = 0
-            for i, arg in enumerate(args):
-                if arg == "--model" and i + 1 < len(args):
-                    profile = args[i+1]
-                elif arg == "--tokens" and i + 1 < len(args):
-                    try:
-                        ctx = int(args[i+1])
-                    except (ValueError, TypeError):
-                        ctx = 0
-                    
-            # Fallback to settings profile_alias or model_name if CLI args not parsed
-            if not profile:
-                profile = settings.get("profile_alias")
-            if not profile:
-                profile = settings.get("model_name", "")
-                
-            # If the profile name contains unsloth repo prefix, try mapping it
-            if profile and ("/" in profile or ":" in profile):
-                matched = False
-                for section in presets_sections:
-                    if section.lower() == profile.lower():
-                        profile = section
-                        matched = True
-                        break
-                if not matched:
-                    for section in presets_sections:
-                        if section.lower() in profile.lower() or profile.lower() in section.lower():
-                            profile = section
-                            break
-                    
-            if profile and ctx:
-                completed.add((profile, ctx))
+            run_id = extract_run_identifiers(data, presets_sections=presets_sections)
+            if run_id:
+                completed.add(run_id)
         except Exception:
             pass
             
@@ -313,5 +320,5 @@ def main():
 
     run_matrix(endpoint=args.endpoint, presets_file=args.presets_file, cache_dir=args.cache_dir)
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
