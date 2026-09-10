@@ -16,6 +16,15 @@ def validate_endpoint_url(url_str):
     hostname = parsed.hostname
     if not hostname:
         raise ValueError("Invalid URL: missing hostname.")
+
+    try:
+        port = parsed.port
+        if port is not None and (port < 1 or port > 65535):
+            raise ValueError(f"Invalid port number {port}. Port must be between 1 and 65535.")
+    except ValueError as e:
+        if "Port must be between" in str(e):
+            raise
+        raise ValueError(f"Invalid URL port: {e}")
     
     hostname_lower = hostname.lower()
     if hostname_lower == "localhost" or hostname == "127.0.0.1":
