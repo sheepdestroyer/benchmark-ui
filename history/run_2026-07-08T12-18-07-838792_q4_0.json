@@ -1,0 +1,37 @@
+{
+    "run_metadata": {
+        "timestamp": "2026-07-08T12:18:07.838792",
+        "target_endpoint": "local",
+        "cli_arguments": [
+            "--model",
+            "/home/sheepdestroyer/.cache/huggingface/hub/models--unsloth--Qwen3.6-35B-A3B-GGUF/snapshots/a483e9e6cbd595906af30beda3187c2663a1118c/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+            "--corpus",
+            "kld_corpus.txt"
+        ]
+    },
+    "model_settings": {
+        "model_name": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+        "base_quantization": "Q4_K_S",
+        "kv_cache_quant": "q4_0",
+        "threads": 16,
+        "ubatch_size": null,
+        "batch_size": null,
+        "speculative_draft_type": "None"
+    },
+    "throughput_metrics": {
+        "prefill_speed": null,
+        "decode_speed": null,
+        "ttft": null
+    },
+    "reasoning_accuracy": {
+        "needle": "N/A",
+        "ruler": "N/A",
+        "longbench": "N/A",
+        "swe_bench": "N/A"
+    },
+    "quantization_loss": {
+        "perplexity": 3.953039,
+        "mean_kld": 0.005038,
+        "same_top_match_percent": 100.0
+    }
+}
