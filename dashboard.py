@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import urllib.parse
-import re
 import streamlit as st
 import os
 import json
@@ -482,7 +480,6 @@ with tab_plots:
             tp_df = filtered_df.dropna(subset=["Prefill (t/s)", "Decode (t/s)"])
             if not tp_df.empty:
                 from plotly.subplots import make_subplots
-                import plotly.graph_objects as go
                 
                 # Create subplot figure with secondary y-axis
                 fig1 = make_subplots(specs=[[{"secondary_y": True}]])
