@@ -272,7 +272,7 @@ def run_kld(model_path, corpus):
                     pass
     return kld_results
 
-def main():
+def parse_args(args=None):
     parser = argparse.ArgumentParser(description="Unified LLM Benchmarking Suite")
     parser.add_argument("--mode", choices=["throughput", "reasoning", "kld", "all"], default="all", help="Benchmark mode to run")
     parser.add_argument("--endpoint", default="http://127.0.0.1:8081", help="LLM server API endpoint")
@@ -280,8 +280,10 @@ def main():
     parser.add_argument("--tokens", type=int, default=200000, help="Target context token length for reasoning benchmarks")
     parser.add_argument("--gguf-path", help="Local path to the GGUF model file (for KLD benchmark)")
     parser.add_argument("--corpus", default="kld_corpus.txt", help="Path to text corpus for KLD perplexity calculation")
-    
-    args = parser.parse_args()
+    return parser.parse_args(args)
+
+def main():
+    args = parse_args()
     
     timestamp = datetime.datetime.now().isoformat()
     
