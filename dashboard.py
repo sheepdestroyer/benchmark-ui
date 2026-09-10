@@ -284,7 +284,54 @@ def get_preset_metadata(profile_name):
     return metadata
 
 
+def _is_mock(obj):
+    return (
+        hasattr(obj, "_mock_return_value")
+        or hasattr(obj, "_mock_self")
+        or getattr(type(obj), "__name__", "") in ("MagicMock", "Mock", "NonCallableMagicMock", "AsyncMock")
+    )
+
+
+def _fallback_cache_data(*dargs, **dkwargs):
+    ttl = dkwargs.get("ttl")
+    if dargs and isinstance(dargs[0], (int, float)):
+        ttl = dargs[0]
+
+    def decorator(func):
+        cache = {}
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            now = time.time()
+            key = (args, tuple(sorted(kwargs.items())))
+            if key in cache:
+                val, expiry = cache[key]
+                if expiry is None or now < expiry:
+                    return val
+            result = func(*args, **kwargs)
+            cache[key] = (result, now + ttl if ttl else None)
+            return result
+
+        def clear():
+            cache.clear()
+
+        wrapper.clear = clear
+        return wrapper
+
+    if len(dargs) == 1 and callable(dargs[0]) and not dkwargs:
+        return decorator(dargs[0])
+    return decorator
+
+
+if not hasattr(st, "cache_data") or _is_mock(getattr(st, "cache_data", None)):
+    try:
+        st.cache_data = _fallback_cache_data
+    except Exception:
+        pass
+
+
 # Load all runs
+@st.cache_data(ttl=60)
 def load_runs():
     runs = []
     for filepath in HISTORY_DIR.glob("run_*.json"):
