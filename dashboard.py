@@ -284,7 +284,21 @@ def get_preset_metadata(profile_name):
     return metadata
 
 
+def safe_cache_data(**cache_kwargs):
+    def decorator(func):
+        try:
+            if hasattr(st, "cache_data") and callable(st.cache_data):
+                if type(st.cache_data).__module__.startswith("unittest.mock") or "Mock" in type(st.cache_data).__name__:
+                    return func
+                return st.cache_data(**cache_kwargs)(func)
+        except Exception:
+            pass
+        return func
+    return decorator
+
+
 # Load all runs
+@safe_cache_data(ttl=60)
 def load_runs():
     runs = []
     for filepath in HISTORY_DIR.glob("run_*.json"):

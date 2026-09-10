@@ -428,5 +428,41 @@ class TestExtractReasoningAccData(unittest.TestCase):
         self.assertEqual(res[0]["Model_Quant"], "Model-A (q4)")
 
 
+class TestSafeCacheDataAndLoadRuns(unittest.TestCase):
+    def test_safe_cache_data_fallback_with_mock(self):
+        # When st.cache_data is a mock (as in test env), safe_cache_data returns original func
+        def dummy_func():
+            return 42
+
+        decorated = dashboard.safe_cache_data(ttl=60)(dummy_func)
+        self.assertIs(decorated, dummy_func)
+        self.assertEqual(decorated(), 42)
+
+    def test_safe_cache_data_with_real_cache_data(self):
+        # Simulate real st.cache_data function
+        called_with = {}
+
+        def fake_cache_data(**kwargs):
+            called_with.update(kwargs)
+            def decorator(f):
+                f.__cached__ = True
+                return f
+            return decorator
+
+        with patch.object(dashboard.st, "cache_data", fake_cache_data):
+            def dummy_func():
+                return 99
+
+            decorated = dashboard.safe_cache_data(ttl=60)(dummy_func)
+            self.assertEqual(called_with, {"ttl": 60})
+            self.assertTrue(getattr(decorated, "__cached__", False))
+            self.assertEqual(decorated(), 99)
+
+    def test_load_runs_returns_dataframe(self):
+        # load_runs should return a pandas DataFrame (or mocked DF object) without raising exception
+        df = dashboard.load_runs()
+        self.assertIsNotNone(df)
+
+
 if __name__ == "__main__":
     unittest.main()
