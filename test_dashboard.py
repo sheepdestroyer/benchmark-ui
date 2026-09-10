@@ -204,5 +204,43 @@ class TestDashboard(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
 
+
+class TestPresetsConfig(unittest.TestCase):
+    def test_get_presets_config_caching(self):
+        dashboard._get_presets_config.cache_clear()
+
+        cfg1 = dashboard._get_presets_config()
+        cfg2 = dashboard._get_presets_config()
+
+        self.assertIs(cfg1, cfg2)
+        cache_info = dashboard._get_presets_config.cache_info()
+        self.assertGreaterEqual(cache_info.hits, 1)
+
+    def test_map_repo_to_preset_alias_uses_cached_config(self):
+        dashboard._get_presets_config.cache_clear()
+
+        import configparser
+        mock_cfg = configparser.ConfigParser()
+        mock_cfg.add_section("TestModel")
+        mock_cfg.set("TestModel", "alias", "test-alias")
+
+        with patch.object(dashboard, "_get_presets_config", return_value=mock_cfg) as mock_get_cfg:
+            res = dashboard.map_repo_to_preset_alias("testmodel")
+            self.assertEqual(res, "TestModel")
+            mock_get_cfg.assert_called()
+
+    def test_get_preset_metadata_uses_cached_config(self):
+        dashboard._get_presets_config.cache_clear()
+
+        import configparser
+        mock_cfg = configparser.ConfigParser()
+        mock_cfg.add_section("TestModel")
+        mock_cfg.set("TestModel", "flash-attn", "false")
+
+        with patch.object(dashboard, "_get_presets_config", return_value=mock_cfg) as mock_get_cfg:
+            meta = dashboard.get_preset_metadata("TestModel")
+            self.assertEqual(meta.get("flash_attn"), "false")
+            mock_get_cfg.assert_called()
+
 if __name__ == "__main__":
     unittest.main()

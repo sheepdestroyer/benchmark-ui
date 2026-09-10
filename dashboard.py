@@ -4,6 +4,8 @@ import re
 import streamlit as st
 import os
 import json
+import functools
+import configparser
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -128,38 +130,45 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def map_repo_to_preset_alias(repo_or_id):
+@functools.lru_cache(maxsize=1)
+def _get_presets_config():
     presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
     if not os.path.exists(presets_file):
-        return repo_or_id
-        
+        return None
     try:
-        import configparser
         config = configparser.ConfigParser(strict=False)
         config.read(presets_file)
-        
-        # Exact section check first
-        for section in config.sections():
-            if section.lower() == repo_or_id.lower():
-                return section
-                
-        # Fallback substring checks
-        for section in config.sections():
-            if section == "*":
-                continue
-            section_repo = config.get(section, "hf-repo", fallback="")
-            section_alias = config.get(section, "alias", fallback="")
-            
-            if section_repo and section_repo.lower() in repo_or_id.lower():
-                if "mtp" in repo_or_id.lower() and "spec" in section.lower():
-                    return section
-                if "mtp" not in repo_or_id.lower() and "spec" not in section.lower():
+        return config
+    except (configparser.Error, OSError):
+        return None
+
+
+def map_repo_to_preset_alias(repo_or_id):
+    config = _get_presets_config()
+    if config is not None:
+        try:
+            # Exact section check first
+            for section in config.sections():
+                if section.lower() == repo_or_id.lower():
                     return section
                     
-            if section_alias and section_alias.lower() in repo_or_id.lower():
-                return section
-    except (configparser.Error, OSError):
-        pass
+            # Fallback substring checks
+            for section in config.sections():
+                if section == "*":
+                    continue
+                section_repo = config.get(section, "hf-repo", fallback="")
+                section_alias = config.get(section, "alias", fallback="")
+
+                if section_repo and section_repo.lower() in repo_or_id.lower():
+                    if "mtp" in repo_or_id.lower() and "spec" in section.lower():
+                        return section
+                    if "mtp" not in repo_or_id.lower() and "spec" not in section.lower():
+                        return section
+
+                if section_alias and section_alias.lower() in repo_or_id.lower():
+                    return section
+        except (configparser.Error, OSError):
+            pass
         
     # Fallback overrides
     if "qwen3.6-27b-gguf:q4_k_s" in repo_or_id.lower():
@@ -184,13 +193,9 @@ def get_preset_metadata(profile_name):
         "fit": "true"
     }
     
-    presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-    if os.path.exists(presets_file):
+    config = _get_presets_config()
+    if config is not None:
         try:
-            import configparser
-            config = configparser.ConfigParser(strict=False)
-            config.read(presets_file)
-            
             # Load globals if they exist
             if "*" in config.sections():
                 for key in config["*"]:
