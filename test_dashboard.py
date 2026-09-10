@@ -452,12 +452,24 @@ class TestDashboardValidators(unittest.TestCase):
         with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve()) as tmp:
             self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
 
-        # Tempfile inside Path.home()
-        try:
-            with tempfile.NamedTemporaryFile(dir=Path.home().resolve()) as tmp:
-                self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
-        except (OSError, PermissionError):
-            pass
+        # Tempfile inside patched Path.home() temporary directory (without touching user home)
+        with tempfile.TemporaryDirectory() as fake_home:
+            with patch.object(Path, "home", return_value=Path(fake_home)):
+                with tempfile.NamedTemporaryFile(dir=fake_home) as tmp:
+                    self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+
+    def test_validate_gguf_path_symlink(self):
+        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as target:
+            symlink = Path.cwd() / f"test_symlink_{os.path.basename(target.name)}.gguf"
+            try:
+                symlink.symlink_to(target.name)
+                self.assertEqual(
+                    dashboard.validate_gguf_path(str(symlink)),
+                    str(Path(target.name).resolve())
+                )
+            finally:
+                if symlink.is_symlink() or symlink.exists():
+                    symlink.unlink(missing_ok=True)
 
     def test_validate_gguf_path_nonexistent_file(self):
         with self.assertRaisesRegex(ValueError, r"GGUF file path does not exist"):
@@ -472,34 +484,32 @@ class TestDashboardValidators(unittest.TestCase):
             dashboard.validate_gguf_path(".")
 
     def test_validate_gguf_path_escapes_allowed_parents(self):
-        # /etc/passwd or /tmp outside cwd
-        if os.path.exists("/etc/passwd"):
-            with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
-                dashboard.validate_gguf_path("/etc/passwd")
-            rel_traversal = os.path.relpath("/etc/passwd", Path.cwd())
-            with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
-                dashboard.validate_gguf_path(rel_traversal)
-
-        tmp_dir = Path("/tmp").resolve()
-        allowed_parents = [Path.cwd().resolve(), Path(__file__).parent.resolve(), Path.home().resolve()]
-        if not any(tmp_dir.is_relative_to(p) for p in allowed_parents):
-            try:
-                with tempfile.NamedTemporaryFile(dir="/tmp") as tmp:
+        # Deterministically trigger escapes using temp directories and mocked allowed parents
+        with tempfile.TemporaryDirectory() as mock_parent_dir:
+            with tempfile.TemporaryDirectory() as outside_dir:
+                outside_file = Path(outside_dir) / "escaped.gguf"
+                outside_file.write_text("dummy model content")
+                with patch.object(Path, "cwd", return_value=Path(mock_parent_dir)), \
+                     patch.object(Path, "home", return_value=Path(mock_parent_dir)):
                     with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
-                        dashboard.validate_gguf_path(tmp.name)
-            except (OSError, PermissionError):
-                pass
+                        dashboard.validate_gguf_path(str(outside_file))
 
     def test_validate_corpus_name_valid(self):
         self.assertEqual(dashboard.validate_corpus_name("kld_corpus.txt"), "kld_corpus.txt")
         self.assertEqual(dashboard.validate_corpus_name("corpus.json"), "corpus.json")
         self.assertEqual(dashboard.validate_corpus_name("custom_eval"), "custom_eval")
+        # Leading and trailing whitespace should be stripped
+        self.assertEqual(dashboard.validate_corpus_name("  kld_corpus.txt  "), "kld_corpus.txt")
 
     def test_validate_corpus_name_empty_or_none(self):
         with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
             dashboard.validate_corpus_name("")
         with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
             dashboard.validate_corpus_name(None)
+        with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
+            dashboard.validate_corpus_name("   ")
+        with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
+            dashboard.validate_corpus_name(" \t \n ")
 
     def test_validate_corpus_name_dot_or_dotdot(self):
         with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
@@ -512,11 +522,14 @@ class TestDashboardValidators(unittest.TestCase):
             dashboard.validate_corpus_name("../")
         with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
             dashboard.validate_corpus_name("/")
+        with self.assertRaisesRegex(ValueError, r"Invalid corpus name"):
+            dashboard.validate_corpus_name(" / ")
 
     def test_validate_corpus_name_directory_path(self):
         self.assertEqual(dashboard.validate_corpus_name("/path/to/kld_corpus.txt"), "kld_corpus.txt")
         self.assertEqual(dashboard.validate_corpus_name("corpora/nested/dataset.csv"), "dataset.csv")
         self.assertEqual(dashboard.validate_corpus_name("./local/dir/test_corpus"), "test_corpus")
+
 
 
 if __name__ == "__main__":
