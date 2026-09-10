@@ -2,6 +2,27 @@
 
 All notable changes to the LLM Benchmarking and Server Router project in this session are documented below.
 
+## [2026-09-10] - Quality Hardening, Test Consolidation & Performance
+
+### Added
+*   **Unit Tests for `fmt_num`**: Added comprehensive test cases in `test_dashboard.py` covering formatting of valid floats, integers, negative values, string fallbacks, NaN/Inf, pandas `pd.NA` identity, booleans, and sequences (PR #76 / Issue #81).
+*   **Unit Tests for `generate_filler_text`**: Added test suite in `test_advanced_benchmarks.py` validating word count, token estimation, non-emptiness, and repetition behavior (PR #75 / Issue #82).
+*   **Unit Tests for `extract_reasoning_acc_data`**: Added edge-case test suite in `test_dashboard.py` asserting graceful degradation on missing required columns, missing test suites, empty DataFrames, and duplicate column names.
+*   **Comprehensive `test_utils.py` Suite**: Expanded test coverage for `utils.py` to 97%, validating SSRF protections, loopback allowance, IPv6/IPv4 private subnet filtering, model name validation, corpus name validation, and GGUF path validation.
+
+### Optimized
+*   **INI Configuration Parsing Caching**: Implemented `@functools.lru_cache(maxsize=1)` for `_get_presets_config` in `dashboard.py` to cache parsed `model_presets.ini` configurations, eliminating redundant disk I/O across `map_repo_to_preset_alias` and `get_preset_metadata` (PR #74 / Issue #80).
+*   **DataFrame Row Iteration**: Replaced high-overhead `.iterrows()` with `.itertuples(index=False, name=None)` in `dashboard.py` for chart data extraction, significantly improving chart rendering performance for large historical benchmark sets (PR #73 / Issue #78).
+
+### Fixed & Hardened
+*   **`fmt_num` Robustness**: Hardened `fmt_num` against array ambiguity exceptions (`ValueError: The truth value of an array with more than one element is ambiguous`), `pd.NA` equality evaluation errors, and handled NaN, Inf, and boolean values cleanly.
+*   **Reasoning Benchmark Extraction Hardening**: Refactored chart data extraction into `extract_reasoning_acc_data(df)` with scalar loc resolution, preventing `KeyError` or duplicate-column boolean mask crashes.
+*   **Test Isolation & Background Process Prevention**: Configured `StreamlitMock.button` in `test_dashboard.py` to return `False`, preventing test module imports from accidentally spawning background `run_suite.py` benchmark processes.
+
+### Removed
+*   **Dead Code Elimination**: Deleted redundant `url_validation.py` duplicate file in favor of centralized `utils.py` (PR #71 / Issue #79).
+*   **Unused Imports**: Cleaned up unused top-level `urllib.parse` and `re` imports, and redundant inner `plotly.graph_objects` import in `dashboard.py` (PR #84 / Issue #83).
+
 ## [2026-07-08] - Session Summary
 
 ### Added

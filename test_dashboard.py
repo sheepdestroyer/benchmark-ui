@@ -93,6 +93,9 @@ class StreamlitMock(MagicMock):
             return options[0]
         return "mock_model"
 
+    def button(self, *args, **kwargs):
+        return False
+
 mock_st = StreamlitMock()
 
 modules_patcher = patch.dict(

@@ -6,6 +6,7 @@ A comprehensive benchmarking pipeline and Streamlit dashboard designed to evalua
 
 - `dashboard.py` - Main interactive Streamlit UI dashboard for browsing historical run data, multi-GPU evaluation, and quantization optimization.
 - `benchmark_ui.py` - Simple runner Streamlit UI for direct benchmark execution and real-time streaming output.
+- `utils.py` - Centralized security, URL/SSRF validation, and input sanitization helpers.
 - `run_suite.py` - Unified run orchestrator for executing throughput, reasoning, and KLD benchmark modes.
 - `run_matrix.py` - Automated benchmark matrix generator sweeping across models, threads, and quantization settings.
 - `populate_history.py` - Utility script to populate the history registry with synthetic benchmark run logs.
@@ -68,6 +69,25 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 - `--tokens`: Target token context length for reasoning tests (e.g. 5000 for validation, 200000 for full scaling).
 - `--gguf-path`: Local GGUF file path (for KLD mode, auto-detects Hugging Face cache if blank).
 - `--corpus`: Corpus prose file path for local perplexity calculation.
+
+---
+
+## Automated Testing
+
+The repository maintains an automated unit test suite covering input validation, UI logic, benchmark execution, and data formatting.
+
+Run the test suite using `pytest`:
+
+```bash
+pytest
+```
+
+The test suite covers:
+- `test_utils.py`: SSRF security boundaries, URL validation, and model/corpus parameter checking.
+- `test_dashboard.py`: Number formatting (`fmt_num`), INI config caching, and DataFrame reasoning metric extraction.
+- `test_advanced_benchmarks.py`: Synthetic filler text generation, context sizing, and needle evaluation.
+- `test_benchmark_ui.py`: UI form parameters, execution safeguards, and process orchestration.
+- `test_kld_benchmark.py`: Quantization loss calculations and perplexity parsing.
 
 ---
 

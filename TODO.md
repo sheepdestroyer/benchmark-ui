@@ -46,8 +46,18 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 
 ---
 
-## Next Steps
-1. Create a `history/` directory to store historical run JSONs.
-2. Update the existing benchmarking tools to automatically export their metrics to JSON under `history/`.
-3. Create the unified run orchestrator (`run_suite.py`).
-4. Implement the interactive dashboard (`dashboard.py`).
+## Phase 6: Hardening, Test Coverage & Performance (Completed 2026-09-10)
+
+- [x] **SSRF & Input Security**: Centralized validation in `utils.py` and pruned duplicate `url_validation.py` (PR #71).
+- [x] **INI Configuration Caching**: Cached `model_presets.ini` parsing with `@lru_cache` in `dashboard.py` (PR #74).
+- [x] **DataFrame Optimization**: Switched from `.iterrows()` to `.itertuples()` for chart data preparation (PR #73).
+- [x] **Metric Formatting Hardening**: Protected `fmt_num` against array ambiguity and `pd.NA` errors (PR #76).
+- [x] **Unit Testing Consolidation**: Added unit tests for `fmt_num`, `generate_filler_text` (PR #75), reasoning metrics, and `utils.py`.
+- [x] **Clean Import Hierarchy**: Eliminated unused `re`, `urllib.parse`, and redundant Plotly imports (PR #84).
+
+---
+
+## Next Steps / Future Work
+1. **Automated GitHub Actions CI**: Setup `.github/workflows/ci.yml` running `pytest` on PRs and pushes.
+2. **Dynamic Live Telemetry**: Integrate GPU VRAM and temperature metrics directly into the Streamlit UI via NVML.
+3. **Automated Export**: Add CSV/Excel export buttons for filtered historical benchmark sets.
