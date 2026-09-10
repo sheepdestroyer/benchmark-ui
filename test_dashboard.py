@@ -324,11 +324,105 @@ class TestFmtNum(unittest.TestCase):
     def test_fmt_num_invalid_numbers(self):
         self.assertEqual(dashboard.fmt_num("invalid"), "invalid")
         self.assertEqual(dashboard.fmt_num([1, 2]), "[1, 2]")
+        self.assertEqual(dashboard.fmt_num([]), "[]")
         self.assertEqual(dashboard.fmt_num({"a": 1}), "{'a': 1}")
 
     def test_fmt_num_na_values(self):
         self.assertEqual(dashboard.fmt_num(None), "N/A")
         self.assertEqual(dashboard.fmt_num("N/A"), "N/A")
+        self.assertEqual(dashboard.fmt_num(float('nan')), "N/A")
+
+    def test_fmt_num_pd_na_eval(self):
+        dashboard.pd.isna.return_value = True
+        self.assertEqual(dashboard.fmt_num(123), "N/A")
+        dashboard.pd.isna.return_value = False
+
+    def test_fmt_num_array_ambiguity_protection(self):
+        class DummyArray:
+            def __bool__(self):
+                raise ValueError("The truth value of an array with more than one element is ambiguous.")
+        dashboard.pd.isna.return_value = DummyArray()
+        self.assertEqual(dashboard.fmt_num([1, 2]), "[1, 2]")
+        dashboard.pd.isna.return_value = False
+
+    def test_fmt_num_booleans(self):
+        self.assertEqual(dashboard.fmt_num(True), "True")
+        self.assertEqual(dashboard.fmt_num(False), "False")
+
+    def test_fmt_num_infinity(self):
+        self.assertEqual(dashboard.fmt_num(float('inf')), "Inf")
+        self.assertEqual(dashboard.fmt_num(-float('inf')), "-Inf")
+
+
+class TestExtractReasoningAccData(unittest.TestCase):
+    def test_extract_reasoning_acc_data_normal(self):
+        class MockColumns(list):
+            def get_loc(self, key):
+                return self.index(key)
+
+        class MockDataFrame:
+            empty = False
+            columns = MockColumns(["Model", "KV Quant", "Needle", "RULER", "Other"])
+            def itertuples(self, index=False, name=None):
+                return [
+                    ("Model-A", "q4_k_m", "Pass", "Fail", 100),
+                    ("Model-B", "q8_0", "Pass", "N/A", 200),
+                ]
+
+        res = dashboard.extract_reasoning_acc_data(MockDataFrame())
+        self.assertEqual(len(res), 3)
+        self.assertEqual(res[0], {"Model_Quant": "Model-A (q4_k_m)", "Test Suite": "Needle", "Score": 1.0})
+        self.assertEqual(res[1], {"Model_Quant": "Model-A (q4_k_m)", "Test Suite": "RULER", "Score": 0.0})
+        self.assertEqual(res[2], {"Model_Quant": "Model-B (q8_0)", "Test Suite": "Needle", "Score": 1.0})
+
+    def test_extract_reasoning_acc_data_missing_required_columns(self):
+        class MockColumns(list):
+            def get_loc(self, key):
+                return self.index(key)
+
+        class MockDataFrame:
+            empty = False
+            columns = MockColumns(["Model", "Needle"])
+            def itertuples(self, index=False, name=None):
+                return [("Model-A", "Pass")]
+
+        self.assertEqual(dashboard.extract_reasoning_acc_data(MockDataFrame()), [])
+        self.assertEqual(dashboard.extract_reasoning_acc_data(None), [])
+
+        class EmptyDF:
+            empty = True
+            columns = MockColumns(["Model", "KV Quant", "Needle"])
+        self.assertEqual(dashboard.extract_reasoning_acc_data(EmptyDF()), [])
+
+    def test_extract_reasoning_acc_data_no_test_suites(self):
+        class MockColumns(list):
+            def get_loc(self, key):
+                return self.index(key)
+
+        class MockDataFrame:
+            empty = False
+            columns = MockColumns(["Model", "KV Quant", "Throughput"])
+            def itertuples(self, index=False, name=None):
+                return [("Model-A", "q4", 50.0)]
+
+        self.assertEqual(dashboard.extract_reasoning_acc_data(MockDataFrame()), [])
+
+    def test_extract_reasoning_acc_data_duplicate_columns(self):
+        class MockColumns(list):
+            def get_loc(self, key):
+                if key == "Model":
+                    return [True, False, False]
+                return self.index(key)
+
+        class MockDataFrame:
+            empty = False
+            columns = MockColumns(["Model", "KV Quant", "Needle"])
+            def itertuples(self, index=False, name=None):
+                return [("Model-A", "q4", "Pass")]
+
+        res = dashboard.extract_reasoning_acc_data(MockDataFrame())
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["Model_Quant"], "Model-A (q4)")
 
 
 if __name__ == "__main__":

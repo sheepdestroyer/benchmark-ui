@@ -18,3 +18,17 @@ def test_validate_model_name():
     assert validate_model_name("llama-3:8b") == "llama-3:8b"
     with pytest.raises(ValueError):
         validate_model_name("invalid model name;")
+
+def test_validate_endpoint_url_missing_hostname():
+    with pytest.raises(ValueError, match="missing hostname"):
+        validate_endpoint_url("http://")
+
+def test_validate_endpoint_url_unresolvable():
+    with pytest.raises(ValueError, match="Could not resolve hostname"):
+        validate_endpoint_url("http://nonexistent-host-that-does-not-exist.invalid")
+
+def test_validate_endpoint_url_forbidden_ip():
+    with pytest.raises(ValueError, match="Forbidden IP address range"):
+        validate_endpoint_url("http://10.0.0.1")
+    with pytest.raises(ValueError, match="Forbidden IP address range"):
+        validate_endpoint_url("http://192.168.0.1")

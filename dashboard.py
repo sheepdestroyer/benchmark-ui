@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import streamlit as st
 import functools
+import math
 import os
 import configparser
 import json
@@ -85,12 +86,78 @@ VRAM_SAVINGS = {
 }
 
 def fmt_num(val, fmt="{:.2f}"):
-    if val is None or pd.isna(val) or val == "N/A":
+    if val is None or val is pd.NA:
         return "N/A"
+    if isinstance(val, bool):
+        return str(val)
     try:
-        return fmt.format(float(val))
+        if val == "N/A":
+            return "N/A"
+    except (TypeError, ValueError):
+        pass
+    try:
+        is_na = pd.isna(val)
+        if isinstance(is_na, bool) and is_na:
+            return "N/A"
+        if hasattr(is_na, "item") and not hasattr(is_na, "__len__") and bool(is_na):
+            return "N/A"
+    except (ValueError, TypeError, Exception):
+        pass
+    try:
+        fval = float(val)
+        if math.isnan(fval):
+            return "N/A"
+        if math.isinf(fval):
+            return "Inf" if fval > 0 else "-Inf"
+        return fmt.format(fval)
     except (ValueError, TypeError):
         return str(val)
+
+
+def extract_reasoning_acc_data(df):
+    """Extract reasoning benchmark pass/fail scores for bar charting."""
+    if df is None or getattr(df, "empty", True):
+        return []
+    if "Model" not in df.columns or "KV Quant" not in df.columns:
+        return []
+
+    def _scalar_loc(loc):
+        if isinstance(loc, int):
+            return loc
+        if hasattr(loc, "__iter__"):
+            for idx, val in enumerate(loc):
+                if val:
+                    return idx
+        return int(loc)
+
+    try:
+        model_idx = _scalar_loc(df.columns.get_loc("Model"))
+        kv_idx = _scalar_loc(df.columns.get_loc("KV Quant"))
+    except (KeyError, TypeError, ValueError):
+        return []
+
+    test_indices = {}
+    for test in TEST_SUITES:
+        if test in df.columns:
+            try:
+                test_indices[test] = _scalar_loc(df.columns.get_loc(test))
+            except (KeyError, TypeError, ValueError):
+                continue
+
+    if not test_indices:
+        return []
+
+    acc_data = []
+    for row in df.itertuples(index=False, name=None):
+        for test, t_idx in test_indices.items():
+            val = row[t_idx]
+            if val in PASS_FAIL_STATUSES:
+                acc_data.append({
+                    "Model_Quant": f"{row[model_idx]} ({row[kv_idx]})",
+                    "Test Suite": test,
+                    "Score": 1.0 if val == "Pass" else 0.0
+                })
+    return acc_data
 
 # Inject premium CSS
 st.markdown("""
@@ -614,20 +681,7 @@ with tab_plots:
         with col_plot2:
             st.markdown("#### Reasoning Benchmarks Pass Rates")
             # Map Pass/Fail/NA to numeric values for bar charting
-            acc_data = []
-            model_idx = filtered_df.columns.get_loc('Model')
-            kv_idx = filtered_df.columns.get_loc('KV Quant')
-            test_indices = {test: filtered_df.columns.get_loc(test) for test in TEST_SUITES}
-
-            for row in filtered_df.itertuples(index=False, name=None):
-                for test in TEST_SUITES:
-                    val = row[test_indices[test]]
-                    if val in PASS_FAIL_STATUSES:
-                        acc_data.append({
-                            "Model_Quant": f"{row[model_idx]} ({row[kv_idx]})",
-                            "Test Suite": test,
-                            "Score": 1.0 if val == "Pass" else 0.0
-                        })
+            acc_data = extract_reasoning_acc_data(filtered_df)
             if acc_data:
                 acc_df = pd.DataFrame(acc_data)
                 # Plot summary pass rates
