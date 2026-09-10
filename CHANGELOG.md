@@ -23,6 +23,10 @@ All notable changes to the LLM Benchmarking and Server Router project in this se
 *   **Dead Code Elimination**: Deleted redundant `url_validation.py` duplicate file in favor of centralized `utils.py` (PR #71 / Issue #79).
 *   **Unused Imports**: Cleaned up unused top-level `urllib.parse` and `re` imports, and redundant inner `plotly.graph_objects` import in `dashboard.py` (PR #84 / Issue #83).
 
+### Dependencies
+*   **Requests Upgrade**: Bumped `requests` dependency to `>=2.34.2` (PR #68).
+*   **Streamlit Upgrade**: Bumped `streamlit` dependency to `>=1.63.0` (PR #77).
+
 ## [2026-07-08] - Session Summary
 
 ### Added
