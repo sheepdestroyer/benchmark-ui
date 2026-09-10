@@ -57,6 +57,17 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 
 ---
 
+## Phase 7: Test Coverage Completion & Cache Optimization (Completed 2026-09-11)
+
+- [x] **Run Matrix Test Suite**: 100% test coverage for `run_matrix.py` (PR #100 / Issue #94).
+- [x] **Run Suite Test Suite**: 99% test coverage for `run_suite.py` (PR #101 / Issue #95).
+- [x] **Populate History Test Suite**: 98% test coverage for `populate_history.py` (PR #97 / Issue #96).
+- [x] **Dashboard Path & Corpus Validators**: Comprehensive tests for `validate_gguf_path` and `validate_corpus_name` with symlink and whitespace hardening (PR #98 / Issue #91).
+- [x] **SSRF & Exception Paths Coverage**: 100% test coverage on `utils.py` with multi-IP resolution tests (PR #99 / Issue #92).
+- [x] **Dashboard Run Loading Cache**: `@st.cache_data(ttl=60)` optimization for `load_runs` with fallback support (PR #104 / Issue #93).
+
+---
+
 ## Next Steps / Future Work
 1. **Automated GitHub Actions CI**: Setup `.github/workflows/ci.yml` running `pytest` on PRs and pushes.
 2. **Dynamic Live Telemetry**: Integrate GPU VRAM and temperature metrics directly into the Streamlit UI via NVML.

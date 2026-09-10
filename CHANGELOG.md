@@ -1,8 +1,23 @@
 # Changelog
 
-All notable changes to the LLM Benchmarking and Server Router project in this session are documented below.
+All notable changes to the LLM Benchmarking and Server Router project are documented below.
 
-## [2026-09-10] - Quality Hardening, Test Consolidation & Performance
+## [v0.1.2] - 2026-09-11 - Test Suites, Caching & Validator Hardening
+
+### Added
+*   **Unit Tests for `run_matrix.py` (`test_run_matrix.py`)**: 100% coverage suite testing `TeeLogger` I/O buffering, non-zero exit handling in `restart_router_service`, run identifier matching, corrupt run log parsing, and ISO timestamp error logging (PR #100 / Issue #94).
+*   **Unit Tests for `run_suite.py` (`test_run_suite.py`)**: 99% coverage suite testing model settings endpoint querying, connection timeout/error fallback handling, malformed argument parsing, quantization priority resolution, and atomic history writing (PR #101 / Issue #95).
+*   **Unit Tests for `populate_history.py` (`test_populate_history.py`)**: 98% coverage suite validating synthetic history file generation, schema integrity, and `--force` cleanup safety in isolated temporary directories (PR #97 / Issue #96).
+*   **Unit Tests for Validators (`test_dashboard.py`)**: Added `TestDashboardValidators` validating `validate_gguf_path` existence/file checks, symlink resolution, directory traversal protection against allowed parent bounds, and `validate_corpus_name` basename sanitization (PR #98 / Issue #91).
+*   **Expanded Security & Exception Testing (`test_utils.py`)**: Achieved 100% test coverage on `utils.py`, testing empty/whitespace URLs, unsupported schemes, port boundary validations, multi-IP DNS resolution blocking for SSRF, and private IPv6/IPv4 address ranges (PR #99 / Issue #92).
+
+### Optimized
+*   **Dashboard Run History Caching**: Added `@st.cache_data(ttl=60)` with fallback support to `load_runs` in `dashboard.py`, significantly improving responsiveness during UI reruns and filtering while automatically discovering new runs within 60 seconds (PR #104 / Issue #93).
+
+### Fixed & Hardened
+*   **Corpus Name Whitespace Sanitization**: Hardened `validate_corpus_name` in `dashboard.py` to reject whitespace-only strings and strip leading/trailing whitespace from sanitized basenames, preventing downstream `FileNotFoundError` (PR #98).
+
+## [v0.1.1] - 2026-09-10 - Quality Hardening, Test Consolidation & Performance
 
 ### Added
 *   **Unit Tests for `fmt_num`**: Added comprehensive test cases in `test_dashboard.py` covering formatting of valid floats, integers, negative values, string fallbacks, NaN/Inf, pandas `pd.NA` identity, booleans, and sequences (PR #76 / Issue #81).

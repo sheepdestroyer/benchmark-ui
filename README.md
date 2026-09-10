@@ -177,3 +177,29 @@ The project includes two UI dashboard components:
 2. **Simple Runner UI (`benchmark_ui.py`)**:
    - **Direct Benchmark Trigger**: Lightweight UI interface to select model targets and launch `benchmark.sh` benchmarks directly.
    - **Real-Time Streaming**: Real-time console log streaming and output capture.
+
+---
+
+## Testing
+
+The test suite provides comprehensive unit test coverage across all modules (170+ test cases):
+
+```bash
+# Run all tests
+pytest
+
+# Run tests with coverage breakdown
+pytest --cov=dashboard --cov=utils --cov=run_matrix --cov=run_suite --cov=populate_history --cov-report=term-missing
+```
+
+| Test Suite | Target Module | Scope |
+| :--- | :--- | :--- |
+| `test_dashboard.py` | `dashboard.py` | Caching, validators, presets config, formatters, metrics extraction |
+| `test_utils.py` | `utils.py` | SSRF prevention, IP validation, model name parsing |
+| `test_run_matrix.py` | `run_matrix.py` | `TeeLogger`, service restart, run matching, error logging |
+| `test_run_suite.py` | `run_suite.py` | Model settings retrieval, CLI fallback, atomic file persistence |
+| `test_populate_history.py` | `populate_history.py` | Synthetic run record generation, schema consistency, purge options |
+| `test_advanced_benchmarks.py`| `advanced_benchmarks.py` | Needle, RULER, filler text generation |
+| `test_kld_benchmark.py` | `kld_benchmark.py` | Quantization loss, perplexity calculation |
+| `test_benchmark_ui.py` | `benchmark_ui.py` | UI runner rendering and launch commands |
+
