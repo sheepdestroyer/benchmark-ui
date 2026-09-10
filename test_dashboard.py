@@ -1,6 +1,7 @@
 import unittest
 import sys
 from unittest.mock import MagicMock, patch
+import pandas as pd
 
 class DictWithDefault(dict):
     def __getattr__(self, name):
@@ -98,7 +99,6 @@ modules_patcher = patch.dict(
     sys.modules,
     {
         "streamlit": mock_st,
-        "pandas": MagicMock(),
         "plotly": MagicMock(),
         "plotly.express": MagicMock(),
         "plotly.graph_objects": MagicMock(),
@@ -203,6 +203,27 @@ class TestDashboard(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
+
+
+class TestFmtNum(unittest.TestCase):
+    def test_valid_numbers_and_custom_formats(self):
+        self.assertEqual(dashboard.fmt_num(10), "10.00")
+        self.assertEqual(dashboard.fmt_num(12.3456), "12.35")
+        self.assertEqual(dashboard.fmt_num("123.456"), "123.46")
+        self.assertEqual(dashboard.fmt_num(12.3456, "{:.1f}"), "12.3")
+        self.assertEqual(dashboard.fmt_num(12.3456, "{:.3f}"), "12.346")
+        self.assertEqual(dashboard.fmt_num(12.3456, "{:.2f}%"), "12.35%")
+
+    def test_non_numeric_and_invalid_data_types(self):
+        self.assertEqual(dashboard.fmt_num("invalid_string"), "invalid_string")
+        self.assertEqual(dashboard.fmt_num("abc"), "abc")
+
+    def test_none_and_na_edge_cases(self):
+        self.assertEqual(dashboard.fmt_num(None), "N/A")
+        self.assertEqual(dashboard.fmt_num("N/A"), "N/A")
+        self.assertEqual(dashboard.fmt_num(float("nan")), "N/A")
+        self.assertEqual(dashboard.fmt_num(pd.NA), "N/A")
+
 
 if __name__ == "__main__":
     unittest.main()
