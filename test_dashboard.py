@@ -1,3 +1,4 @@
+import configparser
 import unittest
 import sys
 from unittest.mock import MagicMock, patch
@@ -203,6 +204,111 @@ class TestDashboard(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
+
+
+
+class TestPresetConfig(unittest.TestCase):
+    def setUp(self):
+        dashboard._get_presets_config.cache_clear()
+
+    def tearDown(self):
+        dashboard._get_presets_config.cache_clear()
+
+    @patch('os.path.exists', return_value=False)
+    def test_get_presets_config_missing_file(self, mock_exists):
+        config = dashboard._get_presets_config()
+        self.assertIsNone(config)
+
+    @patch('os.path.exists', return_value=True)
+    def test_get_presets_config_syntax_error(self, mock_exists):
+        with patch('configparser.ConfigParser.read', side_effect=configparser.ParsingError('Invalid INI')):
+            config = dashboard._get_presets_config()
+            self.assertIsNone(config)
+
+    @patch('os.path.exists', return_value=True)
+    def test_get_presets_config_caching(self, mock_exists):
+        sample_ini = """
+[*]
+flash-attn = true
+
+[my-model]
+alias = MyModel
+hf-repo = org/my-model
+parallel = 2
+"""
+        with patch('configparser.ConfigParser.read') as mock_read:
+            def fake_read(filenames, encoding=None):
+                # simulate successful read by populating sections
+                return [filenames]
+            mock_read.side_effect = fake_read
+            
+            c1 = dashboard._get_presets_config()
+            c2 = dashboard._get_presets_config()
+            self.assertIs(c1, c2)
+            self.assertEqual(mock_read.call_count, 1)
+
+    def test_map_repo_to_preset_alias_missing_config(self):
+        with patch.object(dashboard, '_get_presets_config', return_value=None):
+            self.assertEqual(dashboard.map_repo_to_preset_alias('unknown/model'), 'unknown/model')
+            # Fallbacks should still work
+            self.assertEqual(dashboard.map_repo_to_preset_alias('qwen3.6-27b-gguf:q4_k_s'), 'Qwen3.6-27B')
+            self.assertEqual(dashboard.map_repo_to_preset_alias('qwen3.6-27b-mtp-gguf:q4_k_s'), 'Qwen3.6-27B-spec3')
+            self.assertEqual(dashboard.map_repo_to_preset_alias('qwen3.6-35b-a3b-gguf:q4_k_s'), 'Qwen3.6-35B-A3B')
+            self.assertEqual(dashboard.map_repo_to_preset_alias('gemma-4-test'), 'gemma4-26a4b-routing')
+            self.assertIsNone(dashboard.map_repo_to_preset_alias(None))
+
+    def test_map_repo_to_preset_alias_with_config(self):
+        cp = configparser.ConfigParser()
+        cp.read_string("""
+[exact-model]
+alias = ExactModel
+hf-repo = org/exact-model
+
+[mtp-spec-model]
+alias = MTPSpec
+hf-repo = org/some-repo
+
+[base-model]
+alias = BaseAlias
+hf-repo = org/some-repo
+""")
+        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+            # Exact section match
+            self.assertEqual(dashboard.map_repo_to_preset_alias('exact-model'), 'exact-model')
+            # Substring alias match
+            self.assertEqual(dashboard.map_repo_to_preset_alias('prefix/ExactModel-extra'), 'exact-model')
+            # Repo match with mtp/spec condition
+            self.assertEqual(dashboard.map_repo_to_preset_alias('org/some-repo-mtp'), 'mtp-spec-model')
+            self.assertEqual(dashboard.map_repo_to_preset_alias('org/some-repo-standard'), 'base-model')
+            # Unmatched returns input
+            self.assertEqual(dashboard.map_repo_to_preset_alias('unknown-other'), 'unknown-other')
+
+    def test_get_preset_metadata_missing_config(self):
+        with patch.object(dashboard, '_get_presets_config', return_value=None):
+            meta = dashboard.get_preset_metadata('any-model')
+            self.assertEqual(meta['parallel'], '1')
+            self.assertEqual(meta['flash_attn'], 'true')
+            self.assertEqual(meta['spec_type'], 'None')
+
+    def test_get_preset_metadata_with_config(self):
+        cp = configparser.ConfigParser()
+        cp.read_string("""
+[*]
+flash-attn = false
+global-param = global_val
+
+[custom-model]
+parallel = 4
+spec-type = draft
+""")
+        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+            meta = dashboard.get_preset_metadata('custom-model')
+            self.assertEqual(meta['flash_attn'], 'false')
+            self.assertEqual(meta['global_param'], 'global_val')
+            self.assertEqual(meta['parallel'], '4')
+            self.assertEqual(meta['spec_type'], 'draft')
+            # Default retained if not overridden
+            self.assertEqual(meta['n_gpu_layers'], '99')
 
 if __name__ == "__main__":
     unittest.main()
