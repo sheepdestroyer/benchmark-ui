@@ -1,4 +1,5 @@
 import configparser
+import json
 import os
 from pathlib import Path
 import sys
@@ -431,6 +432,218 @@ class TestExtractReasoningAccData(unittest.TestCase):
         self.assertEqual(res[0]["Model_Quant"], "Model-A (q4)")
 
 
+class TestLoadRuns(unittest.TestCase):
+    def setUp(self):
+        dashboard.st.error.reset_mock()
+        dashboard.load_runs.clear()
+
+    def tearDown(self):
+        dashboard.load_runs.clear()
+
+    def test_load_runs_caching_and_clear(self):
+        with patch.object(dashboard.Path, "glob") as mock_glob:
+            mock_glob.return_value = []
+
+            # First call executes glob
+            res1 = dashboard.load_runs()
+            self.assertEqual(mock_glob.call_count, 1)
+
+            # Second call hits cache without calling glob
+            res2 = dashboard.load_runs()
+            self.assertEqual(mock_glob.call_count, 1)
+            self.assertIs(res1, res2)
+
+            # Calling clear() busts the cache
+            dashboard.load_runs.clear()
+            res3 = dashboard.load_runs()
+            self.assertEqual(mock_glob.call_count, 2)
+
+    def test_load_runs_ttl_expiration(self):
+        with patch.object(dashboard.Path, "glob") as mock_glob:
+            mock_glob.return_value = []
+
+            current_time = 1000.0
+            with patch.object(dashboard.time, "time", side_effect=lambda: current_time):
+                dashboard.load_runs()
+                self.assertEqual(mock_glob.call_count, 1)
+
+                # Advance time by 30 seconds (still valid, ttl=60)
+                current_time = 1030.0
+                dashboard.load_runs()
+                self.assertEqual(mock_glob.call_count, 1)
+
+                # Advance time by 61 seconds (expired, should re-query)
+                current_time = 1061.0
+                dashboard.load_runs()
+                self.assertEqual(mock_glob.call_count, 2)
+
+    def test_load_runs_corrupted_json_handling(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            valid_run = tmp_path / "run_2026-01-01T00-00-00.json"
+            valid_run.write_text(json.dumps({
+                "run_metadata": {"timestamp": "2026-01-01T00:00:00", "target_endpoint": "http://localhost:8080"},
+                "model_settings": {"profile_alias": "test-model", "base_quantization": "Q4_K_S"},
+                "throughput_metrics": {"prefill_speed": 120.0, "decode_speed": 35.0},
+                "reasoning_accuracy": {"needle": "Pass"},
+                "quantization_loss": {"perplexity": 5.4}
+            }))
+
+            corrupted_run = tmp_path / "run_corrupted.json"
+            corrupted_run.write_text("{invalid json: error")
+
+            old_dir = dashboard.HISTORY_DIR
+            dashboard.HISTORY_DIR = tmp_path
+            try:
+                with patch.object(dashboard.pd, "DataFrame") as mock_df_ctor:
+                    mock_df = MagicMock()
+                    mock_df.empty = False
+                    mock_df_ctor.return_value = mock_df
+
+                    res = dashboard.load_runs()
+                    self.assertIs(res, mock_df.sort_values().reset_index())
+
+                    # Verify st.error was called for the corrupted file
+                    dashboard.st.error.assert_called()
+                    error_msg = dashboard.st.error.call_args[0][0]
+                    self.assertIn("run_corrupted.json", error_msg)
+
+                    # Verify pd.DataFrame was called with the valid run
+                    self.assertEqual(mock_df_ctor.call_count, 1)
+                    parsed_runs = mock_df_ctor.call_args[0][0]
+                    self.assertEqual(len(parsed_runs), 1)
+                    self.assertEqual(parsed_runs[0]["Filename"], "run_2026-01-01T00-00-00.json")
+                    self.assertEqual(parsed_runs[0]["Model"], "test-model")
+                    self.assertEqual(parsed_runs[0]["Base Quant"], "Q4_K_S")
+                    self.assertEqual(parsed_runs[0]["Prefill (t/s)"], 120.0)
+            finally:
+                dashboard.HISTORY_DIR = old_dir
+
+    def test_load_runs_return_type_and_empty_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_dir = dashboard.HISTORY_DIR
+            dashboard.HISTORY_DIR = Path(tmpdir)
+            try:
+                with patch.object(dashboard.pd, "DataFrame") as mock_df_ctor:
+                    mock_df = MagicMock()
+                    mock_df.empty = True
+                    mock_df_ctor.return_value = mock_df
+
+                    res = dashboard.load_runs()
+                    self.assertIs(res, mock_df)
+                    mock_df_ctor.assert_called_once_with([])
+            finally:
+                dashboard.HISTORY_DIR = old_dir
+
+    def test_load_runs_complex_parsing_and_defaults(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            run_file = tmp_path / "run_complex.json"
+            run_file.write_text(json.dumps({
+                "run_metadata": {
+                    "timestamp": "2026-09-11T00:00:00",
+                    "target_endpoint": "http://localhost:8080",
+                    "cli_arguments": ["--tokens", "65536"]
+                },
+                "model_settings": {
+                    "model_name": "/models/qwen-spec4-UD-Q4_K_S.gguf",
+                    "base_quantization": "Unknown",
+                    "kv_cache_quant": "q4_0",
+                    "threads": 8,
+                    "ubatch_size": 512,
+                    "batch_size": 2048,
+                    "spec_type": "draft",
+                    "spec_draft_type_k": "q4_0",
+                    "spec_draft_type_v": "q4_0",
+                    "flash_attn": "true",
+                    "parallel": "2",
+                    "fit": "true"
+                },
+                "throughput_metrics": {"prefill_speed": 150.0, "decode_speed": 40.0, "ttft": 0.12},
+                "reasoning_accuracy": {"needle": "Pass", "ruler": 0.95, "longbench": 0.88, "swe_bench": "N/A"},
+                "quantization_loss": {"perplexity": 4.5, "mean_kld": 0.02, "same_top_match_percent": 98.5}
+            }))
+
+            old_dir = dashboard.HISTORY_DIR
+            dashboard.HISTORY_DIR = tmp_path
+            try:
+                with patch.object(dashboard.pd, "DataFrame") as mock_df_ctor:
+                    mock_df = MagicMock()
+                    mock_df.empty = False
+                    mock_df_ctor.return_value = mock_df
+
+                    res = dashboard.load_runs()
+                    self.assertIs(res, mock_df.sort_values().reset_index())
+                    self.assertEqual(mock_df_ctor.call_count, 1)
+                    parsed_runs = mock_df_ctor.call_args[0][0]
+                    self.assertEqual(len(parsed_runs), 1)
+                    r = parsed_runs[0]
+                    self.assertEqual(r["Context Length"], 65536)
+                    self.assertEqual(r["Base Quant"], "Q4_K_S")
+                    self.assertEqual(r["Threads"], 8)
+                    self.assertEqual(r["Ubatch Size"], 512)
+                    self.assertEqual(r["Batch Size"], 2048)
+            finally:
+                dashboard.HISTORY_DIR = old_dir
+
+    def test_is_mock_utility(self):
+        self.assertTrue(dashboard._is_mock(MagicMock()))
+        self.assertTrue(dashboard._is_mock(unittest.mock.Mock()))
+        self.assertTrue(dashboard._is_mock(unittest.mock.NonCallableMagicMock()))
+
+        class CustomMockLike:
+            _mock_return_value = True
+
+        self.assertTrue(dashboard._is_mock(CustomMockLike()))
+
+        def regular_func():
+            pass
+
+        self.assertFalse(dashboard._is_mock(regular_func))
+        self.assertFalse(dashboard._is_mock(123))
+        self.assertFalse(dashboard._is_mock("string"))
+
+    def test_fallback_cache_data_direct(self):
+        call_count = 0
+
+        @dashboard._fallback_cache_data
+        def simple_cached(x):
+            nonlocal call_count
+            call_count += 1
+            return x * 2
+
+        self.assertEqual(simple_cached(5), 10)
+        self.assertEqual(simple_cached(5), 10)
+        self.assertEqual(call_count, 1)
+
+        simple_cached.clear()
+        self.assertEqual(simple_cached(5), 10)
+        self.assertEqual(call_count, 2)
+
+    def test_fallback_cache_data_with_ttl(self):
+        call_count = 0
+        current_time = 100.0
+
+        with patch.object(dashboard.time, "time", side_effect=lambda: current_time):
+            @dashboard._fallback_cache_data(ttl=10)
+            def simple_cached_ttl(x):
+                nonlocal call_count
+                call_count += 1
+                return x * 3
+
+            self.assertEqual(simple_cached_ttl(4), 12)
+            self.assertEqual(simple_cached_ttl(4), 12)
+            self.assertEqual(call_count, 1)
+
+            # Advance by 5s (still valid)
+            current_time = 105.0
+            self.assertEqual(simple_cached_ttl(4), 12)
+            self.assertEqual(call_count, 1)
+
+            # Advance by 11s (expired)
+            current_time = 111.0
+            self.assertEqual(simple_cached_ttl(4), 12)
+            self.assertEqual(call_count, 2)
 
 
 class TestDashboardValidators(unittest.TestCase):
@@ -529,7 +742,6 @@ class TestDashboardValidators(unittest.TestCase):
         self.assertEqual(dashboard.validate_corpus_name("/path/to/kld_corpus.txt"), "kld_corpus.txt")
         self.assertEqual(dashboard.validate_corpus_name("corpora/nested/dataset.csv"), "dataset.csv")
         self.assertEqual(dashboard.validate_corpus_name("./local/dir/test_corpus"), "test_corpus")
-
 
 
 if __name__ == "__main__":
