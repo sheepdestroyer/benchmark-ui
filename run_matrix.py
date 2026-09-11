@@ -6,6 +6,8 @@ import datetime
 import subprocess
 import time
 import atexit
+import functools
+import configparser
 from pathlib import Path
 
 BENCH_DIR = Path(__file__).parent.resolve()
@@ -155,23 +157,34 @@ def extract_run_identifiers(data, presets_sections=None):
         return (profile, ctx)
     return None
 
+@functools.lru_cache(maxsize=4)
+def load_presets_sections(presets_file=None):
+    """Load sections from model_presets.ini with LRU caching."""
+    target_file = presets_file
+    if target_file is None:
+        target_file = os.environ.get(
+            "PRESETS_FILE",
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+        )
+    target_file = str(target_file)
+    if not os.path.exists(target_file):
+        return set()
+
+    try:
+        config = configparser.ConfigParser(strict=False)
+        config.read(target_file, encoding="utf-8")
+        return set(config.sections())
+    except Exception:
+        return set()
+
+
 def get_completed_runs(presets_file=None):
     completed = set()
     if not HISTORY_DIR.exists():
         return completed
     
-    # Read model_presets to support mapping if needed
-    if presets_file is None:
-        presets_file = os.environ.get("PRESETS_FILE", os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini")))
-    presets_sections = set()
-    if os.path.exists(presets_file):
-        try:
-            import configparser
-            config = configparser.ConfigParser(strict=False)
-            config.read(presets_file)
-            presets_sections = set(config.sections())
-        except Exception:
-            pass
+    # Read model_presets to support mapping if needed (cached)
+    presets_sections = load_presets_sections(presets_file)
 
     for filepath in HISTORY_DIR.glob("run_*.json"):
         # Filter out individual KLD files (which end in quantization formats, e.g. _f16.json)

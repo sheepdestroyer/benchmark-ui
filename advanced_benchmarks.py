@@ -9,6 +9,8 @@ import os
 import subprocess
 import shutil
 import ast
+import functools
+import configparser
 
 # Pre-built mapping of (lowercase_search_string, canonical_quantization)
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
@@ -414,37 +416,62 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
 # MAIN RUNNER
 # ==============================================================================
 
-def map_repo_to_preset_alias(repo_or_id):
-    presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-    if not os.path.exists(presets_file):
-        return repo_or_id
-        
+@functools.lru_cache(maxsize=4)
+def load_presets_config(presets_file=None):
+    """Load and parse model_presets.ini with LRU caching."""
+    target_file = presets_file
+    if target_file is None:
+        target_file = os.environ.get(
+            "PRESETS_FILE",
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+        )
+    target_file = str(target_file)
+    if not os.path.exists(target_file):
+        return None
+
     try:
-        import configparser
         config = configparser.ConfigParser(strict=False)
-        config.read(presets_file)
-        
+        config.read(target_file, encoding="utf-8")
+        return config
+    except Exception:
+        return None
+
+_get_presets_config = load_presets_config
+
+
+@functools.lru_cache(maxsize=128)
+def map_repo_to_preset_alias(repo_or_id, presets_file=None):
+    """Map model repository or ID string to preset alias defined in model_presets.ini."""
+    if not repo_or_id or not isinstance(repo_or_id, str):
+        return repo_or_id
+
+    config = load_presets_config(presets_file)
+    if config is None:
+        return repo_or_id
+
+    try:
         for section in config.sections():
             if section.lower() == repo_or_id.lower():
                 return section
-                
+
         for section in config.sections():
             if section == "*":
                 continue
             section_repo = config.get(section, "hf-repo", fallback="")
             section_alias = config.get(section, "alias", fallback="")
-            
+
             if section_repo and section_repo.lower() == repo_or_id.lower():
                 return section
-                    
+
             if section_alias and section_alias.lower() == repo_or_id.lower():
                 return section
     except Exception:
         pass
-        
+
     return repo_or_id
 
-def get_preset_metadata(profile_name):
+
+def get_preset_metadata(profile_name, presets_file=None):
     metadata = {
         "spec_type": "None",
         "spec_draft_type_k": "None",
@@ -454,20 +481,16 @@ def get_preset_metadata(profile_name):
         "n_gpu_layers": "99",
         "fit": "true"
     }
-    
-    presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-    if os.path.exists(presets_file):
+
+    config = load_presets_config(presets_file)
+    if config:
         try:
-            import configparser
-            config = configparser.ConfigParser(strict=False)
-            config.read(presets_file)
-            
             # Load globals if they exist
             if "*" in config.sections():
                 for key in config["*"]:
                     clean_key = key.replace("-", "_")
                     metadata[clean_key] = config["*"][key]
-                    
+
             # Load specific section
             if profile_name in config.sections():
                 for key in config[profile_name]:
@@ -475,7 +498,7 @@ def get_preset_metadata(profile_name):
                     metadata[clean_key] = config[profile_name][key]
         except Exception:
             pass
-            
+
     return metadata
 
 def get_model_settings_from_endpoint(endpoint, target_model):

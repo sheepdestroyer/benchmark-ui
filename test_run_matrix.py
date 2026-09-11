@@ -326,6 +326,11 @@ class TestExtractRunIdentifiers(unittest.TestCase):
 
 
 class TestGetCompletedRuns(unittest.TestCase):
+    def setUp(self):
+        run_matrix.load_presets_sections.cache_clear()
+
+    def tearDown(self):
+        run_matrix.load_presets_sections.cache_clear()
     def test_history_dir_not_exists(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -418,6 +423,87 @@ class TestGetCompletedRuns(unittest.TestCase):
                 completed = run_matrix.get_completed_runs(presets_file=str(presets_file))
                 self.assertEqual(completed, {("NormalModel", 8192)})
 
+
+
+
+class TestLoadPresetsSections(unittest.TestCase):
+    def setUp(self):
+        run_matrix.load_presets_sections.cache_clear()
+
+    def tearDown(self):
+        run_matrix.load_presets_sections.cache_clear()
+
+    def test_load_presets_sections_caching(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[ModelA]\nthreads = 4\n[ModelB]\nthreads = 8\n", encoding="utf-8")
+
+            res1 = run_matrix.load_presets_sections(str(presets_file))
+            res2 = run_matrix.load_presets_sections(str(presets_file))
+            self.assertEqual(res1, {"ModelA", "ModelB"})
+            self.assertEqual(res2, {"ModelA", "ModelB"})
+            self.assertEqual(run_matrix.load_presets_sections.cache_info().hits, 1)
+
+    def test_load_presets_sections_nonexistent_file(self):
+        res = run_matrix.load_presets_sections("/nonexistent/file/path/model_presets.ini")
+        self.assertEqual(res, set())
+
+    def test_load_presets_sections_matching_section(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[Alpha]\n[Beta]\n", encoding="utf-8")
+
+            res = run_matrix.load_presets_sections(presets_file)
+            self.assertEqual(res, {"Alpha", "Beta"})
+
+    def test_load_presets_sections_fallback_corrupt(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "corrupt.ini"
+            presets_file.write_text("corrupted section without closing", encoding="utf-8")
+
+            res = run_matrix.load_presets_sections(str(presets_file))
+            self.assertEqual(res, set())
+
+    def test_load_presets_sections_default_env_var(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[EnvModel]\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"PRESETS_FILE": str(presets_file)}):
+                run_matrix.load_presets_sections.cache_clear()
+                res = run_matrix.load_presets_sections(None)
+                self.assertEqual(res, {"EnvModel"})
+
+    def test_load_presets_sections_default_nonexistent(self):
+        with patch.dict(os.environ, {"PRESETS_FILE": "/nonexistent/presets.ini"}):
+            run_matrix.load_presets_sections.cache_clear()
+            res = run_matrix.load_presets_sections(None)
+            self.assertEqual(res, set())
+
+    def test_get_completed_runs_caching(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            hist_dir = Path(tmp_dir) / "history"
+            hist_dir.mkdir()
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[Qwen3.6-27B]\nthreads = 8\n", encoding="utf-8")
+
+            run_file = hist_dir / "run_cached.json"
+            run_file.write_text(json.dumps({
+                "run_metadata": {"cli_arguments": ["--model", "unsloth/qwen3.6-27b", "--tokens", "8192"]}
+            }), encoding="utf-8")
+
+            with patch("run_matrix.HISTORY_DIR", hist_dir):
+                run_matrix.load_presets_sections.cache_clear()
+                runs1 = run_matrix.get_completed_runs(presets_file=str(presets_file))
+                runs2 = run_matrix.get_completed_runs(presets_file=str(presets_file))
+                self.assertEqual(runs1, {("Qwen3.6-27B", 8192)})
+                self.assertEqual(runs2, {("Qwen3.6-27B", 8192)})
+                self.assertEqual(run_matrix.load_presets_sections.cache_info().hits, 1)
 
 class TestRunMatrix(unittest.TestCase):
     def setUp(self):
