@@ -19,37 +19,88 @@ SWE_BENCH_KEYS = {"swe-bench", "swe_bench"}
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
 QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
 
+DANGEROUS_MODULES = {
+    'os', 'sys', 'subprocess', 'shutil', 'socket', 'pty', 'posix', 'builtins',
+    '_frozen_importlib', 'importlib', 'ctypes', 'inspect', 'pickle', 'shelve',
+    'multiprocessing', 'threading', 'signal'
+}
+
+DANGEROUS_BUILTINS = {
+    'eval', 'exec', 'open', 'compile', 'getattr', 'setattr', 'delattr',
+    'input', 'breakpoint'
+}
+
+def _get_attribute_full_path(node):
+    parts = []
+    curr = node
+    while isinstance(curr, ast.Attribute):
+        parts.append(curr.attr)
+        curr = curr.value
+    if isinstance(curr, ast.Name):
+        parts.append(curr.id)
+        return ".".join(reversed(parts)), curr.id
+    return None, None
+
 def is_safe_code(code_str):
     try:
         tree = ast.parse(code_str)
     except SyntaxError as e:
         return False, f"Syntax error: {e}"
-
-    dangerous_names = {'os.system', 'shutil.rmtree', 'eval', 'exec', 'subprocess', 'socket'}
-    dangerous_modules = {'subprocess', 'socket'}
+    except (TypeError, ValueError) as e:
+        return False, f"Invalid code input: {e}"
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
+                if '__' in alias.name:
+                    return False, f"Forbidden import: {alias.name}"
+                if alias.asname and '__' in alias.asname:
+                    return False, f"Forbidden alias: {alias.asname}"
                 mod = alias.name.split('.')[0]
-                if mod in dangerous_modules or alias.name in dangerous_names:
+                if mod in DANGEROUS_MODULES or alias.name in DANGEROUS_MODULES:
                     return False, f"Forbidden import: {alias.name}"
         elif isinstance(node, ast.ImportFrom):
-            mod = (node.module or '').split('.')[0]
-            if mod in dangerous_modules:
-                return False, f"Forbidden import module: {node.module}"
+            if node.module:
+                if '__' in node.module:
+                    return False, f"Forbidden import module: {node.module}"
+                mod = node.module.split('.')[0]
+                if mod in DANGEROUS_MODULES or node.module in DANGEROUS_MODULES:
+                    return False, f"Forbidden import module: {node.module}"
             for alias in node.names:
-                full_import = f"{node.module}.{alias.name}"
-                if full_import in dangerous_names or alias.name in ('eval', 'exec', 'subprocess', 'socket'):
-                    return False, f"Forbidden import: {full_import}"
+                if '__' in alias.name:
+                    return False, f"Forbidden import: {alias.name}"
+                if alias.asname and '__' in alias.asname:
+                    return False, f"Forbidden alias: {alias.asname}"
+                if alias.name in DANGEROUS_MODULES:
+                    return False, f"Forbidden import: {alias.name}"
+                if alias.name in DANGEROUS_BUILTINS:
+                    return False, f"Forbidden import: {alias.name}"
+                if node.module:
+                    full_import = f"{node.module}.{alias.name}"
+                    if full_import in DANGEROUS_MODULES:
+                        return False, f"Forbidden import: {full_import}"
         elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name):
-                full_attr = f"{node.value.id}.{node.attr}"
-                if full_attr in dangerous_names:
-                    return False, f"Forbidden attribute usage: {full_attr}"
+            if node.attr.startswith('__'):
+                return False, f"Forbidden dunder attribute: {node.attr}"
+            full_path, root = _get_attribute_full_path(node)
+            if root and root in DANGEROUS_MODULES:
+                return False, f"Forbidden attribute usage: {full_path}"
         elif isinstance(node, ast.Name):
-            if node.id in ('eval', 'exec', 'subprocess', 'socket'):
+            if node.id.startswith('__'):
+                return False, f"Forbidden dunder identifier: {node.id}"
+            if node.id in DANGEROUS_BUILTINS:
                 return False, f"Forbidden identifier usage: {node.id}"
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id.startswith('__'):
+                    return False, f"Forbidden dunder identifier: {node.func.id}"
+                if node.func.id in DANGEROUS_BUILTINS:
+                    return False, f"Forbidden identifier usage: {node.func.id}"
+            elif isinstance(node.func, ast.Attribute):
+                if node.func.attr.startswith('__'):
+                    return False, f"Forbidden dunder attribute: {node.func.attr}"
+                if node.func.attr in DANGEROUS_BUILTINS:
+                    return False, f"Forbidden call: {node.func.attr}"
 
     return True, None
 
