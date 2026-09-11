@@ -19,37 +19,64 @@ SWE_BENCH_KEYS = {"swe-bench", "swe_bench"}
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
 QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
 
+FORBIDDEN_DUNDERS = {
+    '__builtins__', '__import__', '__subclasses__', '__globals__', '__code__',
+    '__class__', '__base__', '__bases__', '__mro__', '__reduce__', '__reduce_ex__',
+    '__getattribute__', '__getattr__', '__setattr__', '__delattr__', '__dict__',
+    '__init__', '__call__', '__closure__', '__self__', '__func__', '__module__',
+    '__qualname__', '__name__', '__doc__', '__annotations__', '__kwdefaults__',
+    '__defaults__', '__file__', '__loader__', '__package__', '__spec__',
+    '__path__', '__cached__'
+}
+
+FORBIDDEN_MODULES = {
+    'os', 'sys', 'shutil', 'subprocess', 'socket', 'pty', 'ctypes', 'posix',
+    'builtins', 'importlib', 'signal', 'pathlib', 'tempfile', 'multiprocessing',
+    'threading', 'asyncio', 'platform', 'gc', 'resource', 'site', 'code',
+    'codeop', 'inspect', 'dis', 'pickle', 'cpickle', 'marshal', 'shelve',
+    'dbm', 'webbrowser', 'urllib', 'http', 'ftplib', 'poplib', 'imaplib',
+    'smtplib', 'telnetlib', 'xmlrpc', 'ipaddress', 'ssl', 'sysconfig'
+}
+
+FORBIDDEN_FUNCTIONS = {
+    'eval', 'exec', 'open', 'compile', 'getattr', 'setattr', 'delattr',
+    '__import__', 'exit', 'quit', 'input', 'help', 'breakpoint',
+    'globals', 'locals', 'vars'
+}
+
 def is_safe_code(code_str):
     try:
         tree = ast.parse(code_str)
     except SyntaxError as e:
         return False, f"Syntax error: {e}"
 
-    dangerous_names = {'os.system', 'shutil.rmtree', 'eval', 'exec', 'subprocess', 'socket'}
-    dangerous_modules = {'subprocess', 'socket'}
+    def is_dunder(name):
+        return (name.startswith('__') and name.endswith('__')) or name in FORBIDDEN_DUNDERS
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 mod = alias.name.split('.')[0]
-                if mod in dangerous_modules or alias.name in dangerous_names:
+                if mod in FORBIDDEN_MODULES or alias.name in FORBIDDEN_FUNCTIONS or is_dunder(alias.name):
                     return False, f"Forbidden import: {alias.name}"
         elif isinstance(node, ast.ImportFrom):
             mod = (node.module or '').split('.')[0]
-            if mod in dangerous_modules:
+            if mod in FORBIDDEN_MODULES or is_dunder(mod):
                 return False, f"Forbidden import module: {node.module}"
             for alias in node.names:
-                full_import = f"{node.module}.{alias.name}"
-                if full_import in dangerous_names or alias.name in ('eval', 'exec', 'subprocess', 'socket'):
+                full_import = f"{node.module}.{alias.name}" if node.module else alias.name
+                if alias.name in FORBIDDEN_FUNCTIONS or alias.name in FORBIDDEN_MODULES or is_dunder(alias.name) or full_import in FORBIDDEN_FUNCTIONS:
                     return False, f"Forbidden import: {full_import}"
         elif isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name):
-                full_attr = f"{node.value.id}.{node.attr}"
-                if full_attr in dangerous_names:
-                    return False, f"Forbidden attribute usage: {full_attr}"
+            if is_dunder(node.attr) or node.attr in FORBIDDEN_FUNCTIONS or node.attr in FORBIDDEN_MODULES:
+                return False, f"Forbidden attribute usage: {node.attr}"
         elif isinstance(node, ast.Name):
-            if node.id in ('eval', 'exec', 'subprocess', 'socket'):
+            if is_dunder(node.id) or node.id in FORBIDDEN_FUNCTIONS or node.id in FORBIDDEN_MODULES:
                 return False, f"Forbidden identifier usage: {node.id}"
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            val = node.value
+            if is_dunder(val) or val in FORBIDDEN_FUNCTIONS or val in FORBIDDEN_MODULES:
+                return False, f"Forbidden constant usage: {val}"
 
     return True, None
 
