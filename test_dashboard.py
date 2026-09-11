@@ -652,8 +652,8 @@ class TestDashboardValidators(unittest.TestCase):
         self.assertEqual(dashboard.validate_gguf_path(""), "")
 
     def test_validate_gguf_path_existing_allowed_file(self):
-        # Tempfile inside cwd
-        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as tmp:
+        # Tempfile inside cwd with .gguf suffix
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as tmp:
             self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
 
         # Relative path inside cwd
@@ -662,17 +662,36 @@ class TestDashboardValidators(unittest.TestCase):
             self.assertEqual(dashboard.validate_gguf_path(rel_name), str(Path(tmp.name).resolve()))
 
         # Tempfile inside Path(__file__).parent
-        with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve()) as tmp:
+        with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve(), suffix=".gguf") as tmp:
             self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
 
-        # Tempfile inside patched Path.home() temporary directory (without touching user home)
+        # Tempfile inside allowed home subdirectories (.cache and models)
         with tempfile.TemporaryDirectory() as fake_home:
+            cache_dir = Path(fake_home) / ".cache"
+            models_dir = Path(fake_home) / "models"
+            cache_dir.mkdir()
+            models_dir.mkdir()
             with patch.object(Path, "home", return_value=Path(fake_home)):
-                with tempfile.NamedTemporaryFile(dir=fake_home) as tmp:
-                    self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+                with tempfile.NamedTemporaryFile(dir=cache_dir, suffix=".GGUF") as tmp_cache:
+                    self.assertEqual(dashboard.validate_gguf_path(tmp_cache.name), str(Path(tmp_cache.name).resolve()))
+                with tempfile.NamedTemporaryFile(dir=models_dir, suffix=".gguf") as tmp_models:
+                    self.assertEqual(dashboard.validate_gguf_path(tmp_models.name), str(Path(tmp_models.name).resolve()))
+
+    def test_validate_gguf_path_invalid_extension(self):
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".bin") as tmp:
+            with self.assertRaisesRegex(ValueError, r"must have a \.gguf extension"):
+                dashboard.validate_gguf_path(tmp.name)
+
+    def test_validate_gguf_path_home_direct_file_restricted(self):
+        with tempfile.TemporaryDirectory() as fake_home:
+            home_file = Path(fake_home) / "secret.gguf"
+            home_file.write_text("dummy model content")
+            with patch.object(Path, "home", return_value=Path(fake_home)):
+                with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
+                    dashboard.validate_gguf_path(str(home_file))
 
     def test_validate_gguf_path_symlink(self):
-        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as target:
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as target:
             symlink = Path.cwd() / f"test_symlink_{os.path.basename(target.name)}.gguf"
             try:
                 symlink.symlink_to(target.name)
@@ -706,6 +725,23 @@ class TestDashboardValidators(unittest.TestCase):
                      patch.object(Path, "home", return_value=Path(mock_parent_dir)):
                     with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
                         dashboard.validate_gguf_path(str(outside_file))
+
+    def test_validate_tokens_valid(self):
+        self.assertEqual(dashboard.validate_tokens(1), 1)
+        self.assertEqual(dashboard.validate_tokens(5000), 5000)
+        self.assertEqual(dashboard.validate_tokens(262144), 262144)
+        self.assertEqual(dashboard.validate_tokens(1000.0), 1000)
+        self.assertEqual(dashboard.validate_tokens("10000"), 10000)
+
+    def test_validate_tokens_invalid(self):
+        invalid_tokens = [
+            0, -1, -500, 262145, 500000,
+            10.5, 5000.1, "abc", None, True, False
+        ]
+        for val in invalid_tokens:
+            with self.subTest(val=val):
+                with self.assertRaises(ValueError):
+                    dashboard.validate_tokens(val)
 
     def test_validate_corpus_name_valid(self):
         self.assertEqual(dashboard.validate_corpus_name("kld_corpus.txt"), "kld_corpus.txt")
