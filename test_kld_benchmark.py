@@ -2,8 +2,8 @@ import os
 import subprocess
 import unittest
 import math
-from unittest.mock import patch, MagicMock
-from kld_benchmark import sanitize_nan_inf, compile_perplexity_binary
+from unittest.mock import patch, MagicMock, call
+from kld_benchmark import sanitize_nan_inf, parse_metrics, compile_perplexity_binary
 
 
 class TestKldBenchmark(unittest.TestCase):
@@ -43,8 +43,6 @@ class TestKldBenchmark(unittest.TestCase):
             "dict": {"nested_nan": [1.0, None], "text": "value"}
         }
         self.assertEqual(sanitize_nan_inf(test_nested), expected_nested)
-from kld_benchmark import parse_metrics
-
 class TestKLDBenchmark(unittest.TestCase):
     def test_parse_metrics_all_present(self):
         output = """
@@ -131,13 +129,15 @@ class TestCompilePerplexityBinary(unittest.TestCase):
         result = compile_perplexity_binary(root_dir)
 
         self.assertEqual(result, expected_path)
+        self.assertEqual(mock_exists.call_count, 2)
+        mock_exists.assert_has_calls([call(expected_path), call(expected_path)])
         mock_run.assert_called_once_with(
             ["cmake", "--build", "build", "--target", "llama-perplexity", "-j"],
             cwd=root_dir,
             check=True
         )
 
-    @patch("kld_benchmark.sys.exit")
+    @patch("kld_benchmark.sys.exit", side_effect=SystemExit(1))
     @patch("kld_benchmark.subprocess.run")
     @patch("kld_benchmark.os.path.exists")
     def test_subprocess_called_process_error(self, mock_exists, mock_run, mock_exit):
@@ -145,12 +145,13 @@ class TestCompilePerplexityBinary(unittest.TestCase):
         mock_exists.return_value = False
         mock_run.side_effect = subprocess.CalledProcessError(1, ["cmake"])
 
-        result = compile_perplexity_binary(root_dir)
+        with self.assertRaises(SystemExit) as cm:
+            compile_perplexity_binary(root_dir)
 
-        self.assertIsNone(result)
-        mock_exit.assert_called_with(1)
+        self.assertEqual(cm.exception.code, 1)
+        mock_exit.assert_called_once_with(1)
 
-    @patch("kld_benchmark.sys.exit")
+    @patch("kld_benchmark.sys.exit", side_effect=SystemExit(1))
     @patch("kld_benchmark.subprocess.run")
     @patch("kld_benchmark.os.path.exists")
     def test_subprocess_exception(self, mock_exists, mock_run, mock_exit):
@@ -158,12 +159,13 @@ class TestCompilePerplexityBinary(unittest.TestCase):
         mock_exists.return_value = False
         mock_run.side_effect = RuntimeError("build failed")
 
-        result = compile_perplexity_binary(root_dir)
+        with self.assertRaises(SystemExit) as cm:
+            compile_perplexity_binary(root_dir)
 
-        self.assertIsNone(result)
-        mock_exit.assert_called_with(1)
+        self.assertEqual(cm.exception.code, 1)
+        mock_exit.assert_called_once_with(1)
 
-    @patch("kld_benchmark.sys.exit")
+    @patch("kld_benchmark.sys.exit", side_effect=SystemExit(1))
     @patch("kld_benchmark.subprocess.run")
     @patch("kld_benchmark.os.path.exists")
     def test_binary_missing_after_compilation(self, mock_exists, mock_run, mock_exit):
@@ -171,15 +173,16 @@ class TestCompilePerplexityBinary(unittest.TestCase):
         mock_exists.return_value = False
         mock_run.return_value = MagicMock(returncode=0)
 
-        result = compile_perplexity_binary(root_dir)
+        with self.assertRaises(SystemExit) as cm:
+            compile_perplexity_binary(root_dir)
 
-        self.assertIsNone(result)
+        self.assertEqual(cm.exception.code, 1)
         mock_run.assert_called_once_with(
             ["cmake", "--build", "build", "--target", "llama-perplexity", "-j"],
             cwd=root_dir,
             check=True
         )
-        mock_exit.assert_called_with(1)
+        mock_exit.assert_called_once_with(1)
 
 if __name__ == '__main__':
     unittest.main()
