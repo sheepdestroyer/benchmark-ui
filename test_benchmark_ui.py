@@ -1,5 +1,6 @@
 import unittest
 import sys
+import subprocess
 import importlib
 from unittest.mock import MagicMock, patch
 
@@ -69,6 +70,219 @@ class TestBenchmarkUI(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Invalid model name"):
             self.benchmark_ui.validate_model_name("model_with_;")
+
+
+class TestListModels(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.modules_patcher = patch.dict(
+            sys.modules,
+            {
+                "streamlit": MagicMock(),
+                "pandas": MagicMock(),
+                "plotly.express": MagicMock(),
+                "plotly": MagicMock(),
+            }
+        )
+        cls.modules_patcher.start()
+        cls.benchmark_ui = importlib.import_module("benchmark_ui")
+
+    @classmethod
+    def tearDownClass(cls):
+        if "benchmark_ui" in sys.modules:
+            del sys.modules["benchmark_ui"]
+        cls.modules_patcher.stop()
+
+    def test_invalid_endpoint(self):
+        res = self.benchmark_ui.list_models("ftp://invalid.url")
+        self.assertTrue(res.startswith("Error: Invalid endpoint URL:"))
+
+    @patch("subprocess.run")
+    def test_script_not_found(self, mock_run):
+        mock_script = MagicMock()
+        mock_script.exists.return_value = False
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = self.benchmark_ui.list_models("http://127.0.0.1:8081")
+            self.assertTrue(res.startswith("Error: Benchmark script not found at "))
+            mock_run.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_success_without_stderr(self, mock_run):
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = "Model-1\nModel-2"
+        mock_res.stderr = ""
+        mock_run.return_value = mock_res
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = self.benchmark_ui.list_models("http://127.0.0.1:8081")
+            self.assertEqual(res, "Model-1\nModel-2")
+            mock_run.assert_called_once_with(
+                ["/path/to/benchmark.sh", "--list", "http://127.0.0.1:8081"],
+                cwd=str(self.benchmark_ui.WORK_DIR),
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+    @patch("subprocess.run")
+    def test_success_with_stderr(self, mock_run):
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = "Model-1"
+        mock_res.stderr = "Warning: low memory"
+        mock_run.return_value = mock_res
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = self.benchmark_ui.list_models("http://127.0.0.1:8081")
+            self.assertIn("Model-1", res)
+            self.assertIn("STDERR:\nWarning: low memory", res)
+
+    @patch("subprocess.run")
+    def test_non_zero_exit_code(self, mock_run):
+        mock_res = MagicMock()
+        mock_res.returncode = 1
+        mock_res.stdout = ""
+        mock_res.stderr = "Connection refused"
+        mock_run.return_value = mock_res
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = self.benchmark_ui.list_models("http://127.0.0.1:8081")
+            self.assertTrue(res.startswith("Error (exit code 1):"))
+            self.assertIn("Connection refused", res)
+
+    @patch("subprocess.run")
+    def test_timeout_expired(self, mock_run):
+        import subprocess
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["test"], timeout=30)
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = self.benchmark_ui.list_models("http://127.0.0.1:8081")
+            self.assertEqual(res, "Error: List models timed out")
+
+    @patch("subprocess.run")
+    def test_generic_exception(self, mock_run):
+        mock_run.side_effect = RuntimeError("Unexpected process failure")
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = self.benchmark_ui.list_models("http://127.0.0.1:8081")
+            self.assertEqual(res, "Error listing models: Unexpected process failure")
+
+
+class TestRunBenchmarkStream(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.modules_patcher = patch.dict(
+            sys.modules,
+            {
+                "streamlit": MagicMock(),
+                "pandas": MagicMock(),
+                "plotly.express": MagicMock(),
+                "plotly": MagicMock(),
+            }
+        )
+        cls.modules_patcher.start()
+        cls.benchmark_ui = importlib.import_module("benchmark_ui")
+
+    @classmethod
+    def tearDownClass(cls):
+        if "benchmark_ui" in sys.modules:
+            del sys.modules["benchmark_ui"]
+        cls.modules_patcher.stop()
+
+    def test_validation_failure(self):
+        res = list(self.benchmark_ui.run_benchmark_stream("invalid_model!", "http://127.0.0.1:8081"))
+        self.assertEqual(len(res), 1)
+        self.assertTrue(res[0].startswith("Error: Invalid input:"))
+
+        res_endpoint = list(self.benchmark_ui.run_benchmark_stream("valid-model", "ftp://invalid"))
+        self.assertEqual(len(res_endpoint), 1)
+        self.assertTrue(res_endpoint[0].startswith("Error: Invalid input:"))
+
+    @patch("subprocess.Popen")
+    def test_script_not_found(self, mock_popen):
+        mock_script = MagicMock()
+        mock_script.exists.return_value = False
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = list(self.benchmark_ui.run_benchmark_stream("valid-model", "http://127.0.0.1:8081"))
+            self.assertEqual(len(res), 1)
+            self.assertTrue(res[0].startswith("Error: Benchmark script not found at "))
+            mock_popen.assert_not_called()
+
+    @patch("os.chmod")
+    @patch("os.access", return_value=False)
+    def test_chmod_failure(self, mock_access, mock_chmod):
+        mock_chmod.side_effect = PermissionError("Permission denied")
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+
+        with patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = list(self.benchmark_ui.run_benchmark_stream("valid-model", "http://127.0.0.1:8081"))
+            self.assertEqual(len(res), 1)
+            self.assertTrue(res[0].startswith("Error: Cannot make script executable:"))
+
+    @patch("subprocess.Popen")
+    def test_successful_streaming(self, mock_popen):
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout.readline.side_effect = ["line 1\n", "line 2\n", ""]
+        mock_proc.stdout.closed = False
+        mock_proc.poll.return_value = 0
+        mock_popen.return_value = mock_proc
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch("os.access", return_value=True), patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = list(self.benchmark_ui.run_benchmark_stream("gpt-4", "http://127.0.0.1:8081"))
+            self.assertEqual(res, ["line 1\n", "line 2\n"])
+            mock_popen.assert_called_once_with(
+                ["/path/to/benchmark.sh", "gpt-4", "http://127.0.0.1:8081"],
+                cwd=str(self.benchmark_ui.WORK_DIR),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            self.assertIsNone(self.benchmark_ui.st.session_state.current_proc)
+
+    @patch("subprocess.Popen")
+    def test_nonzero_returncode(self, mock_popen):
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1
+        mock_proc.stdout.readline.side_effect = ["processing...\n", ""]
+        mock_proc.stdout.closed = False
+        mock_proc.poll.return_value = 1
+        mock_popen.return_value = mock_proc
+
+        mock_script = MagicMock()
+        mock_script.exists.return_value = True
+        mock_script.__str__.return_value = "/path/to/benchmark.sh"
+
+        with patch("os.access", return_value=True), patch.object(self.benchmark_ui, "BENCH_SCRIPT", mock_script):
+            res = list(self.benchmark_ui.run_benchmark_stream("gpt-4", "http://127.0.0.1:8081"))
+            self.assertEqual(res, ["processing...\n", "\n[EXIT CODE: 1]"])
 
 
 def make_turn_dict(turn_name, prompt_tokens=0, completion_tokens=0, prompt_eval=0.0, ttft=0.0, generation=0.0, decode=0.0):
