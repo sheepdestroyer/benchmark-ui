@@ -92,6 +92,9 @@ class StreamlitMock(MagicMock):
     def text_input(self, label, value="", *args, **kwargs):
         return value
 
+    def number_input(self, label, *args, **kwargs):
+        return kwargs.get("value", 5000)
+
     def selectbox(self, label, options, *args, **kwargs):
         if options:
             return options[0]
@@ -653,7 +656,7 @@ class TestDashboardValidators(unittest.TestCase):
 
     def test_validate_gguf_path_existing_allowed_file(self):
         # Tempfile inside cwd
-        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as tmp:
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as tmp:
             self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
 
         # Relative path inside cwd
@@ -662,18 +665,24 @@ class TestDashboardValidators(unittest.TestCase):
             self.assertEqual(dashboard.validate_gguf_path(rel_name), str(Path(tmp.name).resolve()))
 
         # Tempfile inside Path(__file__).parent
-        with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve()) as tmp:
+        with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve(), suffix=".gguf") as tmp:
             self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
 
-        # Tempfile inside patched Path.home() temporary directory (without touching user home)
+        # Tempfiles inside patched Path.home() .cache and models directories
         with tempfile.TemporaryDirectory() as fake_home:
+            cache_dir = Path(fake_home) / ".cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            models_dir = Path(fake_home) / "models"
+            models_dir.mkdir(parents=True, exist_ok=True)
             with patch.object(Path, "home", return_value=Path(fake_home)):
-                with tempfile.NamedTemporaryFile(dir=fake_home) as tmp:
-                    self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+                with tempfile.NamedTemporaryFile(dir=cache_dir, suffix=".gguf") as tmp_cache:
+                    self.assertEqual(dashboard.validate_gguf_path(tmp_cache.name), str(Path(tmp_cache.name).resolve()))
+                with tempfile.NamedTemporaryFile(dir=models_dir, suffix=".gguf") as tmp_models:
+                    self.assertEqual(dashboard.validate_gguf_path(tmp_models.name), str(Path(tmp_models.name).resolve()))
 
     def test_validate_gguf_path_symlink(self):
-        with tempfile.NamedTemporaryFile(dir=Path.cwd()) as target:
-            symlink = Path.cwd() / f"test_symlink_{os.path.basename(target.name)}.gguf"
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as target:
+            symlink = Path.cwd() / f"test_symlink_{os.path.basename(target.name)}"
             try:
                 symlink.symlink_to(target.name)
                 self.assertEqual(
@@ -742,6 +751,91 @@ class TestDashboardValidators(unittest.TestCase):
         self.assertEqual(dashboard.validate_corpus_name("/path/to/kld_corpus.txt"), "kld_corpus.txt")
         self.assertEqual(dashboard.validate_corpus_name("corpora/nested/dataset.csv"), "dataset.csv")
         self.assertEqual(dashboard.validate_corpus_name("./local/dir/test_corpus"), "test_corpus")
+
+    def test_validate_gguf_path_rejects_non_gguf(self):
+        # Non-.gguf files in cwd
+        for ext in [".txt", ".py", ".bin", ".json", "", ".dat"]:
+            with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=ext) as tmp:
+                with self.assertRaisesRegex(ValueError, r"GGUF file must have a \.gguf extension"):
+                    dashboard.validate_gguf_path(tmp.name)
+
+        # Case-insensitive: uppercase .GGUF is accepted
+        with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".GGUF") as tmp:
+            self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+
+    def test_validate_gguf_path_home_root_rejection_and_allowed_subdirs(self):
+        with tempfile.TemporaryDirectory() as fake_home:
+            # Home root non-.gguf file (e.g. ~/.bashrc)
+            bashrc = Path(fake_home) / ".bashrc"
+            bashrc.write_text("export TEST=1")
+
+            # Home root .gguf file
+            root_gguf = Path(fake_home) / "root_model.gguf"
+            root_gguf.write_text("dummy gguf")
+
+            # Subdir .cache
+            cache_dir = Path(fake_home) / ".cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_gguf = cache_dir / "cached_model.gguf"
+            cache_gguf.write_text("dummy cached gguf")
+
+            # Subdir models
+            models_dir = Path(fake_home) / "models"
+            models_dir.mkdir(parents=True, exist_ok=True)
+            models_gguf = models_dir / "model_in_models.gguf"
+            models_gguf.write_text("dummy models gguf")
+
+            # Nested subdir inside .cache (e.g. huggingface hub)
+            nested_cache_dir = cache_dir / "huggingface" / "hub"
+            nested_cache_dir.mkdir(parents=True, exist_ok=True)
+            nested_cache_gguf = nested_cache_dir / "nested_model.gguf"
+            nested_cache_gguf.write_text("dummy nested cached gguf")
+
+            with patch.object(Path, "home", return_value=Path(fake_home)):
+                # Rejects ~/.bashrc due to non-.gguf extension
+                with self.assertRaisesRegex(ValueError, r"GGUF file must have a \.gguf extension"):
+                    dashboard.validate_gguf_path(str(bashrc))
+
+                # Rejects root_model.gguf in home root because it escapes allowed parent directories
+                with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
+                    dashboard.validate_gguf_path(str(root_gguf))
+
+                # Accepts .gguf in ~/.cache
+                self.assertEqual(
+                    dashboard.validate_gguf_path(str(cache_gguf)),
+                    str(cache_gguf.resolve())
+                )
+
+                # Accepts .gguf in nested ~/.cache
+                self.assertEqual(
+                    dashboard.validate_gguf_path(str(nested_cache_gguf)),
+                    str(nested_cache_gguf.resolve())
+                )
+
+                # Accepts .gguf in ~/models
+                self.assertEqual(
+                    dashboard.validate_gguf_path(str(models_gguf)),
+                    str(models_gguf.resolve())
+                )
+
+    def test_validate_new_tokens_valid(self):
+        self.assertEqual(dashboard.validate_new_tokens(1), 1)
+        self.assertEqual(dashboard.validate_new_tokens(5000), 5000)
+        self.assertEqual(dashboard.validate_new_tokens(262144), 262144)
+        self.assertEqual(dashboard.validate_new_tokens("5000"), 5000)
+        self.assertEqual(dashboard.validate_new_tokens(5000.0), 5000)
+
+    def test_validate_new_tokens_out_of_bounds(self):
+        for out_val in [0, -1, -5000, 262145, 1000000]:
+            with self.subTest(val=out_val):
+                with self.assertRaisesRegex(ValueError, r"Context length tokens must be between 1 and 262144\."):
+                    dashboard.validate_new_tokens(out_val)
+
+    def test_validate_new_tokens_invalid_type(self):
+        for bad_val in [None, True, False, "abc", "", "12.34", 12.34, [5000], {"tokens": 5000}]:
+            with self.subTest(val=bad_val):
+                with self.assertRaisesRegex(ValueError, r"Context length tokens must be between 1 and 262144\."):
+                    dashboard.validate_new_tokens(bad_val)
 
 
 if __name__ == "__main__":
