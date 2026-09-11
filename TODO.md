@@ -68,6 +68,16 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 
 ---
 
+## Phase 8: AST Sandbox Hardening, Presets Caching & UI Coverage (Completed 2026-09-11)
+
+- [x] **AST Sandbox Security**: Comprehensive AST code execution sandboxing against `__import__`, `globals()`, unblocked modules, and reflection in `advanced_benchmarks.py` (PR #120 / Issue #109).
+- [x] **Benchmark UI Test Suite**: 99% test coverage on `benchmark_ui.py` with full mocking of `list_models` and `run_benchmark_stream` (PR #123 / Issue #110).
+- [x] **Model Presets LRU Caching**: Added `@functools.lru_cache` for INI config parsing and alias resolution in `advanced_benchmarks.py` and `run_matrix.py` (PR #117 / Issue #111).
+- [x] **Input Bounds & GGUF Path Validation**: Added `new_tokens` bounds `[1, 262144]` and restricted `validate_gguf_path` to `.gguf` extension and model cache subdirectories in `dashboard.py` (PR #115 / Issue #112).
+- [x] **Perplexity Binary Build Testing**: 100% test coverage for `compile_perplexity_binary` in `test_kld_benchmark.py` (PR #116 / Issue #113).
+
+---
+
 ## Next Steps / Future Work
 1. **Automated GitHub Actions CI**: Setup `.github/workflows/ci.yml` running `pytest` on PRs and pushes.
 2. **Dynamic Live Telemetry**: Integrate GPU VRAM and temperature metrics directly into the Streamlit UI via NVML.

@@ -83,11 +83,14 @@ pytest
 ```
 
 The test suite covers:
-- `test_utils.py`: SSRF security boundaries, URL validation, and model/corpus parameter checking.
-- `test_dashboard.py`: Number formatting (`fmt_num`), INI config caching, and DataFrame reasoning metric extraction.
-- `test_advanced_benchmarks.py`: Synthetic filler text generation, context sizing, and needle evaluation.
-- `test_benchmark_ui.py`: UI form parameters, execution safeguards, and process orchestration.
-- `test_kld_benchmark.py`: Quantization loss calculations and perplexity parsing.
+- `test_utils.py` (100% coverage): SSRF security boundaries, URL scheme/port checks, multi-IP resolution filtering, and model/corpus parameter validation.
+- `test_dashboard.py` (93% coverage): Validator paths (`validate_gguf_path` with `.gguf` extension and model cache restriction), token bounds (`validate_new_tokens` within `[1, 262144]`), `@st.cache_data(ttl=60)` run loading, number formatting (`fmt_num`), INI config caching, and DataFrame reasoning metric extraction.
+- `test_advanced_benchmarks.py` (99% coverage): AST sandbox security validation (`is_safe_code` blocking `__import__`, `globals()`, dangerous modules/builtins, and reflection), LRU-cached `model_presets.ini` parsing, synthetic filler text generation, and context sizing.
+- `test_benchmark_ui.py` (99% coverage): Full UI workflow testing, `list_models` endpoint interactions, `run_benchmark_stream` real-time stdout streaming, dynamic chmod fallback, subprocess failure handling, and session cleanup.
+- `test_kld_benchmark.py` (99% coverage): Quantization loss calculations, perplexity metric parsing, and native `llama-perplexity` compilation lifecycle (`compile_perplexity_binary`).
+- `test_run_matrix.py` (100% coverage): Automated sweep matrix generation, TeeLogger I/O buffering, service restart error handling, and LRU-cached preset sections.
+- `test_run_suite.py` (99% coverage): Multi-mode benchmark orchestration, endpoint model setting querying, and atomic run record writing.
+- `test_populate_history.py` (98% coverage): Synthetic history dataset generation and schema validation.
 
 ---
 

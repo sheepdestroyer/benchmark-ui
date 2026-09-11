@@ -2,6 +2,26 @@
 
 All notable changes to the LLM Benchmarking and Server Router project are documented below.
 
+## [v0.1.3] - 2026-09-11 - AST Sandbox Security Hardening, Presets Config Caching & Complete UI Test Coverage
+
+### Added
+*   **Comprehensive `benchmark_ui.py` Test Suite (`test_benchmark_ui.py`)**: Reached 99% test coverage (250/251 statements covered) on `benchmark_ui.py`, testing `list_models` (API success, empty payloads, HTTP status errors, connection/timeout exceptions, and malformed JSON) and `run_benchmark_stream` (URL/model validation errors, missing script handling, dynamic chmod fallback, real-time stdout streaming, non-zero exit code reporting, and process cleanup) (PR #123 / Issue #110).
+*   **Perplexity Binary Compilation Test Suite (`test_kld_benchmark.py`)**: Achieved 100% coverage on `compile_perplexity_binary` in `kld_benchmark.py`, covering existing binary reuse, cmake subprocess invocation, post-build binary presence validation, and clean `SystemExit(1)` error handling with isolated mocks (PR #116 / Issue #113).
+*   **AST Sandbox Security Test Suite (`test_advanced_benchmarks.py`)**: Added `TestASTSafetyCheck` (132 subtests) verifying that standard algorithms, math operations, and benign Python idioms pass cleanly while blocking arbitrary code execution exploits, including `__import__`, `globals()`, `vars()`, `operator.attrgetter`, and dunder string constants (PR #120 / Issue #109).
+*   **Presets Caching Test Suite (`test_advanced_benchmarks.py` & `test_run_matrix.py`)**: Added `TestPresetsConfigAndAlias` and `TestLoadPresetsSections` asserting cache hits, path fallback, corrupt INI handling, and exact/case-insensitive model alias resolution (PR #117 / Issue #111).
+
+### Security & Hardening
+*   **AST Code Execution Sandbox Hardening (`advanced_benchmarks.py`)**: Completely hardened `is_safe_code` against AST evasion techniques:
+    *   Blocked all dangerous builtins: `eval`, `exec`, `open`, `compile`, `getattr`, `setattr`, `delattr`, `globals`, `locals`, `vars`, `dir`, `exit`, `quit`.
+    *   Blocked dangerous modules: `os`, `sys`, `subprocess`, `shutil`, `socket`, `pty`, `posix`, `ctypes`, `inspect`, `pickle`, `asyncio`, `pathlib`, `io`, `runpy`, `operator`, `tempfile`, etc.
+    *   Inspected `ast.Constant` string literals to prevent reflection and dictionary lookups of sensitive dunders (`__builtins__`, `__globals__`, `__subclasses__`, `__code__`, `__import__`).
+    *   Whitelisted legitimate benchmark patterns including `re.compile(...)`, class lifecycle dunders (`__init__`, `__str__`, etc.), private attributes (`self.__var`), and `from __future__ import annotations` (PR #120 / Issue #109).
+*   **Context Length Tokens Bounds (`dashboard.py`)**: Added `min_value=1` and `max_value=262144` constraints to `st.number_input` and implemented defensive validator `validate_new_tokens` ensuring integer token lengths within safe bounds, preventing OOM crashes (PR #115 / Issue #112).
+*   **Restricted GGUF File Path Validation (`dashboard.py`)**: Enforced `.gguf` extension checks and restricted allowed home subdirectories to `~/.cache` and `~/models`, preventing arbitrary file existence probing across the user's home root directory (PR #115 / Issue #112).
+
+### Optimized
+*   **LRU Caching for Model Presets**: Implemented `@functools.lru_cache` for `load_presets_config` and `map_repo_to_preset_alias` in `advanced_benchmarks.py` and `load_presets_sections` in `run_matrix.py`, eliminating redundant disk I/O when resolving model aliases or evaluating matrix completion (PR #117 / Issue #111).
+
 ## [v0.1.2] - 2026-09-11 - Test Suites, Caching & Validator Hardening
 
 ### Added
