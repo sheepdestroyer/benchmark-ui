@@ -123,22 +123,56 @@ def binary_search(arr, target):
     return -1
 """, "binary search algorithm"),
             # Safe imports
-            ("import json\ndata = json.loads('{\"a\": 1}')", "json import"),
-            ("import re\nmatch = re.match(r'\\d+', '123')", "re import"),
+            ("""
+import json
+data = json.loads('{"a": 1}')
+""", "json import"),
+            ("""
+import re
+match = re.match(r'\\d+', '123')
+""", "re import"),
             ("import collections\nq = collections.deque()", "collections import"),
             ("import itertools\ncomb = list(itertools.combinations([1, 2], 2))", "itertools import"),
             ("import random\nr = random.randint(1, 10)", "random import"),
             ("import time\nt = time.time()", "time import"),
             ("import datetime\nnow = datetime.datetime.now()", "datetime import"),
-            # Classes & methods
+            # Benign patterns requested by reviewer
+            ("import re\npattern = re.compile(r'\\d+')", "re.compile allowed"),
             ("""
-class Calculator:
-    def add(self, a, b):
-        return a + b
-calc = Calculator()
-res = calc.add(2, 3)
-""", "class definition and instantiation"),
-            # Single underscore variables (allowed)
+class Base:
+    def __init__(self):
+        self.x = 1
+class Sub(Base):
+    def __init__(self):
+        super().__init__()
+""", "super().__init__() allowed"),
+            ("""
+class Encapsulated:
+    def __init__(self):
+        self.__secret = 42
+    def get_secret(self):
+        return self.__secret
+""", "private attributes self.__var allowed"),
+            ("from __future__ import annotations", "from __future__ import annotations allowed"),
+            ("""
+if __name__ == '__main__':
+    msg = __doc__
+""", "if __name__ == '__main__' and __doc__ allowed"),
+            ("""
+class Container:
+    def __len__(self):
+        return 0
+    def __str__(self):
+        return 'container'
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+c = Container()
+s = str(c)
+l = len(c)
+""", "safe dunder methods allowed"),
+            # Single underscore variables
             ("_private = 42\nx = _private + 1", "single underscore identifiers"),
         ]
 
@@ -175,6 +209,28 @@ res = calc.add(2, 3)
             ("import multiprocessing", "forbidden multiprocessing import"),
             ("import threading", "forbidden threading import"),
             ("import signal", "forbidden signal import"),
+            # Reviewer requested bypass modules
+            ("import asyncio", "forbidden asyncio import"),
+            ("import pathlib", "forbidden pathlib import"),
+            ("import io", "forbidden io import"),
+            ("import runpy", "forbidden runpy import"),
+            ("import operator", "forbidden operator import"),
+            ("import urllib", "forbidden urllib import"),
+            ("import http", "forbidden http import"),
+            ("import webbrowser", "forbidden webbrowser import"),
+            ("import tempfile", "forbidden tempfile import"),
+            ("import pdb", "forbidden pdb import"),
+            ("import code", "forbidden code import"),
+            ("operator.attrgetter('x')", "operator attribute access"),
+            ("pathlib.Path('/etc/passwd')", "pathlib attribute access"),
+            # Reviewer requested bypass builtins
+            ("globals()", "forbidden globals builtin"),
+            ("locals()", "forbidden locals builtin"),
+            ("vars()", "forbidden vars builtin"),
+            ("dir()", "forbidden dir builtin"),
+            ("exit()", "forbidden exit builtin"),
+            ("quit()", "forbidden quit builtin"),
+            ("help()", "forbidden help builtin"),
             # ImportFrom dangerous modules
             ("from os import path", "from os import"),
             ("from sys import argv", "from sys import"),
@@ -183,6 +239,8 @@ res = calc.add(2, 3)
             ("from ctypes import CDLL", "from ctypes import"),
             ("from builtins import getattr", "from builtins import"),
             ("from importlib import import_module", "from importlib import"),
+            ("from pathlib import Path", "from pathlib import"),
+            ("from io import StringIO", "from io import"),
             # Dangerous builtins / calls
             ("compile('1+1', '', 'eval')", "builtin compile call"),
             ("getattr(math, 'sin')", "builtin getattr call"),
@@ -192,9 +250,11 @@ res = calc.add(2, 3)
             ("breakpoint()", "builtin breakpoint call"),
             ("f = open", "builtin open assigned as identifier"),
             ("e = eval", "builtin eval assigned as identifier"),
+            ("g = globals", "builtin globals assigned as identifier"),
             ("obj.open()", "attribute call on open"),
             ("obj.eval('1+1')", "attribute call on eval"),
             ("obj.exec('1+1')", "attribute call on exec"),
+            ("something.compile('1+1')", "non-re compile call"),
             # Dangerous attribute roots
             ("os.system('ls')", "os.system attribute access"),
             ("os.environ", "os.environ attribute access"),
@@ -204,17 +264,21 @@ res = calc.add(2, 3)
             ("subprocess.run(['ls'])", "subprocess.run attribute access"),
             ("shutil.rmtree('/tmp')", "shutil.rmtree attribute access"),
             ("ctypes.c_char_p(b'test')", "ctypes attribute access"),
-            # Dunder identifiers and attributes
-            ("__name__ == '__main__'", "dunder identifier __name__"),
-            ("__file__", "dunder identifier __file__"),
+            # Reviewer requested danger dunder string constants
+            ("x = '__builtins__'", "danger dunder constant __builtins__"),
+            ("x = '__globals__'", "danger dunder constant __globals__"),
+            ("x = '__subclasses__'", "danger dunder constant __subclasses__"),
+            ("x = '__code__'", "danger dunder constant __code__"),
+            ("x = '__import__'", "danger dunder constant __import__"),
+            ("d = {'key': '__builtins__'}", "danger dunder constant in dict key"),
+            # Dangerous dunder attributes
             ("x.__globals__", "dunder attribute __globals__"),
             ("x.__code__", "dunder attribute __code__"),
             ("x.__dict__", "dunder attribute __dict__"),
-            ("x.__doc__", "dunder attribute __doc__"),
             ("x.__class__", "dunder attribute __class__"),
             ("x.__subclasses__()", "dunder attribute __subclasses__"),
+            ("x.__bases__", "dunder attribute __bases__"),
             ("from math import __name__", "dunder import alias"),
-            ("from __future__ import annotations", "dunder module import"),
             ("import math as __math", "dunder asname import"),
         ]
 

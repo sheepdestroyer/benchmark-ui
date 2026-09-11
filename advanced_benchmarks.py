@@ -22,13 +22,35 @@ QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
 DANGEROUS_MODULES = {
     'os', 'sys', 'subprocess', 'shutil', 'socket', 'pty', 'posix', 'builtins',
     '_frozen_importlib', 'importlib', 'ctypes', 'inspect', 'pickle', 'shelve',
-    'multiprocessing', 'threading', 'signal'
+    'multiprocessing', 'threading', 'signal',
+    'asyncio', 'pathlib', 'io', 'runpy', 'operator', 'urllib', 'http',
+    'webbrowser', 'tempfile', 'pdb', 'code'
 }
 
 DANGEROUS_BUILTINS = {
     'eval', 'exec', 'open', 'compile', 'getattr', 'setattr', 'delattr',
-    'input', 'breakpoint'
+    'input', 'breakpoint',
+    'globals', 'locals', 'vars', 'dir', 'exit', 'quit', 'help'
 }
+
+SAFE_DUNDER_IDENTIFIERS = {'__name__', '__doc__'}
+
+SAFE_DUNDER_ATTRIBUTES = {
+    '__init__', '__new__', '__enter__', '__exit__',
+    '__len__', '__repr__', '__str__', '__bytes__',
+    '__getitem__', '__setitem__', '__delitem__',
+    '__iter__', '__next__', '__contains__',
+    '__eq__', '__ne__', '__lt__', '__le__', '__gt__', '__ge__',
+    '__add__', '__sub__', '__mul__', '__truediv__', '__floordiv__',
+    '__mod__', '__pow__', '__and__', '__or__', '__xor__',
+    '__radd__', '__rsub__', '__rmul__', '__rtruediv__',
+    '__bool__', '__int__', '__float__', '__abs__', '__hash__',
+    '__call__', '__reversed__', '__format__', '__doc__', '__name__'
+}
+
+DANGER_DUNDER_CONSTANTS = (
+    '__builtins__', '__subclasses__', '__globals__', '__code__', '__import__'
+)
 
 def _get_attribute_full_path(node):
     parts = []
@@ -42,6 +64,8 @@ def _get_attribute_full_path(node):
     return None, None
 
 def is_safe_code(code_str):
+    if not isinstance(code_str, str):
+        return False, "Invalid code input: code must be a string"
     try:
         tree = ast.parse(code_str)
     except SyntaxError as e:
@@ -52,7 +76,7 @@ def is_safe_code(code_str):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if '__' in alias.name:
+                if '__' in alias.name and alias.name != '__future__':
                     return False, f"Forbidden import: {alias.name}"
                 if alias.asname and '__' in alias.asname:
                     return False, f"Forbidden alias: {alias.asname}"
@@ -61,7 +85,7 @@ def is_safe_code(code_str):
                     return False, f"Forbidden import: {alias.name}"
         elif isinstance(node, ast.ImportFrom):
             if node.module:
-                if '__' in node.module:
+                if '__' in node.module and node.module != '__future__':
                     return False, f"Forbidden import module: {node.module}"
                 mod = node.module.split('.')[0]
                 if mod in DANGEROUS_MODULES or node.module in DANGEROUS_MODULES:
@@ -80,27 +104,41 @@ def is_safe_code(code_str):
                     if full_import in DANGEROUS_MODULES:
                         return False, f"Forbidden import: {full_import}"
         elif isinstance(node, ast.Attribute):
-            if node.attr.startswith('__'):
-                return False, f"Forbidden dunder attribute: {node.attr}"
+            if node.attr.startswith('__') and node.attr.endswith('__'):
+                if node.attr not in SAFE_DUNDER_ATTRIBUTES:
+                    return False, f"Forbidden dunder attribute: {node.attr}"
             full_path, root = _get_attribute_full_path(node)
             if root and root in DANGEROUS_MODULES:
                 return False, f"Forbidden attribute usage: {full_path}"
         elif isinstance(node, ast.Name):
             if node.id.startswith('__'):
-                return False, f"Forbidden dunder identifier: {node.id}"
+                if node.id not in SAFE_DUNDER_IDENTIFIERS:
+                    return False, f"Forbidden dunder identifier: {node.id}"
             if node.id in DANGEROUS_BUILTINS:
+                return False, f"Forbidden identifier usage: {node.id}"
+            if node.id in DANGEROUS_MODULES:
                 return False, f"Forbidden identifier usage: {node.id}"
         elif isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
-                if node.func.id.startswith('__'):
+                if node.func.id.startswith('__') and node.func.id not in SAFE_DUNDER_IDENTIFIERS:
                     return False, f"Forbidden dunder identifier: {node.func.id}"
                 if node.func.id in DANGEROUS_BUILTINS:
                     return False, f"Forbidden identifier usage: {node.func.id}"
             elif isinstance(node.func, ast.Attribute):
-                if node.func.attr.startswith('__'):
-                    return False, f"Forbidden dunder attribute: {node.func.attr}"
+                if node.func.attr.startswith('__') and node.func.attr.endswith('__'):
+                    if node.func.attr not in SAFE_DUNDER_ATTRIBUTES:
+                        return False, f"Forbidden dunder attribute: {node.func.attr}"
                 if node.func.attr in DANGEROUS_BUILTINS:
-                    return False, f"Forbidden call: {node.func.attr}"
+                    full_path, root = _get_attribute_full_path(node.func)
+                    if node.func.attr == 'compile' and root == 're':
+                        pass
+                    else:
+                        return False, f"Forbidden call: {node.func.attr}"
+        elif isinstance(node, ast.Constant):
+            if isinstance(node.value, str):
+                for danger in DANGER_DUNDER_CONSTANTS:
+                    if danger in node.value:
+                        return False, f"Forbidden dunder constant: {danger}"
 
     return True, None
 
