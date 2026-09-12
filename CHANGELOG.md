@@ -4,13 +4,19 @@ All notable changes to the LLM Benchmarking and Server Router project are docume
 
 ## [Unreleased]
 
+## [v0.1.4] - 2026-09-12 - Persistent History Quadlet Storage & CI/CD Pipelines
+
 ### Added
-*   **Automated GitHub Actions CI (`.github/workflows/ci.yml`)**: Continuous integration workflow running `pytest` with coverage on pushes and pull requests targeting `master` (Issue #124).
-*   **Dependabot Automation Workflow (`.github/workflows/dependabot.yml`)**: Auto-approves and enables auto-merge for non-breaking (minor/patch) Dependabot pull requests using `dependabot/fetch-metadata` (Issue #124).
-*   **Dedicated Test Requirements (`requirements-dev.txt`)**: Explicit test and coverage dependencies (`pytest`, `pytest-cov`, `pytest-mock`, `pytest-asyncio`, `pytest-xdist`) (Issue #124).
+*   **Persistent Quadlet History Storage (`deploy/benchmark-ui.container`)**: Vendored production Quadlet container specification declaring persistent host bind-mount `Volume=/mnt/DATA/boy/prod/benchmark-ui/data/history:/app/history:Z` to guarantee benchmark runs survive container restarts and automatic image redeployments (PR #126 / Issue #70).
+*   **Quadlet Validation & Regression Test Suite (`test_deploy.py`)**: Added comprehensive 19-test suite (100% coverage) asserting volume persistence, private SELinux `:Z` labeling, strict `127.0.0.1` loopback bindings, health check probes, container metadata, and robust INI parsing error paths (PR #126 / Issue #70).
+*   **Automated GitHub Actions CI (`.github/workflows/ci.yml`)**: Continuous integration workflow running `pytest` with coverage on pushes and pull requests targeting `master` (PR #125 / Issue #124).
+*   **Dependabot Automation Workflow (`.github/workflows/dependabot.yml`)**: Auto-approves and enables auto-merge for non-breaking (minor/patch) Dependabot pull requests using `dependabot/fetch-metadata` (PR #125 / Issue #124).
+*   **Dedicated Test Requirements (`requirements-dev.txt`)**: Explicit test and coverage dependencies (`pytest`, `pytest-cov`, `pytest-mock`, `pytest-asyncio`, `pytest-xdist`) (PR #125 / Issue #124).
 
 ### Changed
-*   **Modernized Dependabot Configuration (`.github/dependabot.yml`)**: Added `docker` package ecosystem for `Containerfile`, semantic commit prefixes (`chore(deps-python)`, `chore(deps-docker)`, `chore(deps-actions)`), dependency grouping for development libraries, and scheduled Monday execution windows (Issue #124).
+*   **Modernized Dependabot Configuration (`.github/dependabot.yml`)**: Added `docker` package ecosystem for `Containerfile`, semantic commit prefixes (`chore(deps-python)`, `chore(deps-docker)`, `chore(deps-actions)`), dependency grouping for development libraries, and scheduled Monday execution windows (PR #125 / Issue #124).
+*   **Ignored Host Data Directories (`.gitignore`)**: Added `data/` to `.gitignore` to prevent host deployment data and local evaluation scratch runs from polluting version control (PR #126 / Issue #70).
+*   **Production Deployment Documentation (`README.md`)**: Documented persistent Quadlet deployment architecture, host storage paths, setup steps, and backup recommendations (PR #126 / Issue #70).
 
 ## [v0.1.3] - 2026-09-11 - AST Sandbox Security Hardening, Presets Config Caching & Complete UI Test Coverage
 
