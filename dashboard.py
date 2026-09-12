@@ -29,11 +29,14 @@ def validate_gguf_path(gguf_path_str):
         raise ValueError(f"GGUF file path does not exist: {gguf_path_str}")
     if not resolved.is_file():
         raise ValueError(f"GGUF path is not a file: {gguf_path_str}")
+    if resolved.suffix.lower() != ".gguf":
+        raise ValueError(f"GGUF path must have a .gguf extension: {gguf_path_str}")
     
     allowed_parents = [
         Path.cwd().resolve(),
         Path(__file__).parent.resolve(),
-        Path.home().resolve()
+        (Path.home() / ".cache").resolve(),
+        (Path.home() / "models").resolve()
     ]
     is_allowed = False
     for parent in allowed_parents:
@@ -46,6 +49,20 @@ def validate_gguf_path(gguf_path_str):
     if not is_allowed:
         raise ValueError(f"GGUF path escapes allowed parent directories: {gguf_path_str}")
     return str(resolved)
+
+def validate_tokens(tokens):
+    if isinstance(tokens, bool) or tokens is None:
+        raise ValueError(f"Invalid token value: {tokens}")
+    try:
+        val = float(tokens)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid token value: {tokens}")
+    if not val.is_integer():
+        raise ValueError(f"Token value must be an integer: {tokens}")
+    val_int = int(val)
+    if val_int < 1 or val_int > 262144:
+        raise ValueError(f"new_tokens ({val_int}) must be between 1 and 262144.")
+    return val_int
 
 def validate_corpus_name(corpus_str):
     if not corpus_str or not str(corpus_str).strip():
@@ -893,7 +910,7 @@ with tab_run:
             
         new_model = st.selectbox("Model ID / Endpoint Alias", available_models)
     with col_r2:
-        new_tokens = st.number_input("Context Length Tokens (for reasoning)", value=5000, step=1000)
+        new_tokens = st.number_input("Context Length Tokens (for reasoning)", value=5000, min_value=1, max_value=262144, step=1000)
         new_gguf = st.text_input("Local GGUF Path (for KLD mode, auto-detects if blank)", value="")
         new_corpus = st.text_input("Corpus Text File (for KLD mode)", value="kld_corpus.txt")
         
@@ -903,6 +920,7 @@ with tab_run:
             valid_model = validate_model_name(new_model)
             valid_corpus = validate_corpus_name(new_corpus)
             valid_gguf = validate_gguf_path(new_gguf) if new_gguf else ""
+            valid_tokens = validate_tokens(new_tokens)
         except ValueError as e:
             st.error(f"Input validation error: {e}")
             st.stop()
@@ -916,7 +934,7 @@ with tab_run:
             "--mode", new_mode,
             "--endpoint", valid_endpoint,
             "--model", valid_model,
-            "--tokens", str(int(new_tokens)),
+            "--tokens", str(valid_tokens),
             "--corpus", valid_corpus
         ]
         if valid_gguf:
