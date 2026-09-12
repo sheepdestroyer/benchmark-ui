@@ -1,6 +1,9 @@
 import unittest
 import math
-from kld_benchmark import sanitize_nan_inf
+import os
+import subprocess
+from unittest.mock import patch, MagicMock
+from kld_benchmark import sanitize_nan_inf, parse_metrics, compile_perplexity_binary
 
 class TestKldBenchmark(unittest.TestCase):
     def test_sanitize_nan_inf_floats(self):
@@ -39,7 +42,60 @@ class TestKldBenchmark(unittest.TestCase):
             "dict": {"nested_nan": [1.0, None], "text": "value"}
         }
         self.assertEqual(sanitize_nan_inf(test_nested), expected_nested)
-from kld_benchmark import parse_metrics
+class TestCompilePerplexityBinary(unittest.TestCase):
+    @patch("os.path.exists")
+    @patch("subprocess.run")
+    def test_binary_already_exists(self, mock_run, mock_exists):
+        mock_exists.return_value = True
+        root_dir = "/dummy/llama.cpp"
+        expected_path = os.path.join(root_dir, "build/bin/llama-perplexity")
+
+        result = compile_perplexity_binary(root_dir)
+
+        self.assertEqual(result, expected_path)
+        mock_exists.assert_called_once_with(expected_path)
+        mock_run.assert_not_called()
+
+    @patch("os.path.exists")
+    @patch("subprocess.run")
+    def test_compilation_success(self, mock_run, mock_exists):
+        mock_exists.side_effect = [False, True]
+        root_dir = "/dummy/llama.cpp"
+        expected_path = os.path.join(root_dir, "build/bin/llama-perplexity")
+
+        result = compile_perplexity_binary(root_dir)
+
+        self.assertEqual(result, expected_path)
+        mock_run.assert_called_once_with(
+            ["cmake", "--build", "build", "--target", "llama-perplexity", "-j"],
+            cwd=root_dir,
+            check=True
+        )
+
+    @patch("os.path.exists")
+    @patch("subprocess.run")
+    def test_compilation_failure_exception(self, mock_run, mock_exists):
+        mock_exists.return_value = False
+        mock_run.side_effect = subprocess.CalledProcessError(1, "cmake")
+        root_dir = "/dummy/llama.cpp"
+
+        with self.assertRaises(SystemExit) as cm:
+            compile_perplexity_binary(root_dir)
+
+        self.assertEqual(cm.exception.code, 1)
+
+    @patch("os.path.exists")
+    @patch("subprocess.run")
+    def test_binary_missing_after_compilation(self, mock_run, mock_exists):
+        mock_exists.side_effect = [False, False]
+        root_dir = "/dummy/llama.cpp"
+
+        with self.assertRaises(SystemExit) as cm:
+            compile_perplexity_binary(root_dir)
+
+        self.assertEqual(cm.exception.code, 1)
+        mock_run.assert_called_once()
+
 
 class TestKLDBenchmark(unittest.TestCase):
     def test_parse_metrics_all_present(self):
