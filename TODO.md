@@ -78,7 +78,16 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 
 ---
 
+## Phase 9: CI Pipeline & Dependabot Automation (Completed 2026-09-12)
+
+- [x] **Automated GitHub Actions CI**: Added `.github/workflows/ci.yml` running `pytest` with coverage on master and pull requests (Issue #124).
+- [x] **Dependabot Automation Workflow**: Added `.github/workflows/dependabot.yml` for automated PR review, auto-approval, and auto-merge of minor and patch updates (Issue #124).
+- [x] **Dependabot Configuration Alignment**: Updated `.github/dependabot.yml` to monitor `Containerfile` (`docker` ecosystem), added labels, commit prefixes, and grouping for dev dependencies (Issue #124).
+- [x] **Dev Requirements**: Added `requirements-dev.txt` for development and test runner dependencies (Issue #124).
+
+---
+
 ## Next Steps / Future Work
-1. **Automated GitHub Actions CI**: Setup `.github/workflows/ci.yml` running `pytest` on PRs and pushes.
-2. **Dynamic Live Telemetry**: Integrate GPU VRAM and temperature metrics directly into the Streamlit UI via NVML.
-3. **Automated Export**: Add CSV/Excel export buttons for filtered historical benchmark sets.
+1. **Dynamic Live Telemetry**: Integrate GPU VRAM and temperature metrics directly into the Streamlit UI via NVML.
+2. **Automated Export**: Add CSV/Excel export buttons for filtered historical benchmark sets.
+
