@@ -2,6 +2,16 @@
 
 All notable changes to the LLM Benchmarking and Server Router project are documented below.
 
+## [Unreleased]
+
+### Added
+*   **Automated GitHub Actions CI (`.github/workflows/ci.yml`)**: Continuous integration workflow running `pytest` with coverage on pushes and pull requests targeting `master` (Issue #124).
+*   **Dependabot Automation Workflow (`.github/workflows/dependabot.yml`)**: Auto-approves and enables auto-merge for non-breaking (minor/patch) Dependabot pull requests using `dependabot/fetch-metadata` (Issue #124).
+*   **Dedicated Test Requirements (`requirements-dev.txt`)**: Explicit test and coverage dependencies (`pytest`, `pytest-cov`, `pytest-mock`, `pytest-asyncio`, `pytest-xdist`) (Issue #124).
+
+### Changed
+*   **Modernized Dependabot Configuration (`.github/dependabot.yml`)**: Added `docker` package ecosystem for `Containerfile`, semantic commit prefixes (`chore(deps-python)`, `chore(deps-docker)`, `chore(deps-actions)`), dependency grouping for development libraries, and scheduled Monday execution windows (Issue #124).
+
 ## [v0.1.3] - 2026-09-11 - AST Sandbox Security Hardening, Presets Config Caching & Complete UI Test Coverage
 
 ### Added
