@@ -12,6 +12,7 @@ A comprehensive benchmarking pipeline and Streamlit dashboard designed to evalua
 - `populate_history.py` - Utility script to populate the history registry with synthetic benchmark run logs.
 - `advanced_benchmarks.py` - Long-context (Needle, RULER, LongBench) and agentic reasoning (SWE-bench) benchmark pipeline.
 - `kld_benchmark.py` - KV cache quantization Kullback-Leibler (KL) Divergence and perplexity evaluation.
+- `deploy/` - Production deployment specifications, including systemd Quadlet container definitions (`benchmark-ui.container`).
 - `history/` - Registry directory storing historical run JSON logs.
 - `benchmark.sh` - Bash throughput benchmark script evaluating cold start, KV cache hit, tool calls, and document decode speed.
 - `run-tb-pi.sh` - Execution script for Terminal-Bench 2.0 with the pi agent and local llama.cpp server.
@@ -213,4 +214,54 @@ pytest --cov=dashboard --cov=utils --cov=run_matrix --cov=run_suite --cov=popula
 | `test_advanced_benchmarks.py`| `advanced_benchmarks.py` | Needle, RULER, filler text generation |
 | `test_kld_benchmark.py` | `kld_benchmark.py` | Quantization loss, perplexity calculation |
 | `test_benchmark_ui.py` | `benchmark_ui.py` | UI runner rendering and launch commands |
+| `test_deploy.py` | `deploy/benchmark-ui.container` | Quadlet unit validation, persistent volume mount, loopback binding |
+
+---
+
+## Production Deployment & Persistence
+
+The Benchmark UI is deployed in production as a rootless Podman Quadlet container managed by `systemd`.
+
+### Persistence Architecture
+
+Benchmark run outputs are written to `/app/history` inside the container (`dashboard.py`, `run_suite.py`, etc.). To prevent benchmark run history from being clobbered across container image updates (`AutoUpdate=registry`) or Quadlet service restarts, the container definition mounts a dedicated host directory with SELinux private relabeling (`:Z`):
+
+```text
+Host Path:      /mnt/DATA/boy/prod/benchmark-ui/data/history
+Container Path: /app/history
+SELinux Mode:   :Z
+```
+
+### Installation
+
+To install or update the Quadlet container definition:
+
+1. Ensure the host persistence directory exists (or seed it from existing runs):
+   ```bash
+   mkdir -p /mnt/DATA/boy/prod/benchmark-ui/data/history
+   # Optional: seed existing tracked history files
+   cp -n history/run_*.json /mnt/DATA/boy/prod/benchmark-ui/data/history/
+   ```
+
+2. Copy the vendored Quadlet unit into the user's systemd Quadlet directory:
+   ```bash
+   cp deploy/benchmark-ui.container ~/.config/containers/systemd/
+   ```
+
+3. Reload systemd and restart the service:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user restart benchmark-ui
+   ```
+
+### Backup Recommendations
+
+Because benchmark runs are persisted to `/mnt/DATA/boy/prod/benchmark-ui/data/history`, backups can be taken directly from the host filesystem without stopping the container:
+
+```bash
+# Create a timestamped archive of the benchmark run history
+tar -czvf benchmark-history-$(date +%Y%m%d_%H%M%S).tar.gz -C /mnt/DATA/boy/prod/benchmark-ui/data history
+```
+
+Periodic backup routines (such as BorgBackup, Restic, or daily rsync jobs) should include `/mnt/DATA/boy/prod/benchmark-ui/data/history` to ensure historical evaluation benchmarks remain preserved across host migrations and disaster recovery.
 
