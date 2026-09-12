@@ -1,0 +1,25 @@
+[Unit]
+Description=LLM Benchmark UI Container
+After=network-online.target
+
+[Container]
+ContainerName=production-benchmark-ui
+Image=ghcr.io/sheepdestroyer/benchmark-ui:latest
+AutoUpdate=registry
+PublishPort=127.0.0.1:8501:8501
+Volume=/mnt/DATA/boy/prod/benchmark-ui/data/history:/app/history:Z
+Environment=STREAMLIT_SERVER_PORT=8501
+Environment=STREAMLIT_SERVER_ADDRESS=0.0.0.0
+Environment=STREAMLIT_SERVER_HEADLESS=true
+Label=wud.watch.digest=true
+HealthCmd=curl -f http://localhost:8501/_stcore/health || exit 1
+HealthInterval=15s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target
