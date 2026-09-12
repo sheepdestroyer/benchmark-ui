@@ -17,6 +17,7 @@ A comprehensive benchmarking pipeline and Streamlit dashboard designed to evalua
 - `run-tb-pi.sh` - Execution script for Terminal-Bench 2.0 with the pi agent and local llama.cpp server.
 - `run_ui.sh` - Convenience launcher script for the Streamlit dashboard.
 - `requirements.txt` - Python package dependencies (Streamlit, Pandas, Plotly, Requests).
+- `requirements-dev.txt` - Development and test suite dependencies (Pytest, Pytest-Cov, Pytest-Mock, Pytest-Asyncio, Pytest-Xdist).
 
 ## Installation
 
@@ -25,6 +26,8 @@ A comprehensive benchmarking pipeline and Streamlit dashboard designed to evalua
 
 ```bash
 pip install -r requirements.txt
+# For development and testing tooling:
+pip install -r requirements-dev.txt
 ```
 
 ## Quick Start
@@ -72,15 +75,20 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 
 ---
 
-## Automated Testing
-
-The repository maintains an automated unit test suite covering input validation, UI logic, benchmark execution, and data formatting.
-
-Run the test suite using `pytest`:
-
+## Automated Testing & CI/CD
+ 
+The repository maintains an automated unit test suite (242 tests) covering input validation, UI logic, benchmark execution, and data formatting.
+ 
+Install development dependencies and run the test suite using `pytest`:
+ 
 ```bash
+pip install -r requirements-dev.txt
 pytest
 ```
+
+Continuous integration and dependency maintenance are automated via GitHub Actions:
+- **CI Pipeline (`.github/workflows/ci.yml`)**: Automatically runs `pytest` across Python 3.14 with dependency caching on pushes and pull requests to `master`.
+- **Dependabot Automation (`.github/workflows/dependabot.yml`)**: Automated review, auto-approval, and auto-merge for non-breaking (minor/patch) dependency updates.
 
 The test suite covers:
 - `test_utils.py` (100% coverage): SSRF security boundaries, URL scheme/port checks, multi-IP resolution filtering, and model/corpus parameter validation.
