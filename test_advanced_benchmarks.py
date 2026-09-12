@@ -1,6 +1,15 @@
+import os
+import tempfile
 import unittest
-from unittest.mock import patch
-from advanced_benchmarks import is_safe_code, generate_filler_text
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+from advanced_benchmarks import (
+    is_safe_code,
+    generate_filler_text,
+    _get_presets_config,
+    map_repo_to_preset_alias,
+    get_preset_metadata,
+)
 
 class TestIsSafeCode(unittest.TestCase):
     def test_valid_code(self):
@@ -58,6 +67,81 @@ class TestGenerateFillerText(unittest.TestCase):
         res = generate_filler_text(10)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], "A sentence. A sentence. A sentence. A sentence. A sentence.")
+
+class TestPresetsCachingAndMapping(unittest.TestCase):
+    def setUp(self):
+        _get_presets_config.cache_clear()
+
+    def tearDown(self):
+        _get_presets_config.cache_clear()
+
+    def test_presets_config_caching(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[*]\nparallel = 2\n\n[Qwen3.6-27B]\nalias = qwen27b\nhf-repo = unsloth/qwen3.6-27b\n", encoding="utf-8")
+
+            cfg1 = _get_presets_config(str(presets_file))
+            self.assertIsNotNone(cfg1)
+            self.assertIn("Qwen3.6-27B", cfg1.sections())
+
+            # Modify file content on disk without clearing cache
+            presets_file.write_text("[*]\nparallel = 4\n\n[NewSection]\nalias = new\n", encoding="utf-8")
+
+            # Subsequent call should return cached object
+            cfg2 = _get_presets_config(str(presets_file))
+            self.assertIs(cfg1, cfg2)
+            self.assertNotIn("NewSection", cfg2.sections())
+
+            # After cache clear, new content should be loaded
+            _get_presets_config.cache_clear()
+            cfg3 = _get_presets_config(str(presets_file))
+            self.assertIsNot(cfg1, cfg3)
+            self.assertIn("NewSection", cfg3.sections())
+
+    def test_presets_config_nonexistent_and_malformed_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            non_existent = str(Path(tmp_dir) / "missing.ini")
+            cfg_missing = _get_presets_config(non_existent)
+            self.assertIsNone(cfg_missing)
+
+            # Check mapping and metadata fallback when file missing
+            self.assertEqual(map_repo_to_preset_alias("Qwen3.6-27B", presets_file=non_existent), "Qwen3.6-27B")
+            meta = get_preset_metadata("Qwen3.6-27B", presets_file=non_existent)
+            self.assertEqual(meta["parallel"], "1")
+
+            # Malformed file
+            malformed_file = Path(tmp_dir) / "malformed.ini"
+            malformed_file.write_text("invalid [ini content without closing bracket", encoding="utf-8")
+
+            _get_presets_config.cache_clear()
+            cfg_malformed = _get_presets_config(str(malformed_file))
+            self.assertIsNone(cfg_malformed)
+            self.assertEqual(map_repo_to_preset_alias("Qwen3.6-27B", presets_file=str(malformed_file)), "Qwen3.6-27B")
+
+    def test_map_repo_to_preset_alias_and_metadata_with_presets(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text(
+                "[*]\nflash-attn = true\nparallel = 2\n\n"
+                "[Qwen3.6-27B]\nhf-repo = unsloth/Qwen3.6-27B-GGUF\nalias = qwen27b\nspec-type = ngram\n",
+                encoding="utf-8"
+            )
+
+            # Match by section name
+            self.assertEqual(map_repo_to_preset_alias("qwen3.6-27b", presets_file=str(presets_file)), "Qwen3.6-27B")
+            # Match by hf-repo
+            self.assertEqual(map_repo_to_preset_alias("unsloth/Qwen3.6-27B-GGUF", presets_file=str(presets_file)), "Qwen3.6-27B")
+            # Match by alias
+            self.assertEqual(map_repo_to_preset_alias("qwen27b", presets_file=str(presets_file)), "Qwen3.6-27B")
+            # Fallback for unknown
+            self.assertEqual(map_repo_to_preset_alias("UnknownModel", presets_file=str(presets_file)), "UnknownModel")
+
+            # Metadata parsing
+            meta = get_preset_metadata("Qwen3.6-27B", presets_file=str(presets_file))
+            self.assertEqual(meta["flash_attn"], "true")
+            self.assertEqual(meta["parallel"], "2")
+            self.assertEqual(meta["spec_type"], "ngram")
+
 
 if __name__ == "__main__":
     unittest.main()

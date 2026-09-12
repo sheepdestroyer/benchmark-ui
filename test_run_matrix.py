@@ -325,6 +325,48 @@ class TestExtractRunIdentifiers(unittest.TestCase):
         self.assertEqual(res, ("unsloth/other-model", 1024))
 
 
+class TestPresetSectionsCaching(unittest.TestCase):
+    def setUp(self):
+        run_matrix._get_preset_sections.cache_clear()
+
+    def tearDown(self):
+        run_matrix._get_preset_sections.cache_clear()
+
+    def test_preset_sections_caching(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[Qwen3.6-27B]\nthreads=8\n", encoding="utf-8")
+
+            s1 = run_matrix._get_preset_sections(str(presets_file))
+            self.assertEqual(s1, {"Qwen3.6-27B"})
+
+            # Modify file on disk without clearing cache
+            presets_file.write_text("[Qwen3.6-27B]\n[NewModel]\n", encoding="utf-8")
+
+            s2 = run_matrix._get_preset_sections(str(presets_file))
+            self.assertEqual(s2, {"Qwen3.6-27B"})
+
+            # Clear cache and verify new content loaded
+            run_matrix._get_preset_sections.cache_clear()
+            s3 = run_matrix._get_preset_sections(str(presets_file))
+            self.assertEqual(s3, {"Qwen3.6-27B", "NewModel"})
+
+    def test_preset_sections_nonexistent_and_malformed_fallback(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            non_existent = str(Path(tmp_dir) / "missing.ini")
+            s_missing = run_matrix._get_preset_sections(non_existent)
+            self.assertEqual(s_missing, set())
+
+            malformed_file = Path(tmp_dir) / "malformed.ini"
+            malformed_file.write_text("corrupted [ini without closing", encoding="utf-8")
+
+            run_matrix._get_preset_sections.cache_clear()
+            s_malformed = run_matrix._get_preset_sections(str(malformed_file))
+            self.assertEqual(s_malformed, set())
+
+
 class TestGetCompletedRuns(unittest.TestCase):
     def test_history_dir_not_exists(self):
         import tempfile
