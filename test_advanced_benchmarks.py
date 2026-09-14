@@ -786,6 +786,10 @@ class TestCallEndpoint(unittest.TestCase):
             b'data: {"choices": 12345}',
             # choices[0] is None -> AttributeError on .get()
             b'data: {"choices": [null]}',
+            # delta content is non-string (int) -> TypeError
+            b'data: {"choices": [{"delta": {"content": 123}}]}',
+            # delta reasoning_content is non-string (list) -> TypeError
+            b'data: {"choices": [{"delta": {"reasoning_content": [1, 2, 3]}}]}',
             # Valid chunk afterwards
             b'data: {"choices": [{"delta": {"content": "Working content"}}]}',
             b"data: [DONE]",

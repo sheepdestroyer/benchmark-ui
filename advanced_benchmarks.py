@@ -213,12 +213,17 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
                         chunk = json.loads(data_content)
                         if chunk.get("choices"):
                             delta = chunk["choices"][0].get("delta", {})
-                            content = delta.get("content") or ""
-                            reasoning_content = delta.get("reasoning_content") or ""
-                            
+                            content = delta.get("content")
+                            reasoning_content = delta.get("reasoning_content")
+
+                            if content is not None and not isinstance(content, str):
+                                raise TypeError(f"delta.content must be str, got {type(content).__name__}")
+                            if reasoning_content is not None and not isinstance(reasoning_content, str):
+                                raise TypeError(f"delta.reasoning_content must be str, got {type(reasoning_content).__name__}")
+
                             if first_token_time is None and (content or reasoning_content):
                                 first_token_time = time.time()
-                            
+
                             if content:
                                 response_chunks.append(content)
                             if reasoning_content:
