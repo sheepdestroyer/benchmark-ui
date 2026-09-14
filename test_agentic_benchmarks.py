@@ -5,6 +5,7 @@ Unit tests for Harbor and standalone agentic benchmark harness (agentic_benchmar
 import configparser
 import json
 import os
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -135,9 +136,35 @@ class TestAgenticBenchmarks(unittest.TestCase):
             self.assertEqual(out_noop, "(command produced no output)")
 
             # Command timeout
-            with patch(
-                "subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd="sleep", timeout=30),
+            mock_proc = MagicMock()
+            mock_proc.pid = 12345
+            mock_proc.communicate.side_effect = [
+                subprocess.TimeoutExpired(cmd="sleep", timeout=30),
+                ("", ""),
+            ]
+            with (
+                patch("subprocess.Popen", return_value=mock_proc),
+                patch("os.getpgid", return_value=12345),
+                patch("os.killpg") as mock_killpg,
+            ):
+                out_timeout = agentic_benchmarks.execute_sandbox_tool(
+                    tmp_dir, "bash", {"command": "sleep 100"}
+                )
+                self.assertIn("timed out after 30 seconds", out_timeout)
+                mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
+
+    def test_execute_sandbox_tool_bash_timeout_process_lookup_error(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            mock_proc = MagicMock()
+            mock_proc.pid = 12345
+            mock_proc.communicate.side_effect = [
+                subprocess.TimeoutExpired(cmd="sleep", timeout=30),
+                ("", ""),
+            ]
+            with (
+                patch("subprocess.Popen", return_value=mock_proc),
+                patch("os.getpgid", return_value=12345),
+                patch("os.killpg", side_effect=ProcessLookupError),
             ):
                 out_timeout = agentic_benchmarks.execute_sandbox_tool(
                     tmp_dir, "bash", {"command": "sleep 100"}
@@ -230,8 +257,43 @@ class TestAgenticBenchmarks(unittest.TestCase):
             self.assertIn("-i", cmd)
             self.assertIn("fix-git", cmd)
             self.assertIn("--ae", cmd)
-            self.assertIn("OPENAI_BASE_URL=http://127.0.0.1:8081", cmd)
+            self.assertIn(
+                "OPENAI_BASE_URL=http://host.containers.internal:8081/v1", cmd
+            )
             self.assertIn("OPENAI_API_KEY=custom-key", cmd)
+            self.assertEqual(mock_subproc.call_args[1].get("timeout"), 1800)
+
+    def test_normalize_harbor_endpoint(self):
+        self.assertEqual(
+            agentic_benchmarks.normalize_harbor_endpoint("http://127.0.0.1:8000"),
+            "http://host.containers.internal:8000/v1",
+        )
+        self.assertEqual(
+            agentic_benchmarks.normalize_harbor_endpoint("http://localhost:8000/v1"),
+            "http://host.containers.internal:8000/v1",
+        )
+        self.assertEqual(
+            agentic_benchmarks.normalize_harbor_endpoint("http://192.168.0.35:8081/"),
+            "http://192.168.0.35:8081/v1",
+        )
+        self.assertEqual(
+            agentic_benchmarks.normalize_harbor_endpoint("https://example.com/v1"),
+            "https://example.com/v1",
+        )
+
+    def test_run_harbor_benchmark_socket_error(self):
+        with patch(
+            "agentic_benchmarks.get_podman_socket_path",
+            side_effect=FileNotFoundError("Socket missing"),
+        ):
+            tasks = agentic_benchmarks.run_harbor_benchmark(
+                endpoint="http://127.0.0.1:8081",
+                model="local-model",
+                task_filter="fix-git",
+            )
+            self.assertEqual(len(tasks), 1)
+            self.assertFalse(tasks[0]["passed"])
+            self.assertEqual(tasks[0]["task_name"], "fix-git")
 
     def test_run_harbor_benchmark_subprocess_exception(self):
         with (
@@ -548,6 +610,51 @@ class TestAgenticBenchmarks(unittest.TestCase):
             self.assertEqual(summary["tasks_passed"], 0)
             self.assertEqual(summary["average_turns"], 3.0)
 
+    def test_run_agentic_suite_harbor_execution_failure_fallback(self):
+        mock_harbor_failed = [
+            {
+                "task_name": "all",
+                "passed": False,
+                "turns_taken": 0,
+                "tool_calls": 0,
+                "prompt_tokens": 0,
+                "reasoning_tokens": 0,
+                "completion_tokens": 0,
+                "duration_seconds": 1.0,
+            }
+        ]
+        mock_standalone_tasks = [
+            {
+                "task_name": "fix-syntax",
+                "passed": True,
+                "turns_taken": 2,
+                "tool_calls": 1,
+                "prompt_tokens": 100,
+                "reasoning_tokens": 10,
+                "completion_tokens": 50,
+                "duration_seconds": 2.5,
+            }
+        ]
+        with (
+            patch("agentic_benchmarks.is_harbor_available", return_value=True),
+            patch(
+                "agentic_benchmarks.run_harbor_benchmark",
+                return_value=mock_harbor_failed,
+            ),
+            patch(
+                "agentic_benchmarks.run_standalone_agentic_benchmark",
+                return_value=mock_standalone_tasks,
+            ) as mock_sa,
+        ):
+            summary = agentic_benchmarks.run_agentic_suite(
+                endpoint="http://127.0.0.1:8081",
+                model="model-1",
+                prefer_harbor=True,
+            )
+            mock_sa.assert_called_once()
+            self.assertEqual(summary["suite"], "standalone-agentic")
+            self.assertEqual(summary["tasks_passed"], 1)
+
     def test_parse_harbor_output_corrupted_json_lines(self):
         stdout = '{"task_name": broken}\n{"foo": "task_name"}\n'
         tasks = agentic_benchmarks.parse_harbor_output(
@@ -573,7 +680,7 @@ class TestAgenticBenchmarks(unittest.TestCase):
                 )
                 self.assertIn("Error writing file", out_write)
 
-            with patch("subprocess.run", side_effect=OSError("Exec error")):
+            with patch("subprocess.Popen", side_effect=OSError("Exec error")):
                 out_bash = agentic_benchmarks.execute_sandbox_tool(
                     tmp_dir, "bash", {"command": "ls"}
                 )
@@ -775,6 +882,50 @@ class TestAgenticBenchmarks(unittest.TestCase):
             self.assertIn("log-analysis", task_names)
             self.assertIn("git-repair", task_names)
             self.assertIn("env-config", task_names)
+
+    def test_run_standalone_agentic_benchmark_text_tool_calls_and_endpoint_normalization(
+        self,
+    ):
+        mock_resp_1 = MagicMock()
+        mock_resp_1.status_code = 200
+        mock_resp_1.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": (
+                            "I will fix the syntax:\n```bash\n"
+                            "cat << 'EOF' > app.py\n"
+                            "def calculate_average(numbers):\n"
+                            "    if not numbers:\n"
+                            "        return 0\n"
+                            "    total = sum(numbers)\n"
+                            "    return total / len(numbers)\n\n"
+                            "if __name__ == '__main__':\n"
+                            "    print(calculate_average([10, 20, 30]))\n"
+                            "EOF\n```"
+                        ),
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+        }
+
+        with patch("requests.post", return_value=mock_resp_1) as mock_post:
+            tasks = agentic_benchmarks.run_standalone_agentic_benchmark(
+                endpoint="http://127.0.0.1:8081/v1/",
+                model="local-model",
+                task_filter="fix-syntax",
+                max_turns=2,
+            )
+            # Verify URL normalization without duplicate /v1
+            self.assertEqual(
+                mock_post.call_args[0][0],
+                "http://127.0.0.1:8081/v1/chat/completions",
+            )
+            self.assertEqual(len(tasks), 1)
+            self.assertTrue(tasks[0]["passed"])
+            self.assertEqual(tasks[0]["tool_calls"], 1)
 
 
 if __name__ == "__main__":

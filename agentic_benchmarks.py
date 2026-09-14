@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -191,6 +192,16 @@ def parse_harbor_output(
     ]
 
 
+def normalize_harbor_endpoint(endpoint: str) -> str:
+    """Normalize endpoint for container networking (host.containers.internal)."""
+    ep = endpoint.strip().rstrip("/")
+    ep = ep.replace("://127.0.0.1", "://host.containers.internal")
+    ep = ep.replace("://localhost", "://host.containers.internal")
+    if not ep.endswith("/v1"):
+        ep = f"{ep}/v1"
+    return ep
+
+
 def run_harbor_benchmark(
     endpoint: str,
     model: str,
@@ -199,12 +210,13 @@ def run_harbor_benchmark(
     agent: str = "pi",
     dataset: str = "terminal-bench/terminal-bench-2",
     api_key: Optional[str] = None,
+    timeout: int = 1800,
 ) -> List[Dict[str, Any]]:
     """
     Build and execute Harbor CLI command matching run-tb-pi.sh.
     Parses Harbor output to extract structured task results.
     """
-    docker_host = get_podman_socket_path()
+    effective_endpoint = normalize_harbor_endpoint(endpoint)
     effective_key = (
         api_key
         or os.environ.get("OPENAI_API_KEY")
@@ -230,28 +242,30 @@ def run_harbor_benchmark(
     cmd.extend(
         [
             "--ae",
-            f"OPENAI_BASE_URL={endpoint}",
+            f"OPENAI_BASE_URL={effective_endpoint}",
             "--ae",
             f"OPENAI_API_KEY={effective_key}",
         ]
     )
 
-    env = os.environ.copy()
-    env["DOCKER_HOST"] = docker_host
-    env["OPENAI_BASE_URL"] = endpoint
-    env["OPENAI_API_KEY"] = effective_key
-
     start_time = time.time()
+    default_task = task_filter if task_filter != "all" else dataset
     try:
+        docker_host = get_podman_socket_path()
+        env = os.environ.copy()
+        env["DOCKER_HOST"] = docker_host
+        env["OPENAI_BASE_URL"] = effective_endpoint
+        env["OPENAI_API_KEY"] = effective_key
+
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             env=env,
+            timeout=timeout,
             check=False,
         )
         duration = time.time() - start_time
-        default_task = task_filter if task_filter != "all" else dataset
         return parse_harbor_output(
             stdout=proc.stdout,
             stderr=proc.stderr,
@@ -263,7 +277,7 @@ def run_harbor_benchmark(
         duration = time.time() - start_time
         return [
             {
-                "task_name": task_filter if task_filter != "all" else dataset,
+                "task_name": default_task,
                 "passed": False,
                 "turns_taken": 0,
                 "tool_calls": 0,
@@ -321,28 +335,46 @@ def execute_sandbox_tool(
         cmd = arguments.get("command", "")
         if not cmd.strip():
             return "Error: Empty command"
+        sanitized_env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": sandbox_dir,
+            "TMPDIR": sandbox_dir,
+            "LANG": "C.UTF-8",
+        }
         try:
-            res = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 shell=True,
                 cwd=sandbox_dir,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=30,
-                check=False,
+                env=sanitized_env,
+                start_new_session=True,
             )
-            out = res.stdout
-            if res.stderr:
-                out = (out + "\n" if out else "") + res.stderr
-            if res.returncode != 0:
+            try:
+                stdout, stderr = proc.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    pass
+                try:
+                    proc.communicate(timeout=5)
+                except Exception:  # pragma: no cover
+                    pass
+                return "Error: Command timed out after 30 seconds"
+
+            out = stdout
+            if stderr:
+                out = (out + "\n" if out else "") + stderr
+            if proc.returncode != 0:
                 out = (
-                    out + f"\n(exit code {res.returncode})"
+                    out + f"\n(exit code {proc.returncode})"
                     if out
-                    else f"(exit code {res.returncode})"
+                    else f"(exit code {proc.returncode})"
                 )
             return out if out else "(command produced no output)"
-        except subprocess.TimeoutExpired:
-            return "Error: Command timed out after 30 seconds"
         except Exception as e:
             return f"Error executing command: {e}"
 
@@ -620,6 +652,7 @@ def run_standalone_agentic_benchmark(
             # Fallback to exact match or empty
             selected_tasks = [t for t in STANDALONE_TASKS if t == task_filter]
 
+    chat_url = endpoint.rstrip("/").removesuffix("/v1") + "/v1/chat/completions"
     results: List[Dict[str, Any]] = []
 
     for task_name in selected_tasks:
@@ -658,7 +691,7 @@ def run_standalone_agentic_benchmark(
 
                 try:
                     resp = requests.post(
-                        f"{endpoint}/v1/chat/completions",
+                        chat_url,
                         json=payload,
                         headers=headers,
                         timeout=60,
@@ -684,6 +717,8 @@ def run_standalone_agentic_benchmark(
                 content = assistant_msg.get("content") or ""
                 if not tool_calls and content:
                     tool_calls = parse_tool_calls_from_text(content)
+                    if tool_calls:
+                        assistant_msg["tool_calls"] = tool_calls
 
                 turns_taken += 1
                 messages.append(assistant_msg)
@@ -764,7 +799,23 @@ def run_agentic_suite(
                 task_filter=task_filter,
                 api_key=api_key,
             )
-            harbor_used = True
+            is_execution_failure = not tasks or (
+                len(tasks) == 1
+                and not tasks[0].get("passed", False)
+                and tasks[0].get("turns_taken", 0) == 0
+                and tasks[0].get("tool_calls", 0) == 0
+                and tasks[0].get("prompt_tokens", 0) == 0
+            )
+            if is_execution_failure:
+                tasks = run_standalone_agentic_benchmark(
+                    endpoint=endpoint,
+                    model=model,
+                    task_filter=task_filter,
+                    api_key=api_key,
+                    max_tokens=max_tokens,
+                )
+            else:
+                harbor_used = True
         except Exception:
             tasks = run_standalone_agentic_benchmark(
                 endpoint=endpoint,
