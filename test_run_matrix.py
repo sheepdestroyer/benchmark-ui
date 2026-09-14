@@ -3,6 +3,7 @@ import io
 import sys
 import json
 import time
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call
@@ -324,6 +325,34 @@ class TestExtractRunIdentifiers(unittest.TestCase):
         res = run_matrix.extract_run_identifiers(data, presets_sections=presets)
         self.assertEqual(res, ("unsloth/other-model", 1024))
 
+    def test_extract_presets_unsloth_prefix_normalization(self):
+        # 1. Profile has unsloth/ prefix, preset section does not
+        data1 = {
+            "run_metadata": {
+                "cli_arguments": ["--model", "unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL", "--tokens", "2048"]
+            }
+        }
+        res1 = run_matrix.extract_run_identifiers(data1, presets_sections={"Qwen3.8-27B-GGUF:UD-Q5_K_XL"})
+        self.assertEqual(res1, ("Qwen3.8-27B-GGUF:UD-Q5_K_XL", 2048))
+
+        # 2. Profile has NO unsloth/ prefix, preset section has unsloth/ prefix
+        data2 = {
+            "run_metadata": {
+                "cli_arguments": ["--model", "Qwen3.8-27B-GGUF:UD-Q5_K_XL", "--tokens", "4096"]
+            }
+        }
+        res2 = run_matrix.extract_run_identifiers(data2, presets_sections={"unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL"})
+        self.assertEqual(res2, ("unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL", 4096))
+
+        # 3. Profile without / or : matches section with unsloth/ prefix
+        data3 = {
+            "run_metadata": {
+                "cli_arguments": ["--model", "Qwen3.8-27B", "--tokens", "1024"]
+            }
+        }
+        res3 = run_matrix.extract_run_identifiers(data3, presets_sections={"unsloth/Qwen3.8-27B"})
+        self.assertEqual(res3, ("unsloth/Qwen3.8-27B", 1024))
+
 
 class TestGetCompletedRuns(unittest.TestCase):
     def setUp(self):
@@ -484,6 +513,62 @@ class TestLoadPresetsSections(unittest.TestCase):
             res = run_matrix.load_presets_sections(None)
             self.assertEqual(res, set())
 
+    def test_load_presets_sections_fallback_path(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fallback_ini = Path(tmp_dir) / "model_presets.ini"
+            fallback_ini.write_text("[FallbackMatrixSection]\nthreads = 8\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {}, clear=True), patch("run_matrix.resolve_presets_path", return_value=str(fallback_ini)):
+                run_matrix.load_presets_sections.cache_clear()
+                sections = run_matrix.load_presets_sections(None)
+                self.assertEqual(sections, {"FallbackMatrixSection"})
+
+    def test_resolve_presets_path(self):
+        # 1. Explicit path
+        self.assertEqual(run_matrix.resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini")
+        self.assertEqual(run_matrix.resolve_presets_path(Path("/explicit/path2.ini")), "/explicit/path2.ini")
+
+        # 2. PRESETS_FILE environment variable
+        with patch.dict(os.environ, {"PRESETS_FILE": "/env/path.ini"}):
+            self.assertEqual(run_matrix.resolve_presets_path(None), "/env/path.ini")
+
+        # 3. Default fallback logic when PRESETS_FILE is not set
+        primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+        fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+
+        # Primary exists
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == primary):
+            self.assertEqual(run_matrix.resolve_presets_path(None), primary)
+
+        # Primary does not exist, fallback exists
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == fallback):
+            self.assertEqual(run_matrix.resolve_presets_path(None), fallback)
+
+        # Neither exists -> returns primary
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", return_value=False):
+            self.assertEqual(run_matrix.resolve_presets_path(None), primary)
+
+    def test_load_presets_config_caching_and_errors(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("[ModelAlpha]\nthreads = 4\n", encoding="utf-8")
+
+            run_matrix.load_presets_config.cache_clear()
+            c1 = run_matrix.load_presets_config(str(presets_file))
+            c2 = run_matrix.load_presets_config(str(presets_file))
+            self.assertIsNotNone(c1)
+            self.assertIs(c1, c2)
+            self.assertEqual(run_matrix.load_presets_config.cache_info().hits, 1)
+
+            # Nonexistent file
+            run_matrix.load_presets_config.cache_clear()
+            self.assertIsNone(run_matrix.load_presets_config("/nonexistent/path/ini"))
+
+            # Corrupt file
+            corrupt = Path(tmp_dir) / "corrupt.ini"
+            corrupt.write_text("corrupted [ini without closing", encoding="utf-8")
+            self.assertIsNone(run_matrix.load_presets_config(str(corrupt)))
+
     def test_get_completed_runs_caching(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -504,6 +589,120 @@ class TestLoadPresetsSections(unittest.TestCase):
                 self.assertEqual(runs1, {("Qwen3.6-27B", 8192)})
                 self.assertEqual(runs2, {("Qwen3.6-27B", 8192)})
                 self.assertEqual(run_matrix.load_presets_sections.cache_info().hits, 1)
+
+class TestMapRepoToPresetAliasAndHelpers(unittest.TestCase):
+    def setUp(self):
+        run_matrix.load_presets_config.cache_clear()
+        run_matrix.map_repo_to_preset_alias.cache_clear()
+
+    def tearDown(self):
+        run_matrix.load_presets_config.cache_clear()
+        run_matrix.map_repo_to_preset_alias.cache_clear()
+
+    def test_normalize_repo_id_and_repo_id_matches(self):
+        # Invalid inputs
+        self.assertEqual(run_matrix._normalize_repo_id(None), "")
+        self.assertEqual(run_matrix._normalize_repo_id(""), "")
+        self.assertEqual(run_matrix._normalize_repo_id(123), "")
+        self.assertEqual(run_matrix._normalize_repo_id("  unsloth/my-model  "), "my-model")
+        self.assertEqual(run_matrix._normalize_repo_id("my-model"), "my-model")
+
+        self.assertFalse(run_matrix._repo_id_matches(None, "model"))
+        self.assertFalse(run_matrix._repo_id_matches("model", None))
+        self.assertFalse(run_matrix._repo_id_matches(123, "model"))
+        self.assertFalse(run_matrix._repo_id_matches("  ", "model"))
+        self.assertFalse(run_matrix._repo_id_matches("model", "   "))
+        self.assertTrue(run_matrix._repo_id_matches("MyModel", "mymodel"))
+        self.assertTrue(run_matrix._repo_id_matches("unsloth/MyModel", "mymodel"))
+        self.assertTrue(run_matrix._repo_id_matches("MyModel", "unsloth/mymodel"))
+        self.assertFalse(run_matrix._repo_id_matches("OtherModel", "MyModel"))
+
+    def test_map_repo_to_preset_alias_invalid_and_corrupt(self):
+        self.assertIsNone(run_matrix.map_repo_to_preset_alias(None))
+        self.assertEqual(run_matrix.map_repo_to_preset_alias(""), "")
+        self.assertEqual(run_matrix.map_repo_to_preset_alias(123), 123)
+        self.assertEqual(run_matrix.map_repo_to_preset_alias("model", presets_file="/nonexistent/ini"), "model")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            corrupt = Path(tmp_dir) / "corrupt.ini"
+            corrupt.write_text("[invalid", encoding="utf-8")
+            self.assertEqual(run_matrix.map_repo_to_preset_alias("model", presets_file=str(corrupt)), "model")
+
+    def test_map_repo_to_preset_alias_matching_and_caching(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("""[*]
+flash-attn = true
+
+[Qwen3.8-27B-spec]
+hf-repo = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
+alias = unsloth/locallama-qwen, local-qwen
+
+[PlainSection]
+hf-repo = PlainRepo:latest
+alias = plain-alias
+
+[unsloth/PrefixSection]
+hf-repo = PrefixRepo:latest
+""", encoding="utf-8")
+
+            # Match section
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("unsloth/PlainSection", presets_file=str(presets_file)),
+                "PlainSection"
+            )
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("PrefixSection", presets_file=str(presets_file)),
+                "unsloth/PrefixSection"
+            )
+
+            # Match hf-repo
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("Qwen3.8-27B-GGUF:UD-Q5_K_XL", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("unsloth/PlainRepo:latest", presets_file=str(presets_file)),
+                "PlainSection"
+            )
+
+            # Match alias
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("locallama-qwen", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("unsloth/local-qwen", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("unsloth/plain-alias", presets_file=str(presets_file)),
+                "PlainSection"
+            )
+            # Match full comma alias
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("unsloth/locallama-qwen, local-qwen", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+
+            # No match
+            self.assertEqual(
+                run_matrix.map_repo_to_preset_alias("unknown-model", presets_file=str(presets_file)),
+                "unknown-model"
+            )
+
+            # Caching
+            c1 = run_matrix.map_repo_to_preset_alias("cached-test", presets_file=str(presets_file))
+            c2 = run_matrix.map_repo_to_preset_alias("cached-test", presets_file=str(presets_file))
+            self.assertEqual(c1, c2)
+            self.assertGreaterEqual(run_matrix.map_repo_to_preset_alias.cache_info().hits, 1)
+
+    def test_map_repo_to_preset_alias_exception_handling(self):
+        mock_cfg = MagicMock()
+        mock_cfg.sections.side_effect = RuntimeError("Mock error")
+        with patch("run_matrix.load_presets_config", return_value=mock_cfg):
+            self.assertEqual(run_matrix.map_repo_to_preset_alias("any-model"), "any-model")
+
 
 class TestRunMatrix(unittest.TestCase):
     def setUp(self):

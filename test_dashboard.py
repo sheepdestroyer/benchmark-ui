@@ -255,6 +255,134 @@ parallel = 2
             self.assertIs(c1, c2)
             self.assertEqual(mock_read.call_count, 1)
 
+    def test_get_presets_config_env_var(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            custom_ini = Path(tmp_dir) / "custom_presets.ini"
+            custom_ini.write_text("[EnvProfile]\nparallel = 5\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"PRESETS_FILE": str(custom_ini)}):
+                dashboard._get_presets_config.cache_clear()
+                cfg = dashboard._get_presets_config()
+                self.assertIsNotNone(cfg)
+                self.assertIn("EnvProfile", cfg.sections())
+
+    def test_get_presets_config_fallback_path(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fallback_ini = Path(tmp_dir) / "model_presets.ini"
+            fallback_ini.write_text("[FallbackProfile]\nthreads = 12\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {}, clear=True), patch.object(dashboard, "resolve_presets_path", return_value=str(fallback_ini)):
+                dashboard._get_presets_config.cache_clear()
+                cfg = dashboard._get_presets_config()
+                self.assertIsNotNone(cfg)
+                self.assertIn("FallbackProfile", cfg.sections())
+
+    def test_dashboard_resolve_presets_path(self):
+        # 1. Explicit path
+        self.assertEqual(dashboard.resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini")
+        self.assertEqual(dashboard.resolve_presets_path(Path("/explicit/path2.ini")), "/explicit/path2.ini")
+
+        # 2. PRESETS_FILE environment variable
+        with patch.dict(os.environ, {"PRESETS_FILE": "/env/path.ini"}):
+            self.assertEqual(dashboard.resolve_presets_path(None), "/env/path.ini")
+
+        # 3. Default fallback logic when PRESETS_FILE is not set
+        primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+        fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+
+        # Primary exists
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == primary):
+            self.assertEqual(dashboard.resolve_presets_path(None), primary)
+
+        # Primary does not exist, fallback exists
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == fallback):
+            self.assertEqual(dashboard.resolve_presets_path(None), fallback)
+
+        # Neither exists -> returns primary
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", return_value=False):
+            self.assertEqual(dashboard.resolve_presets_path(None), primary)
+
+    def test_map_repo_to_preset_alias_unsloth_prefix_normalization(self):
+        cp = configparser.ConfigParser()
+        cp.read_string("""
+[qwen-profile]
+hf-repo = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
+alias = unsloth/locallama-qwen, local-qwen
+
+[plain-profile]
+hf-repo = PlainModel-GGUF:latest
+alias = plain-alias
+
+[unsloth/SectionProfile]
+hf-repo = org/foo
+""")
+        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+            # 1. Query has NO prefix, hf-repo HAS prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("Qwen3.8-27B-GGUF:UD-Q5_K_XL"),
+                "qwen-profile"
+            )
+            # 2. Query has prefix, hf-repo has prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL"),
+                "qwen-profile"
+            )
+            # 3. Query has prefix, hf-repo has NO prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unsloth/PlainModel-GGUF:latest"),
+                "plain-profile"
+            )
+            # 4. Query has NO prefix, section HAS prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("SectionProfile"),
+                "unsloth/SectionProfile"
+            )
+            # 5. Query has prefix, section has NO prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unsloth/plain-profile"),
+                "plain-profile"
+            )
+            # 6. Alias normalization: query has no prefix, alias has prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("locallama-qwen"),
+                "qwen-profile"
+            )
+            # 7. Alias normalization: query has prefix, alias has no prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unsloth/local-qwen"),
+                "qwen-profile"
+            )
+            # 8. Single alias with prefix
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unsloth/plain-alias"),
+                "plain-profile"
+            )
+
+    def test_dashboard_normalize_repo_id_and_repo_id_matches(self):
+        self.assertEqual(dashboard._normalize_repo_id(None), "")
+        self.assertEqual(dashboard._normalize_repo_id(123), "")
+        self.assertEqual(dashboard._normalize_repo_id(""), "")
+        self.assertEqual(dashboard._normalize_repo_id("unsloth/test"), "test")
+
+        self.assertFalse(dashboard._repo_id_matches(None, "foo"))
+        self.assertFalse(dashboard._repo_id_matches("foo", None))
+        self.assertFalse(dashboard._repo_id_matches(123, "foo"))
+        self.assertFalse(dashboard._repo_id_matches("", "foo"))
+        self.assertFalse(dashboard._repo_id_matches("foo", "   "))
+        self.assertTrue(dashboard._repo_id_matches("unsloth/foo", "foo"))
+
+    def test_dashboard_map_repo_to_preset_alias_full_comma_alias(self):
+        cp = configparser.ConfigParser()
+        cp.read_string("""
+[multi-alias-model]
+alias = unsloth/alias-a, alias-b
+""")
+        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unsloth/alias-a, alias-b"),
+                "multi-alias-model"
+            )
+
     def test_map_repo_to_preset_alias_missing_config(self):
         with patch.object(dashboard, '_get_presets_config', return_value=None):
             self.assertEqual(dashboard.map_repo_to_preset_alias('unknown/model'), 'unknown/model')

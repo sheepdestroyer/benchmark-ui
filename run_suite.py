@@ -139,6 +139,8 @@ def get_model_settings(endpoint, target_model):
         profile_name = advanced_benchmarks.map_repo_to_preset_alias(target_model)
         presets_meta = advanced_benchmarks.get_preset_metadata(profile_name)
         for k, v in presets_meta.items():
+            if k in ("threads", "batch_size", "ubatch_size"):
+                continue
             settings[k] = v
         settings["profile_alias"] = profile_name
             
