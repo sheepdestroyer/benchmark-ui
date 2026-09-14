@@ -4,6 +4,31 @@ All notable changes to the LLM Benchmarking and Server Router project are docume
 
 ## [Unreleased]
 
+## [v0.1.5] - 2026-09-14 - Performance Optimizations, Presets Prefix Normalization & Complete Test Coverage Expansion
+
+### Added
+*   **Unit Tests for `call_endpoint` (`test_advanced_benchmarks.py`)**: Comprehensive test suite covering SSE chunk parsing, delta content/reasoning accumulation, usage metrics, first token detection (TTFT), non-200 HTTP responses, network exceptions, malformed JSON chunks, and non-string payload type safety (PR #135 / Issue #129).
+*   **Unit Tests for `get_model_settings_from_endpoint` (`test_advanced_benchmarks.py`)**: Comprehensive test suite testing `/v1/models` querying, CLI flag parsing (`--threads`, `--batch-size`, `--ubatch-size`, cache types), preset block key-value extraction, speculative draft detection, and base quantization resolution (PR #136 / Issue #130).
+*   **Unit Tests for `run_swe_test` & `main` CLI Dispatcher (`test_advanced_benchmarks.py`)**: End-to-end tests for SWE-bench workflow (AST safety check, toy repository backup/restoration, unit test subprocess outcomes) and CLI runner parameter matrix (`--benchmark needle|ruler|longbench|swe|all` and custom `--output` JSON files) (PR #138 / Issue #132).
+*   **Unit Tests for Visualization & Streamlit Components (`test_dashboard.py`)**: Added `TestBuildThroughputFigure` (empty DataFrames, missing columns, non-DataFrame inputs, multi-model/quant grouping), `TestParseRunFile` (corrupt JSON, missing fields, raw GGUF filename cleaning), and `TestEnqueueOutput` (multi-line stream reading, thread-safe queue buffering, stream closure, and error suppression) (PR #133, PR #137, PR #138).
+*   **Defensive Type Validation for `generate_filler_text` (`advanced_benchmarks.py`)**: Enforced explicit numeric type verification (`isinstance(target_tokens, (int, float)) and not isinstance(target_tokens, bool)`) raising `TypeError` on invalid inputs, with corresponding test suite in `test_advanced_benchmarks.py` (PR #137 / Issue #131).
+
+### Optimized
+*   **Throughput Plotting DataFrame Grouping (`dashboard.py`)**: Extracted `build_throughput_figure` and replaced nested $O(M \times N)$ boolean filtering and sorting with upfront `.sort_values(by="Context Length")` and `groupby(["Model", "KV Quant"], sort=True)`, delivering a **~4.2x speedup** on dashboard chart generation while eliminating inner-loop hover template and `list(zip(...))` allocations (PR #133 / Issue #127).
+*   **SSE Streaming String Concatenation (`advanced_benchmarks.py`)**: Replaced quadratic string concatenation (`+=`) in `call_endpoint` with list chunk accumulation (`response_chunks.append`, `reasoning_chunks.append`) joined via `"".join()`, eliminating memory reallocations during long completions (PR #135 / Issue #129).
+
+### Fixed & Hardened
+*   **Model Presets Organization Prefix Normalization (`advanced_benchmarks.py`, `dashboard.py`, `run_matrix.py`)**: Added `_normalize_repo_id` and `_repo_id_matches` to strip leading `unsloth/` prefixes case-insensitively, guaranteeing symmetrical matching against section names, `hf-repo` attributes, and comma-separated aliases (PR #134 / Issue #128).
+*   **Presets File Fallback Discovery (`resolve_presets_path`)**: Implemented fallback discovery across `advanced_benchmarks.py`, `dashboard.py`, and `run_matrix.py` to automatically detect `../llama.cpp/model_presets.ini` when `../llama.cpp/profiles/model_presets.ini` is absent, while honoring the `PRESETS_FILE` environment variable (PR #134 / Issue #128).
+*   **Runtime Server Settings Preservation (`run_suite.py`)**: Guarded `get_model_settings` so that `presets_meta` from `[*]` global defaults does not clobber dynamically discovered server runtime arguments (`threads`, `batch_size`, `ubatch_size`) (PR #134 / Issue #128).
+*   **SSE Chunk Type Safety (`advanced_benchmarks.py`)**: Validated that `content` and `reasoning_content` are string instances inside the chunk processor, logging warnings and skipping non-string payloads rather than raising unhandled `TypeError` during final join (PR #135 / Issue #129).
+
+### Refactored
+*   **Modularized Run History Ingestion (`dashboard.py`)**: Extracted `_parse_run_file(filepath)` from `load_runs()`, isolating JSON parsing, profile sanitization, base quantization resolution, and speculative draft fallbacks into a testable standalone unit (PR #138 / Issue #132).
+*   **Modularized Model Settings Parser (`advanced_benchmarks.py`)**: Extracted `_parse_endpoint_model_args` and `_parse_endpoint_preset_block` from `get_model_settings_from_endpoint` (PR #136 / Issue #130).
+*   **Modularized Subprocess Output Reader (`dashboard.py`)**: Extracted `enqueue_output(out, q)` to module scope with guaranteed resource closure in `finally` (PR #137 / Issue #131).
+*   **Modularized Benchmark Runner Helpers (`advanced_benchmarks.py`)**: Extracted `_extract_code_block_from_response`, `_print_benchmark_summary`, and `_save_run_data` (PR #138 / Issue #132).
+
 ## [v0.1.4] - 2026-09-12 - Persistent History Quadlet Storage & CI/CD Pipelines
 
 ### Added

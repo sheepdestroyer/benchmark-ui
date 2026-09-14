@@ -85,6 +85,15 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 - [x] **Dependabot Configuration Alignment**: Updated `.github/dependabot.yml` to monitor `Containerfile` (`docker` ecosystem), added labels, commit prefixes, and grouping for dev dependencies (Issue #124).
 - [x] **Dev Requirements**: Added `requirements-dev.txt` for development and test runner dependencies (Issue #124).
 
+## Phase 10: Performance Optimization, Presets Normalization & Modular Test Suites (Completed 2026-09-14)
+
+- [x] **Dashboard DataFrame Grouping Optimization**: Extracted `build_throughput_figure` with upfront Context Length sorting and `groupby(["Model", "KV Quant"])`, achieving ~4.2x faster chart plotting and eliminating redundant hover template/zip allocations (PR #133 / Issue #127).
+- [x] **Model Presets Prefix Normalization & Path Fallbacks**: Added `_normalize_repo_id` and `resolve_presets_path` across `advanced_benchmarks.py`, `dashboard.py`, and `run_matrix.py`, supporting symmetrical unsloth/ matching and fallback detection of `model_presets.ini` (PR #134 / Issue #128).
+- [x] **SSE Chunk Streaming Optimization & Test Suite**: Replaced string concatenation with list chunk accumulation in `call_endpoint`, added type checks, and added full unit test suite `TestCallEndpoint` (PR #135 / Issue #129).
+- [x] **Modular Endpoint Settings Parser & Test Suite**: Extracted `_parse_endpoint_model_args` and `_parse_endpoint_preset_block` from `get_model_settings_from_endpoint` with comprehensive unit tests (PR #136 / Issue #130).
+- [x] **Defensive Validation & Queue Reader Extraction**: Enforced numeric type checks on `generate_filler_text` and extracted `enqueue_output` to module scope in `dashboard.py` with 100% test coverage (PR #137 / Issue #131).
+- [x] **Modular Run File Ingestion & Main Runner Tests**: Extracted `_parse_run_file` in `dashboard.py`, extracted runner helpers in `advanced_benchmarks.py`, added `--benchmark` selector and `--output` flags, and added comprehensive unit tests for `run_swe_test` and `main()` (PR #138 / Issue #132).
+
 ---
 
 ## Next Steps / Future Work

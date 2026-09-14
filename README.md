@@ -78,7 +78,7 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 
 ## Automated Testing & CI/CD
  
-The repository maintains an automated unit test suite (242 tests) covering input validation, UI logic, benchmark execution, and data formatting.
+The repository maintains an automated unit test suite (346 tests) covering input validation, UI logic, benchmark execution, and data formatting.
  
 Install development dependencies and run the test suite using `pytest`:
  
@@ -93,12 +93,13 @@ Continuous integration and dependency maintenance are automated via GitHub Actio
 
 The test suite covers:
 - `test_utils.py` (100% coverage): SSRF security boundaries, URL scheme/port checks, multi-IP resolution filtering, and model/corpus parameter validation.
-- `test_dashboard.py` (93% coverage): Validator paths (`validate_gguf_path` with `.gguf` extension and model cache restriction), token bounds (`validate_new_tokens` within `[1, 262144]`), `@st.cache_data(ttl=60)` run loading, number formatting (`fmt_num`), INI config caching, and DataFrame reasoning metric extraction.
-- `test_advanced_benchmarks.py` (99% coverage): AST sandbox security validation (`is_safe_code` blocking `__import__`, `globals()`, dangerous modules/builtins, and reflection), LRU-cached `model_presets.ini` parsing, synthetic filler text generation, and context sizing.
+- `test_dashboard.py` (89% coverage): Fast throughput visualization grouping (`build_throughput_figure`), modular history record parsing (`_parse_run_file`), stream output queue reader (`enqueue_output`), path/token bounds validators, and caching.
+- `test_advanced_benchmarks.py` (83% coverage): AST sandbox security validation (`is_safe_code`), LRU-cached preset parsing and unsloth prefix normalization, SSE chunk accumulation and type safety in `call_endpoint`, modular endpoint settings parsing in `get_model_settings_from_endpoint`, SWE-bench execution lifecycle and backup restoration, and `main()` CLI runner dispatching.
 - `test_benchmark_ui.py` (99% coverage): Full UI workflow testing, `list_models` endpoint interactions, `run_benchmark_stream` real-time stdout streaming, dynamic chmod fallback, subprocess failure handling, and session cleanup.
 - `test_kld_benchmark.py` (99% coverage): Quantization loss calculations, perplexity metric parsing, and native `llama-perplexity` compilation lifecycle (`compile_perplexity_binary`).
-- `test_run_matrix.py` (100% coverage): Automated sweep matrix generation, TeeLogger I/O buffering, service restart error handling, and LRU-cached preset sections.
+- `test_run_matrix.py` (100% coverage): Automated sweep matrix generation, TeeLogger I/O buffering, service restart error handling, prefix-normalized run extraction, and LRU-cached preset sections.
 - `test_run_suite.py` (99% coverage): Multi-mode benchmark orchestration, endpoint model setting querying, and atomic run record writing.
+- `test_deploy.py` (100% coverage): Quadlet volume mount persistence, port mapping, and container health checks.
 - `test_populate_history.py` (98% coverage): Synthetic history dataset generation and schema validation.
 
 ---
