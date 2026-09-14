@@ -6,11 +6,15 @@ After=network-online.target
 ContainerName=production-benchmark-ui
 Image=ghcr.io/sheepdestroyer/benchmark-ui:latest
 AutoUpdate=registry
+Network=pasta:-a,10.0.2.1/24
 PublishPort=127.0.0.1:8501:8501
 Volume=/mnt/DATA/boy/prod/benchmark-ui/data/history:/app/history:Z
+Volume=/mnt/DATA/boy/prod/haproxy/certs/ca-bundle.crt:/etc/ssl/certs/ca-bundle.crt:ro,z
 Environment=STREAMLIT_SERVER_PORT=8501
 Environment=STREAMLIT_SERVER_ADDRESS=0.0.0.0
 Environment=STREAMLIT_SERVER_HEADLESS=true
+Environment=REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt
+Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
 Label=wud.watch.digest=true
 HealthCmd=curl -f http://localhost:8501/_stcore/health || exit 1
 HealthInterval=15s
