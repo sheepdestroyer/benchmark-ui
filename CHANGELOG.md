@@ -4,6 +4,24 @@ All notable changes to the LLM Benchmarking and Server Router project are docume
 
 ## [Unreleased]
 
+## [v0.1.6] - 2026-09-14 - Dynamic Model Retrieval, SSRF LAN Allowlist & Persistent Endpoint Management
+
+### Added
+*   **Persistent Endpoint Management Form (`dashboard.py`)**: Added interactive endpoint management in the benchmark runner tab supporting CRUD operations for saved endpoints stored at `history/endpoints.json` with restrictive `0o600` permissions, atomic writes, and sensible defaults (`Local Llama Router` on `http://127.0.0.1:8083` and `Production LLM-Routing` on `https://llm-routing.vendeuvre.lan`) (PR #143 / Issue #141).
+*   **Dynamic Model Retrieval from Inference Endpoints (`dashboard.py`)**: Added `fetch_available_models` querying `/v1/models` dynamically from active endpoints with Bearer token authentication support, on-demand refresh button, and graceful fallback with custom model text entry (PR #142 / Issue #140).
+*   **API Key & Bearer Token Authentication Threading (`run_suite.py`, `advanced_benchmarks.py`, `benchmark.sh`)**: Added `--api-key` parameter and `API_KEY` / `OPENAI_API_KEY` environment variable fallbacks across all benchmark runners and scripts, attaching `Authorization: Bearer <key>` headers to model queries, completions, and throughput shell benchmarks (PR #143 / Issue #141).
+*   **Comprehensive Test Coverage Expansion (`test_dashboard.py`, `test_run_suite.py`, `test_advanced_benchmarks.py`, `test_utils.py`)**: Added 57 new unit tests expanding the test suite to **403 passing tests** (100% pass rate), verifying dynamic model fetching, SSRF private ranges, JSON persistence, CLI argument redaction, and subprocess environment injection (PR #142, PR #143).
+
+### Security & Hardening
+*   **Configurable SSRF LAN & Private IP Allowlist (`utils.py`)**: Enhanced `validate_endpoint_url` with `allow_private: bool = False` (defaulting to False for backwards compatibility). When `allow_private=True`, LAN and private subnets (`192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`, `127.0.0.0/8`, `::1`, `fc00::/7`) are safely permitted for local benchmark execution while strictly rejecting cloud metadata endpoints (`169.254.169.254`), link-local IPv4/IPv6, multicast, and reserved addresses (PR #142 / Issue #140).
+*   **Credential Masking & Redaction (`utils.py`, `dashboard.py`, `run_suite.py`, `advanced_benchmarks.py`)**: Added `redact_cli_args` helper to redact API keys (`********`) from both the user-facing Streamlit runner banner and git-tracked historical benchmark logs (`history/run_*.json`) (PR #143 / Issue #141).
+*   **Endpoint URL Normalization & Restrictive Permissions**: Stripped trailing slashes (`.rstrip("/")`) on all saved endpoints to prevent malformed double-slash routing errors, and enforced `0o600` permissions on `history/endpoints.json` (PR #143 / Issue #141).
+*   **Streamlit Widget Dynamic State Synchronization (`dashboard.py`)**: Resolved Streamlit widget retention bug by generating dynamic keys tied to the selected endpoint (`selected_manage` / `selected_endpoint`), ensuring accurate form field population during add and edit workflows (PR #143 / Issue #141).
+
+### Fixed
+*   **Active Server Default Port Alignment (`dashboard.py`, `run_suite.py`, `advanced_benchmarks.py`)**: Updated the default inference server endpoint port from inactive `8081` to the live `llama-router` port `8083` across all dashboard inputs, CLI argument defaults, and documentation (PR #142 / Issue #140).
+*   **Eliminated Obsolete Hardcoded Fallback Models (`dashboard.py`)**: Removed obsolete hardcoded fallback model list (`unsloth/Qwen3.6-27B-GGUF:...`) in favor of dynamic endpoint interrogation with informative connection error reporting (PR #142 / Issue #140).
+
 ## [v0.1.5] - 2026-09-14 - Performance Optimizations, Presets Prefix Normalization & Complete Test Coverage Expansion
 
 ### Added
