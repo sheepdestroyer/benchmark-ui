@@ -32,6 +32,11 @@ try:
 except ImportError:  # pragma: no cover
     advanced_benchmarks = None
 
+try:
+    import agentic_benchmarks
+except ImportError:  # pragma: no cover
+    agentic_benchmarks = None
+
 
 QUANT_PRIORITIES = ("q5_1", "q8_0", "q4_0", "f16")
 
@@ -294,6 +299,58 @@ def run_reasoning(endpoint, model, tokens, api_key=None, max_tokens=16384):
     return results
 
 
+def run_agentic(endpoint, model, task_filter="all", api_key=None, max_tokens=16384):
+    print("\n=========================================================")
+    print(" Running Agentic Benchmarks (agentic_benchmarks.py)")
+    print("=========================================================")
+
+    if agentic_benchmarks:
+        call_kw = {}
+        effective_key = (
+            api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        )
+        if effective_key:
+            call_kw["api_key"] = effective_key
+        try:
+            return agentic_benchmarks.run_agentic_suite(
+                endpoint,
+                model,
+                task_filter=task_filter,
+                max_tokens=max_tokens,
+                **call_kw,
+            )
+        except Exception as e:
+            print(f"Agentic suite failed: {e}")
+            return {
+                "suite": "standalone-agentic",
+                "tasks_total": 0,
+                "tasks_passed": 0,
+                "average_turns": 0.0,
+                "total_tool_calls": 0,
+                "tasks": [],
+                "token_breakdown": {
+                    "prompt_tokens": 0,
+                    "reasoning_tokens": 0,
+                    "completion_tokens": 0,
+                },
+            }
+    else:
+        print("[-] agentic_benchmarks module not found.")
+        return {
+            "suite": "standalone-agentic",
+            "tasks_total": 0,
+            "tasks_passed": 0,
+            "average_turns": 0.0,
+            "total_tool_calls": 0,
+            "tasks": [],
+            "token_breakdown": {
+                "prompt_tokens": 0,
+                "reasoning_tokens": 0,
+                "completion_tokens": 0,
+            },
+        }
+
+
 def run_kld(model_path, corpus):
     print("\n=========================================================")
     print(" Running KLD Benchmarks (kld_benchmark.py)")
@@ -348,9 +405,14 @@ def main():
     parser = argparse.ArgumentParser(description="Unified LLM Benchmarking Suite")
     parser.add_argument(
         "--mode",
-        choices=["throughput", "reasoning", "kld", "all"],
+        choices=["throughput", "reasoning", "agentic", "kld", "all"],
         default="all",
         help="Benchmark mode to run",
+    )
+    parser.add_argument(
+        "--agentic-tasks",
+        default="all",
+        help="Task filter for agentic benchmark suite (default: 'all')",
     )
     parser.add_argument(
         "--endpoint", default="http://127.0.0.1:8083", help="LLM server API endpoint"
@@ -397,6 +459,9 @@ def main():
         "swe_bench": "N/A",
     }
 
+    agentic_metrics = None
+    token_breakdown = None
+
     quantization_loss = {
         "perplexity": None,
         "mean_kld": None,
@@ -423,12 +488,26 @@ def main():
         )
         reasoning_accuracy.update(accuracy)
 
-    # 3. Run KLD if mode is 'kld' or 'all'
+    # 3. Run agentic if mode is 'agentic' or 'all'
+    if args.mode in ["agentic", "all"]:
+        agentic_results = run_agentic(
+            args.endpoint,
+            args.model,
+            task_filter=args.agentic_tasks,
+            max_tokens=args.max_tokens,
+            **call_kw,
+        )
+        agentic_metrics = agentic_results
+        token_breakdown = (
+            agentic_results.get("token_breakdown") if agentic_results else None
+        )
+
+    # 4. Run KLD if mode is 'kld' or 'all'
     kld_results = None
     if args.mode in ["kld", "all"]:
         kld_results = run_kld(args.gguf_path, args.corpus)
 
-    # 4. Extract model settings
+    # 5. Extract model settings
     model_settings = get_model_settings(args.endpoint, args.model, **call_kw)
 
     # If KLD was run, choose the quantization loss values matching the model's KV Cache quant setting
@@ -457,6 +536,8 @@ def main():
         "model_settings": model_settings,
         "throughput_metrics": throughput_metrics,
         "reasoning_accuracy": reasoning_accuracy,
+        "agentic_metrics": agentic_metrics,
+        "token_breakdown": token_breakdown,
         "quantization_loss": quantization_loss,
     }
 
