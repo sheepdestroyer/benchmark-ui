@@ -1,0 +1,60 @@
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "history",
+    "deploy",
+    "toy_repo",
+    "kld_benchmark.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+]
+ignore = [
+    "E501",  # line length handled by formatter
+    "E402",  # module level imports after setup
+    "W291",  # trailing whitespace
+    "W293",  # blank line contains whitespace
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["F401", "F841", "E402", "W291", "W293"]
+
+[tool.ruff.format]
+exclude = [
+    "advanced_benchmarks.py",
+    "benchmark_ui.py",
+    "dashboard.py",
+    "populate_history.py",
+    "run_matrix.py",
+    "utils.py",
+    "test_advanced_benchmarks.py",
+    "test_benchmark_ui.py",
+    "test_dashboard.py",
+    "test_deploy.py",
+    "test_kld_benchmark.py",
+    "test_populate_history.py",
+    "test_run_matrix.py",
+    "test_utils.py",
+]
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

@@ -504,6 +504,79 @@ class TestRunReasoning(unittest.TestCase):
         )
 
 
+class TestRunAgentic(unittest.TestCase):
+    """Test agentic benchmark execution and result forwarding."""
+
+    def test_run_agentic_success(self):
+        mock_agentic = MagicMock()
+        mock_agentic.run_agentic_suite.return_value = {
+            "suite": "standalone-agentic",
+            "tasks_total": 2,
+            "tasks_passed": 2,
+            "average_turns": 1.5,
+            "total_tool_calls": 4,
+            "tasks": [],
+            "token_breakdown": {
+                "prompt_tokens": 500,
+                "reasoning_tokens": 100,
+                "completion_tokens": 200,
+            },
+        }
+
+        with patch("run_suite.agentic_benchmarks", mock_agentic):
+            res = run_suite.run_agentic(
+                "http://127.0.0.1:8081",
+                "test-model",
+                task_filter="fix-syntax",
+                api_key="secret-key",
+                max_tokens=4096,
+            )
+
+        mock_agentic.run_agentic_suite.assert_called_once_with(
+            "http://127.0.0.1:8081",
+            "test-model",
+            task_filter="fix-syntax",
+            max_tokens=4096,
+            api_key="secret-key",
+        )
+        self.assertEqual(res["tasks_passed"], 2)
+
+    def test_run_agentic_exception_caught(self):
+        mock_agentic = MagicMock()
+        mock_agentic.run_agentic_suite.side_effect = RuntimeError("Harness exploded")
+
+        with patch("run_suite.agentic_benchmarks", mock_agentic):
+            res = run_suite.run_agentic("http://127.0.0.1:8081", "test-model")
+
+        self.assertEqual(res["tasks_total"], 0)
+        self.assertEqual(res["tasks_passed"], 0)
+
+    def test_run_agentic_no_module(self):
+        with patch("run_suite.agentic_benchmarks", None):
+            res = run_suite.run_agentic("http://127.0.0.1:8081", "test-model")
+
+        self.assertEqual(res["tasks_total"], 0)
+        self.assertEqual(res["tasks_passed"], 0)
+
+    def test_run_agentic_env_api_key(self):
+        mock_agentic = MagicMock()
+        mock_agentic.run_agentic_suite.return_value = {"tasks_passed": 1}
+
+        with (
+            patch("run_suite.agentic_benchmarks", mock_agentic),
+            patch.dict(os.environ, {"API_KEY": "env-agentic-key"}, clear=True),
+        ):
+            run_suite.run_agentic("http://127.0.0.1:8081", "test-model")
+
+        mock_agentic.run_agentic_suite.assert_called_once_with(
+            "http://127.0.0.1:8081",
+            "test-model",
+            task_filter="all",
+            max_tokens=16384,
+            api_key="env-agentic-key",
+        )
+
+
 class TestRunKld(unittest.TestCase):
     """Test KLD benchmark execution and stdout parsing."""
 
@@ -703,6 +776,19 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                     "same_top_match_percent": 98.1,
                 }
             }
+            mock_agentic = {
+                "suite": "standalone-agentic",
+                "tasks_total": 1,
+                "tasks_passed": 1,
+                "average_turns": 2.0,
+                "total_tool_calls": 3,
+                "tasks": [],
+                "token_breakdown": {
+                    "prompt_tokens": 100,
+                    "reasoning_tokens": 20,
+                    "completion_tokens": 50,
+                },
+            }
             mock_settings = {
                 "model_name": "Qwen3.6-27B",
                 "base_quantization": "Q4_K_M",
@@ -740,6 +826,7 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                 patch(
                     "run_suite.run_reasoning", return_value=mock_reasoning
                 ) as mock_reas_fn,
+                patch("run_suite.run_agentic", return_value=mock_agentic) as mock_ag_fn,
                 patch("run_suite.run_kld", return_value=mock_kld) as mock_kld_fn,
                 patch(
                     "run_suite.get_model_settings", return_value=mock_settings
@@ -752,6 +839,12 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                 )
                 mock_reas_fn.assert_called_once_with(
                     "http://127.0.0.1:8081", "Qwen3.6-27B", 1000, max_tokens=16384
+                )
+                mock_ag_fn.assert_called_once_with(
+                    "http://127.0.0.1:8081",
+                    "Qwen3.6-27B",
+                    task_filter="all",
+                    max_tokens=16384,
                 )
                 mock_kld_fn.assert_called_once_with("model.gguf", "corpus.txt")
                 mock_settings_fn.assert_called_once_with(
@@ -775,6 +868,8 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                 )
                 self.assertEqual(data["throughput_metrics"]["prefill_speed"], 125.0)
                 self.assertEqual(data["reasoning_accuracy"]["needle"], "Pass")
+                self.assertEqual(data["agentic_metrics"]["tasks_passed"], 1)
+                self.assertEqual(data["token_breakdown"]["prompt_tokens"], 100)
                 self.assertEqual(data["quantization_loss"]["perplexity"], 5.32)
                 # Check that Unknown kv_cache_quant got updated to matched quant
                 self.assertEqual(data["model_settings"]["kv_cache_quant"], "q5_1")
@@ -814,13 +909,39 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
 
                 self.assertEqual(data["quantization_loss"]["perplexity"], 5.10)
 
+    def test_main_kld_results_no_matching_quant(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_script_file = os.path.join(tmp_dir, "run_suite.py")
+            mock_kld = {"completely_unknown_quant": {"perplexity": 5.0}}
+            mock_settings = {
+                "model_name": "TestModel",
+                "kv_cache_quant": "some_other_quant",
+            }
+            test_args = ["run_suite.py", "--mode", "kld"]
+
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch("run_suite.run_kld", return_value=mock_kld),
+                patch("run_suite.get_model_settings", return_value=mock_settings),
+            ):
+                run_suite.main()
+
+                history_dir = os.path.join(tmp_dir, "history")
+                files = os.listdir(history_dir)
+                with open(os.path.join(history_dir, files[0])) as f:
+                    data = json.load(f)
+
+                self.assertIsNone(data["quantization_loss"]["perplexity"])
+
     def test_main_orchestration_mode_subsets(self):
         modes = [
-            ("throughput", True, False, False),
-            ("reasoning", False, True, False),
-            ("kld", False, False, True),
+            ("throughput", True, False, False, False),
+            ("reasoning", False, True, False, False),
+            ("agentic", False, False, True, False),
+            ("kld", False, False, False, True),
         ]
-        for mode, expect_tp, expect_reas, expect_kld in modes:
+        for mode, expect_tp, expect_reas, expect_ag, expect_kld in modes:
             with self.subTest(mode=mode):
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     fake_script_file = os.path.join(tmp_dir, "run_suite.py")
@@ -835,6 +956,7 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                         patch(
                             "run_suite.run_reasoning", return_value={}
                         ) as mock_reas_fn,
+                        patch("run_suite.run_agentic", return_value={}) as mock_ag_fn,
                         patch("run_suite.run_kld", return_value={}) as mock_kld_fn,
                         patch(
                             "run_suite.get_model_settings",
@@ -845,7 +967,47 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
 
                         self.assertEqual(mock_tp_fn.called, expect_tp)
                         self.assertEqual(mock_reas_fn.called, expect_reas)
+                        self.assertEqual(mock_ag_fn.called, expect_ag)
                         self.assertEqual(mock_kld_fn.called, expect_kld)
+
+    def test_main_cli_agentic_tasks_forwarding(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_script_file = os.path.join(tmp_dir, "run_suite.py")
+            test_args = [
+                "run_suite.py",
+                "--mode",
+                "agentic",
+                "--agentic-tasks",
+                "fix-syntax,git-repair",
+            ]
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch(
+                    "run_suite.run_agentic",
+                    return_value={"suite": "standalone-agentic", "token_breakdown": {}},
+                ) as mock_ag,
+                patch(
+                    "run_suite.get_model_settings",
+                    return_value={"kv_cache_quant": "q5_1"},
+                ),
+            ):
+                run_suite.main()
+                mock_ag.assert_called_once_with(
+                    "http://127.0.0.1:8083",
+                    "Qwen3.6-27B",
+                    task_filter="fix-syntax,git-repair",
+                    max_tokens=16384,
+                )
+
+    def test_run_kld_line_with_fewer_than_four_parts(self):
+        fake_stdout = "| Part1 | Part2 |\n"
+        with patch("run_suite.subprocess.run") as mock_subproc:
+            mock_subproc.return_value = MagicMock(
+                returncode=0, stdout=fake_stdout, stderr=""
+            )
+            res = run_suite.run_kld(None, None)
+            self.assertEqual(res, {})
 
     def test_main_default_endpoint_8083(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
