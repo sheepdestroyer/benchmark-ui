@@ -838,5 +838,126 @@ class TestDashboardValidators(unittest.TestCase):
                     dashboard.validate_new_tokens(bad_val)
 
 
+import importlib.util
+
+HAS_PANDAS_AND_PLOTLY = (
+    importlib.util.find_spec("pandas") is not None
+    and importlib.util.find_spec("plotly") is not None
+)
+
+
+@unittest.skipUnless(HAS_PANDAS_AND_PLOTLY, "pandas and plotly required for throughput figure tests")
+class TestBuildThroughputFigure(unittest.TestCase):
+    def setUp(self):
+        import plotly.graph_objects as real_go
+        self._orig_go = dashboard.go
+        dashboard.go = real_go
+
+    def tearDown(self):
+        dashboard.go = self._orig_go
+
+    def test_empty_dataframe(self):
+        import pandas as pd
+        df = pd.DataFrame(columns=["Model", "KV Quant", "Context Length", "Prefill (t/s)", "Decode (t/s)"])
+        fig = dashboard.build_throughput_figure(df)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_bare_empty_dataframe(self):
+        import pandas as pd
+        fig = dashboard.build_throughput_figure(pd.DataFrame())
+        self.assertEqual(len(fig.data), 0)
+
+    def test_none_input(self):
+        fig = dashboard.build_throughput_figure(None)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_missing_schema_columns(self):
+        import pandas as pd
+        fig = dashboard.build_throughput_figure(pd.DataFrame({"Model": ["M1"]}))
+        self.assertEqual(len(fig.data), 0)
+
+    def test_non_dataframe_input(self):
+        self.assertEqual(len(dashboard.build_throughput_figure("invalid_string").data), 0)
+        self.assertEqual(len(dashboard.build_throughput_figure([1, 2, 3]).data), 0)
+        self.assertEqual(len(dashboard.build_throughput_figure(123).data), 0)
+
+    def test_missing_and_nan_quants(self):
+        import pandas as pd
+        df = pd.DataFrame({
+            "Model": ["M1", "M1"],
+            "KV Quant": [None, float("nan")],
+            "Context Length": [1024, 2048],
+            "Prefill (t/s)": [100.0, 110.0],
+            "Decode (t/s)": [30.0, 32.0]
+        })
+        fig = dashboard.build_throughput_figure(df)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_multiple_models_and_quants_and_ordering(self):
+        import pandas as pd
+        df = pd.DataFrame({
+            "Model": ["Model_B", "Model_A", "Model_A", "Model_A", "Model_A", "Model_Unknown"],
+            "KV Quant": ["f16", "q8_0", "f16", "q5_1", "q4_0", "custom_quant"],
+            "Context Length": [4096, 2048, 1024, 1024, 512, 128],
+            "Prefill (t/s)": [100.0, 120.0, 150.0, 140.0, 160.0, 90.0],
+            "Decode (t/s)": [30.0, 35.0, 45.0, 42.0, 48.0, 25.0]
+        })
+        fig = dashboard.build_throughput_figure(df)
+        # 6 (model, quant) groups * 2 traces each (PP, TG) = 12 traces
+        self.assertEqual(len(fig.data), 12)
+
+        # Traces are ordered alphabetically by model, then quant
+        # Model_A groups: f16, q4_0, q5_1, q8_0
+        # Model_A f16 (PP & TG) - first quant for Model_A -> showlegend=True, solid dash
+        t0 = fig.data[0]
+        self.assertEqual(t0.name, "Model_A (PP)")
+        self.assertTrue(t0.showlegend)
+        self.assertEqual(t0.line.dash, "solid")
+        self.assertEqual(tuple(t0.customdata[0]), ("Model_A", "f16"))
+
+        t1 = fig.data[1]
+        self.assertEqual(t1.name, "Model_A (TG)")
+        self.assertTrue(t1.showlegend)
+
+        # Model_A q4_0 - second quant -> showlegend=False, dashdot dash
+        t2 = fig.data[2]
+        self.assertEqual(t2.name, "Model_A (PP)")
+        self.assertFalse(t2.showlegend)
+        self.assertEqual(t2.line.dash, "dashdot")
+
+        # Model_A q5_1 -> dot dash
+        t4 = fig.data[4]
+        self.assertEqual(t4.line.dash, "dot")
+
+        # Model_A q8_0 -> dash dash
+        t6 = fig.data[6]
+        self.assertEqual(t6.line.dash, "dash")
+
+        # Model_B f16 - first quant for Model_B -> showlegend=True, solid dash
+        t8 = fig.data[8]
+        self.assertEqual(t8.name, "Model_B (PP)")
+        self.assertTrue(t8.showlegend)
+        self.assertEqual(t8.line.dash, "solid")
+
+        # Model_Unknown custom_quant - fallback color and dashdot
+        t10 = fig.data[10]
+        self.assertEqual(t10.name, "Model_Unknown (PP)")
+        self.assertEqual(t10.marker.color, "#94a3b8")
+        self.assertEqual(t10.line.dash, "dashdot")
+
+    def test_sorting_by_context_length(self):
+        import pandas as pd
+        df = pd.DataFrame({
+            "Model": ["Model_A", "Model_A"],
+            "KV Quant": ["f16", "f16"],
+            "Context Length": [4096, 512],
+            "Prefill (t/s)": [100.0, 150.0],
+            "Decode (t/s)": [30.0, 45.0]
+        })
+        fig = dashboard.build_throughput_figure(df)
+        t0 = fig.data[0]
+        self.assertEqual(list(t0.x), [512, 4096])
+
+
 if __name__ == "__main__":
     unittest.main()
