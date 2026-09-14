@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import os
 import tempfile
 from pathlib import Path
@@ -10,6 +10,7 @@ from advanced_benchmarks import (
     _get_presets_config,
     map_repo_to_preset_alias,
     get_preset_metadata,
+    resolve_presets_path,
 )
 
 class TestIsSafeCode(unittest.TestCase):
@@ -177,6 +178,136 @@ alias = qwen-spec-alias
 
             res = map_repo_to_preset_alias("fallback-model", presets_file=str(presets_file))
             self.assertEqual(res, "fallback-model")
+
+    def test_resolve_presets_path(self):
+        # 1. Explicit path
+        self.assertEqual(resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini")
+        self.assertEqual(resolve_presets_path(Path("/explicit/path2.ini")), "/explicit/path2.ini")
+
+        # 2. PRESETS_FILE environment variable
+        with patch.dict(os.environ, {"PRESETS_FILE": "/env/path.ini"}):
+            self.assertEqual(resolve_presets_path(None), "/env/path.ini")
+
+        # 3. Default fallback logic when PRESETS_FILE is not set
+        primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+        fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+
+        # Primary exists
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == primary):
+            self.assertEqual(resolve_presets_path(None), primary)
+
+        # Primary does not exist, fallback exists
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == fallback):
+            self.assertEqual(resolve_presets_path(None), fallback)
+
+        # Neither exists -> returns primary
+        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", return_value=False):
+            self.assertEqual(resolve_presets_path(None), primary)
+
+    def test_normalize_repo_id_and_repo_id_matches_helpers(self):
+        from advanced_benchmarks import _normalize_repo_id, _repo_id_matches
+        self.assertEqual(_normalize_repo_id(None), "")
+        self.assertEqual(_normalize_repo_id(""), "")
+        self.assertEqual(_normalize_repo_id(123), "")
+        self.assertEqual(_normalize_repo_id("  unsloth/foo  "), "foo")
+
+        self.assertFalse(_repo_id_matches(None, "bar"))
+        self.assertFalse(_repo_id_matches("bar", None))
+        self.assertFalse(_repo_id_matches(123, "bar"))
+        self.assertFalse(_repo_id_matches("  ", "bar"))
+        self.assertFalse(_repo_id_matches("bar", "   "))
+        self.assertTrue(_repo_id_matches("unsloth/bar", "bar"))
+        self.assertTrue(_repo_id_matches("bar", "unsloth/bar"))
+        self.assertTrue(_repo_id_matches("bar", "bar"))
+        self.assertFalse(_repo_id_matches("bar", "baz"))
+
+    def test_map_repo_to_preset_alias_full_alias_and_exception(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("""[ProfileX]
+alias = unsloth/alias1, alias2
+""", encoding="utf-8")
+
+            # Match full alias with unsloth prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("unsloth/alias1, alias2", presets_file=str(presets_file)),
+                "ProfileX"
+            )
+
+        mock_cfg = MagicMock()
+        mock_cfg.sections.side_effect = RuntimeError("Mock error")
+        with patch("advanced_benchmarks.load_presets_config", return_value=mock_cfg):
+            self.assertEqual(map_repo_to_preset_alias("any-model"), "any-model")
+
+    def test_load_presets_config_fallback_path(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fallback_ini = Path(tmp_dir) / "model_presets.ini"
+            fallback_ini.write_text("[FallbackProfile]\nthreads = 12\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {}, clear=True), patch("advanced_benchmarks.resolve_presets_path", return_value=str(fallback_ini)):
+                load_presets_config.cache_clear()
+                cfg = load_presets_config(None)
+                self.assertIsNotNone(cfg)
+                self.assertIn("FallbackProfile", cfg.sections())
+
+    def test_map_repo_to_preset_alias_unsloth_prefix_normalization(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            presets_file = Path(tmp_dir) / "model_presets.ini"
+            presets_file.write_text("""[*]
+flash-attn = true
+
+[Qwen3.8-27B-spec]
+hf-repo = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
+alias = unsloth/locallama-qwen, local-qwen
+
+[PlainSection]
+hf-repo = PlainRepo:latest
+alias = plain-alias
+
+[unsloth/PrefixSection]
+hf-repo = PrefixRepo:latest
+""", encoding="utf-8")
+
+            # 1. Query has prefix, hf-repo has prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            # 2. Query has NO prefix, hf-repo HAS prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("Qwen3.8-27B-GGUF:UD-Q5_K_XL", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            # 3. Query has prefix, hf-repo has NO prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("unsloth/PlainRepo:latest", presets_file=str(presets_file)),
+                "PlainSection"
+            )
+            # 4. Query has NO prefix, section HAS prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("PrefixSection", presets_file=str(presets_file)),
+                "unsloth/PrefixSection"
+            )
+            # 5. Query has prefix, section has NO prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("unsloth/PlainSection", presets_file=str(presets_file)),
+                "PlainSection"
+            )
+            # 6. Alias normalization: query has no prefix, alias has prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("locallama-qwen", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            # 7. Alias normalization: query has prefix, alias has no prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("unsloth/local-qwen", presets_file=str(presets_file)),
+                "Qwen3.8-27B-spec"
+            )
+            # 8. Single alias with prefix
+            self.assertEqual(
+                map_repo_to_preset_alias("unsloth/plain-alias", presets_file=str(presets_file)),
+                "PlainSection"
+            )
 
     def test_get_preset_metadata(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

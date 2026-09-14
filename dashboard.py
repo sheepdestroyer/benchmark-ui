@@ -219,31 +219,88 @@ st.markdown("""
 
 
 
-@functools.lru_cache(maxsize=1)
-def _get_presets_config():
-    presets_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-    if not os.path.exists(presets_file):
+def _normalize_repo_id(val):
+    if not val or not isinstance(val, str):
+        return ""
+    val = val.strip()
+    if val.lower().startswith("unsloth/"):
+        return val[len("unsloth/"):].strip()
+    return val
+
+
+def _repo_id_matches(target, candidate):
+    if not target or not candidate or not isinstance(target, str) or not isinstance(candidate, str):
+        return False
+    target_clean = target.strip()
+    candidate_clean = candidate.strip()
+    if not target_clean or not candidate_clean:
+        return False
+    if target_clean.lower() == candidate_clean.lower():
+        return True
+    norm_target = _normalize_repo_id(target_clean).lower()
+    norm_candidate = _normalize_repo_id(candidate_clean).lower()
+    return bool(norm_target and norm_candidate and norm_target == norm_candidate)
+
+
+def resolve_presets_path(presets_file=None):
+    """Resolve presets file path with PRESETS_FILE env var and default fallback paths."""
+    if presets_file is not None:
+        return str(presets_file)
+    env_file = os.environ.get("PRESETS_FILE")
+    if env_file:
+        return env_file
+    primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+    if os.path.exists(primary):
+        return primary
+    fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+    if os.path.exists(fallback):
+        return fallback
+    return primary
+
+
+@functools.lru_cache(maxsize=4)
+def _get_presets_config(presets_file=None):
+    presets_path = resolve_presets_path(presets_file)
+    if not os.path.exists(presets_path):
         return None
         
     try:
         config = configparser.ConfigParser(strict=False)
-        config.read(presets_file, encoding="utf-8")
+        config.read(presets_path, encoding="utf-8")
         return config
     except Exception:
         return None
 
-def map_repo_to_preset_alias(repo_or_id):
+def map_repo_to_preset_alias(repo_or_id, presets_file=None):
     if not repo_or_id or not isinstance(repo_or_id, str):
         return repo_or_id
 
-    config = _get_presets_config()
+    config = _get_presets_config(presets_file)
     if config:
         try:
-            # Exact section check first
+            # Exact or normalized section check first
             for section in config.sections():
-                if section.lower() == repo_or_id.lower():
+                if _repo_id_matches(section, repo_or_id):
                     return section
                     
+            # Exact or normalized hf-repo and alias check
+            for section in config.sections():
+                if section == "*":
+                    continue
+                section_repo = config.get(section, "hf-repo", fallback="")
+                section_alias = config.get(section, "alias", fallback="")
+
+                if section_repo and _repo_id_matches(section_repo, repo_or_id):
+                    return section
+
+                if section_alias:
+                    alias_parts = [a.strip() for a in section_alias.split(",") if a.strip()]
+                    for a in alias_parts:
+                        if _repo_id_matches(a, repo_or_id):
+                            return section
+                    if _repo_id_matches(section_alias, repo_or_id):
+                        return section
+
             # Fallback substring checks
             for section in config.sections():
                 if section == "*":
@@ -251,14 +308,20 @@ def map_repo_to_preset_alias(repo_or_id):
                 section_repo = config.get(section, "hf-repo", fallback="")
                 section_alias = config.get(section, "alias", fallback="")
                 
-                if section_repo and section_repo.lower() in repo_or_id.lower():
-                    if "mtp" in repo_or_id.lower() and "spec" in section.lower():
-                        return section
-                    if "mtp" not in repo_or_id.lower() and "spec" not in section.lower():
-                        return section
+                if section_repo:
+                    sec_repo_norm = _normalize_repo_id(section_repo).lower()
+                    query_norm = _normalize_repo_id(repo_or_id).lower()
+                    if (section_repo.lower() in repo_or_id.lower()) or (sec_repo_norm and sec_repo_norm in query_norm):
+                        if "mtp" in repo_or_id.lower() and "spec" in section.lower():
+                            return section
+                        if "mtp" not in repo_or_id.lower() and "spec" not in section.lower():
+                            return section
                         
-                if section_alias and section_alias.lower() in repo_or_id.lower():
-                    return section
+                if section_alias:
+                    sec_alias_norm = _normalize_repo_id(section_alias).lower()
+                    query_norm = _normalize_repo_id(repo_or_id).lower()
+                    if (section_alias.lower() in repo_or_id.lower()) or (sec_alias_norm and sec_alias_norm in query_norm):
+                        return section
         except (configparser.Error, OSError):
             pass
             
@@ -275,7 +338,7 @@ def map_repo_to_preset_alias(repo_or_id):
         
     return repo_or_id
 
-def get_preset_metadata(profile_name):
+def get_preset_metadata(profile_name, presets_file=None):
     metadata = {
         "spec_type": "None",
         "spec_draft_type_k": "None",
@@ -286,7 +349,7 @@ def get_preset_metadata(profile_name):
         "fit": "true"
     }
     
-    config = _get_presets_config()
+    config = _get_presets_config(presets_file)
     if config:
         try:
             

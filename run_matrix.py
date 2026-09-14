@@ -140,7 +140,7 @@ def extract_run_identifiers(data, presets_sections=None):
         profile = settings.get("model_name", "")
         
     # If the profile name contains unsloth repo prefix, try mapping it
-    if profile and ("/" in profile or ":" in profile):
+    if profile:
         matched = False
         for section in presets_sections:
             if section.lower() == profile.lower():
@@ -149,7 +149,16 @@ def extract_run_identifiers(data, presets_sections=None):
                 break
         if not matched:
             for section in presets_sections:
-                if section.lower() in profile.lower() or profile.lower() in section.lower():
+                if _repo_id_matches(section, profile):
+                    profile = section
+                    matched = True
+                    break
+        if not matched and ("/" in profile or ":" in profile):
+            for section in presets_sections:
+                sec_norm = _normalize_repo_id(section).lower()
+                prof_norm = _normalize_repo_id(profile).lower()
+                if (section.lower() in profile.lower() or profile.lower() in section.lower()) or \
+                   (sec_norm and prof_norm and (sec_norm in prof_norm or prof_norm in sec_norm)):
                     profile = section
                     break
             
@@ -157,16 +166,65 @@ def extract_run_identifiers(data, presets_sections=None):
         return (profile, ctx)
     return None
 
+
+def _normalize_repo_id(val):
+    if not val or not isinstance(val, str):
+        return ""
+    val = val.strip()
+    if val.lower().startswith("unsloth/"):
+        return val[len("unsloth/"):].strip()
+    return val
+
+
+def _repo_id_matches(target, candidate):
+    if not target or not candidate or not isinstance(target, str) or not isinstance(candidate, str):
+        return False
+    target_clean = target.strip()
+    candidate_clean = candidate.strip()
+    if not target_clean or not candidate_clean:
+        return False
+    if target_clean.lower() == candidate_clean.lower():
+        return True
+    norm_target = _normalize_repo_id(target_clean).lower()
+    norm_candidate = _normalize_repo_id(candidate_clean).lower()
+    return bool(norm_target and norm_candidate and norm_target == norm_candidate)
+
+
+def resolve_presets_path(presets_file=None):
+    """Resolve presets file path with PRESETS_FILE env var and default fallback paths."""
+    if presets_file is not None:
+        return str(presets_file)
+    env_file = os.environ.get("PRESETS_FILE")
+    if env_file:
+        return env_file
+    primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+    if os.path.exists(primary):
+        return primary
+    fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+    if os.path.exists(fallback):
+        return fallback
+    return primary
+
+
+@functools.lru_cache(maxsize=4)
+def load_presets_config(presets_file=None):
+    """Load and parse model_presets.ini with LRU caching."""
+    target_file = resolve_presets_path(presets_file)
+    if not os.path.exists(target_file):
+        return None
+
+    try:
+        config = configparser.ConfigParser(strict=False)
+        config.read(target_file, encoding="utf-8")
+        return config
+    except Exception:
+        return None
+
+
 @functools.lru_cache(maxsize=4)
 def load_presets_sections(presets_file=None):
     """Load sections from model_presets.ini with LRU caching."""
-    target_file = presets_file
-    if target_file is None:
-        target_file = os.environ.get(
-            "PRESETS_FILE",
-            os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-        )
-    target_file = str(target_file)
+    target_file = resolve_presets_path(presets_file)
     if not os.path.exists(target_file):
         return set()
 
@@ -176,6 +234,43 @@ def load_presets_sections(presets_file=None):
         return set(config.sections())
     except Exception:
         return set()
+
+
+@functools.lru_cache(maxsize=128)
+def map_repo_to_preset_alias(repo_or_id, presets_file=None):
+    """Map model repository or ID string to preset alias defined in model_presets.ini."""
+    if not repo_or_id or not isinstance(repo_or_id, str):
+        return repo_or_id
+
+    config = load_presets_config(presets_file)
+    if config is None:
+        return repo_or_id
+
+    try:
+        for section in config.sections():
+            if _repo_id_matches(section, repo_or_id):
+                return section
+
+        for section in config.sections():
+            if section == "*":
+                continue
+            section_repo = config.get(section, "hf-repo", fallback="")
+            section_alias = config.get(section, "alias", fallback="")
+
+            if section_repo and _repo_id_matches(section_repo, repo_or_id):
+                return section
+
+            if section_alias:
+                alias_parts = [a.strip() for a in section_alias.split(",") if a.strip()]
+                for a in alias_parts:
+                    if _repo_id_matches(a, repo_or_id):
+                        return section
+                if _repo_id_matches(section_alias, repo_or_id):
+                    return section
+    except Exception:
+        pass
+
+    return repo_or_id
 
 
 def get_completed_runs(presets_file=None):
