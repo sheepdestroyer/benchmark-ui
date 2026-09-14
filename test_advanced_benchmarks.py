@@ -2468,10 +2468,26 @@ class TestContextTiersAndTimeoutScaling(unittest.TestCase):
             advanced_benchmarks.parse_context_tokens("invalid")
         with self.assertRaises(ValueError):
             advanced_benchmarks.parse_context_tokens("abc_k")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(0)
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(-50)
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("-8k")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(8192.5)
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("8192.5")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(float("inf"))
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("inf")
         with self.assertRaises(TypeError):
             advanced_benchmarks.parse_context_tokens(None)
         with self.assertRaises(TypeError):
             advanced_benchmarks.parse_context_tokens(True)
+        with self.assertRaises(TypeError):
+            advanced_benchmarks.parse_context_tokens(False)
 
     @patch("advanced_benchmarks.requests.post")
     def test_call_endpoint_dynamic_timeout_calculation(self, mock_post):
@@ -2497,7 +2513,19 @@ class TestContextTiersAndTimeoutScaling(unittest.TestCase):
         _, kwargs = mock_post.call_args
         self.assertEqual(kwargs["timeout"], 500)
 
-        # 4. Caller-specified timeout overrides dynamic calculation
+        # 4. Ultra-long prompt -> capped at 7200
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "x" * 5000000)
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 7200)
+
+        # 5. Non-len prompt (e.g. integer or object without __len__)
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", 12345)
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 300)
+
+        # 6. Caller-specified timeout overrides dynamic calculation
         mock_post.reset_mock()
         advanced_benchmarks.call_endpoint(
             "http://127.0.0.1:8080", "m1", "x" * 300000, timeout=1200

@@ -15,7 +15,7 @@ import time
 
 import requests
 
-from utils import redact_cli_args
+from utils import CONTEXT_TIERS as CONTEXT_TIERS, parse_context_tokens, redact_cli_args
 
 # Pre-built mapping of (lowercase_search_string, canonical_quantization)
 QUANTIZATION_OPTIONS = (
@@ -43,38 +43,6 @@ QUANTIZATION_OPTIONS = (
     "f16",
 )
 QUANTIZATION_OPTIONS_LOWER = tuple((q, q.lower()) for q in QUANTIZATION_OPTIONS)
-
-CONTEXT_TIERS = {
-    "8k": 8192,
-    "32k": 32768,
-    "64k": 65536,
-    "128k": 131072,
-    "240k": 240000,
-}
-
-
-def parse_context_tokens(tokens_val):
-    """Parse context token length from integer or tier string (e.g., '8k', '32k', '240k')."""
-    if isinstance(tokens_val, (int, float)) and not isinstance(tokens_val, bool):
-        return int(tokens_val)
-    if isinstance(tokens_val, str):
-        cleaned = tokens_val.strip().lower()
-        if cleaned in CONTEXT_TIERS:
-            return CONTEXT_TIERS[cleaned]
-        if cleaned.endswith("k"):
-            try:
-                return int(float(cleaned[:-1]) * 1024)
-            except ValueError:
-                pass
-        try:
-            return int(cleaned)
-        except ValueError:
-            raise ValueError(
-                f"Invalid context tokens or tier specification: '{tokens_val}'"
-            )
-    raise TypeError(
-        f"tokens must be an integer, float, or string, got {type(tokens_val).__name__}"
-    )
 
 
 DANGEROUS_MODULES = {
@@ -321,8 +289,10 @@ def generate_filler_text(target_tokens=200000):
 
 def call_endpoint(endpoint, model, prompt, max_tokens=512, api_key=None, timeout=None):
     if timeout is None:
-        prompt_len = len(prompt) if prompt is not None else 0
-        timeout = max(300, max(prompt_len // 600, 300))
+        prompt_len = (
+            len(prompt) if hasattr(prompt, "__len__") else len(str(prompt or ""))
+        )
+        timeout = min(max(300, prompt_len // 600), 7200)
 
     payload = {
         "model": model,

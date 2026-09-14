@@ -2531,6 +2531,65 @@ class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
         self.assertIn("--api-key", cmd)
         self.assertEqual(cmd[cmd.index("--api-key") + 1], "secret-pat")
 
+    def test_app_test_context_tier_switch_updates_tokens_input(self):
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:  # pragma: no cover
+            self.skipTest("streamlit.testing.v1.AppTest is not available")
+
+        at = AppTest.from_file("dashboard.py")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions on initial run: {at.exception}",
+        )
+
+        # Verify initial default tier is 32k and initial tokens input is 32768
+        tier_sb = at.selectbox(key="runner_context_tier")
+        tokens_input = at.number_input(key="runner_context_tokens_input")
+        self.assertEqual(tier_sb.value, "32k (Standard Agentic)")
+        self.assertEqual(tokens_input.value, 32768)
+
+        # Switch to 64k tier -> verify runner_context_tokens_input is updated to 65536
+        tier_sb.select("64k (Large Agentic)")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting 64k: {at.exception}",
+        )
+        self.assertEqual(
+            at.number_input(key="runner_context_tokens_input").value, 65536
+        )
+
+        # Switch to 240k tier -> verify runner_context_tokens_input is updated to 240000
+        at.selectbox(key="runner_context_tier").select("240k (Full Window)")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting 240k: {at.exception}",
+        )
+        self.assertEqual(
+            at.number_input(key="runner_context_tokens_input").value, 240000
+        )
+
+        # Switch to 8k tier -> verify runner_context_tokens_input is updated to 8192
+        at.selectbox(key="runner_context_tier").select("8k (Smoke)")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting 8k: {at.exception}",
+        )
+        self.assertEqual(at.number_input(key="runner_context_tokens_input").value, 8192)
+
+        # Switch to Custom -> verify previous value is preserved
+        at.selectbox(key="runner_context_tier").select("Custom")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting Custom: {at.exception}",
+        )
+        self.assertEqual(at.number_input(key="runner_context_tokens_input").value, 8192)
+
 
 if __name__ == "__main__":
     unittest.main()

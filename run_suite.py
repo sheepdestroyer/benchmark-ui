@@ -23,44 +23,14 @@ from pathlib import Path
 
 import requests
 
-from utils import redact_cli_args
+from utils import CONTEXT_TIERS as CONTEXT_TIERS, parse_context_tokens, redact_cli_args
 
 # Import advanced_benchmarks functions if possible
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     import advanced_benchmarks
-    from advanced_benchmarks import CONTEXT_TIERS, parse_context_tokens
 except ImportError:  # pragma: no cover
     advanced_benchmarks = None
-    CONTEXT_TIERS = {
-        "8k": 8192,
-        "32k": 32768,
-        "64k": 65536,
-        "128k": 131072,
-        "240k": 240000,
-    }
-
-    def parse_context_tokens(tokens_val):
-        if isinstance(tokens_val, (int, float)) and not isinstance(tokens_val, bool):
-            return int(tokens_val)
-        if isinstance(tokens_val, str):
-            cleaned = tokens_val.strip().lower()
-            if cleaned in CONTEXT_TIERS:
-                return CONTEXT_TIERS[cleaned]
-            if cleaned.endswith("k"):
-                try:
-                    return int(float(cleaned[:-1]) * 1024)
-                except ValueError:
-                    pass
-            try:
-                return int(cleaned)
-            except ValueError:
-                raise ValueError(
-                    f"Invalid context tokens or tier specification: '{tokens_val}'"
-                )
-        raise TypeError(
-            f"tokens must be an integer, float, or string, got {type(tokens_val).__name__}"
-        )
 
 
 QUANT_PRIORITIES = ("q5_1", "q8_0", "q4_0", "f16")

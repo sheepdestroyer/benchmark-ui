@@ -3,7 +3,14 @@ import socket
 from unittest.mock import patch
 
 import pytest
-from utils import redact_cli_args, validate_endpoint_url, validate_model_name
+
+from utils import (
+    CONTEXT_TIERS,
+    parse_context_tokens,
+    redact_cli_args,
+    validate_endpoint_url,
+    validate_model_name,
+)
 
 
 def test_validate_endpoint_url_valid():
@@ -342,3 +349,99 @@ def test_redact_cli_args():
         "********",
     ]
 
+
+def test_context_tiers_constant():
+    assert CONTEXT_TIERS == {
+        "8k": 8192,
+        "32k": 32768,
+        "64k": 65536,
+        "128k": 131072,
+        "240k": 240000,
+    }
+
+
+def test_parse_context_tokens_valid_tiers():
+    assert parse_context_tokens("8k") == 8192
+    assert parse_context_tokens("32k") == 32768
+    assert parse_context_tokens("64k") == 65536
+    assert parse_context_tokens("128k") == 131072
+    assert parse_context_tokens("240k") == 240000
+    # Case insensitivity and whitespace stripping
+    assert parse_context_tokens("  8K  ") == 8192
+    assert parse_context_tokens("\t32k\n") == 32768
+    assert parse_context_tokens("240K") == 240000
+
+
+def test_parse_context_tokens_arbitrary_k():
+    assert parse_context_tokens("16k") == 16384
+    assert parse_context_tokens("0.5k") == 512
+    assert parse_context_tokens("1.25k") == 1280
+    assert parse_context_tokens("+8k") == 8192
+
+
+def test_parse_context_tokens_numeric_integers():
+    assert parse_context_tokens(8192) == 8192
+    assert parse_context_tokens(1) == 1
+    assert parse_context_tokens("8192") == 8192
+    assert parse_context_tokens("  32768  ") == 32768
+    assert parse_context_tokens(8192.0) == 8192
+    assert parse_context_tokens("8192.0") == 8192
+
+
+def test_parse_context_tokens_reject_booleans():
+    with pytest.raises(TypeError, match="tokens must be an integer, float, or string"):
+        parse_context_tokens(True)
+    with pytest.raises(TypeError, match="tokens must be an integer, float, or string"):
+        parse_context_tokens(False)
+
+
+def test_parse_context_tokens_reject_non_integer_floats():
+    with pytest.raises(ValueError, match="must be an integer value"):
+        parse_context_tokens(8192.5)
+    with pytest.raises(ValueError, match="must be an integer value"):
+        parse_context_tokens("8192.5")
+    with pytest.raises(ValueError, match="must resolve to an integer value"):
+        parse_context_tokens("0.333k")
+
+
+def test_parse_context_tokens_reject_non_positive():
+    for zero_or_neg in (0, -1, -50, -8192, 0.0, -0.0, -50.0):
+        with pytest.raises(ValueError, match="must be positive"):
+            parse_context_tokens(zero_or_neg)
+    for zero_or_neg_str in (
+        "0",
+        "-0",
+        "-50",
+        "-8192",
+        "0.0",
+        "-0.0",
+        "-50.0",
+        "-8k",
+        "0k",
+        "-0k",
+    ):
+        with pytest.raises(ValueError, match="must be positive"):
+            parse_context_tokens(zero_or_neg_str)
+
+
+def test_parse_context_tokens_reject_infinities_and_nans():
+    for inf_or_nan in (float("inf"), float("-inf"), float("nan")):
+        with pytest.raises(ValueError, match="Invalid context tokens"):
+            parse_context_tokens(inf_or_nan)
+    for inf_or_nan_str in ("inf", "-inf", "nan", "+inf", "infk", "-infk", "nank"):
+        with pytest.raises(ValueError, match="Invalid context tokens"):
+            parse_context_tokens(inf_or_nan_str)
+
+
+def test_parse_context_tokens_reject_invalid_strings():
+    for invalid in ("", "   ", "\t\n", "invalid", "abc", "k", "-k", "8kk", "none"):
+        with pytest.raises(ValueError, match="Invalid context tokens|cannot be empty"):
+            parse_context_tokens(invalid)
+
+
+def test_parse_context_tokens_reject_invalid_types():
+    for bad_type in (None, [8192], {"tokens": 8192}, (8192,), object()):
+        with pytest.raises(
+            TypeError, match="tokens must be an integer, float, or string"
+        ):
+            parse_context_tokens(bad_type)

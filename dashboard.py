@@ -17,7 +17,12 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-from utils import redact_cli_args, validate_endpoint_url, validate_model_name
+from utils import (
+    CONTEXT_TIERS as CONTEXT_TIERS,
+    redact_cli_args,
+    validate_endpoint_url,
+    validate_model_name,
+)
 
 BASE_QUANT_TYPES = (
     "Q4_K_XL",
@@ -98,14 +103,6 @@ def validate_new_tokens(new_tokens):
 
 
 validate_tokens = validate_new_tokens
-
-CONTEXT_TIERS = {
-    "8k": 8192,
-    "32k": 32768,
-    "64k": 65536,
-    "128k": 131072,
-    "240k": 240000,
-}
 
 CONTEXT_TIER_OPTIONS = [
     "8k (Smoke)",
@@ -1819,6 +1816,7 @@ with tab_run:
         ):
             st.session_state["prev_context_tier"] = selected_tier
             if tier_token_val is not None:
+                st.session_state["runner_context_tokens_input"] = tier_token_val
                 st.session_state["runner_context_tokens_val"] = tier_token_val
 
         current_tokens_default = st.session_state.get(
