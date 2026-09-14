@@ -1859,5 +1859,402 @@ class TestModelRetrieval(unittest.TestCase):
             importlib.reload(dashboard)
 
 
+class TestEndpointsPersistence(unittest.TestCase):
+    """Test endpoint persistence, JSON serialization, and CRUD helper operations."""
+
+    def test_load_endpoints_default_creation_when_not_exists(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "sub" / "endpoints.json"
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 2)
+            self.assertEqual(eps[0]["name"], "Local Llama Router")
+            self.assertEqual(eps[0]["url"], "http://127.0.0.1:8083")
+            self.assertTrue(eps[0]["is_default"])
+            self.assertEqual(eps[1]["name"], "Production LLM-Routing")
+            self.assertFalse(eps[1]["is_default"])
+            self.assertTrue(endpoints_file.exists())
+
+    def test_load_endpoints_loads_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            custom_data = [
+                {
+                    "name": "Custom Ep",
+                    "url": "http://127.0.0.1:9999",
+                    "api_key": "sk-custom",
+                    "is_default": True,
+                }
+            ]
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                json.dump(custom_data, f)
+
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 1)
+            self.assertEqual(eps[0]["name"], "Custom Ep")
+            self.assertEqual(eps[0]["api_key"], "sk-custom")
+
+    def test_load_endpoints_corrupted_json_handling(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                f.write("{invalid json: corrupt")
+
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 2)
+            self.assertEqual(eps[0]["name"], "Local Llama Router")
+
+    def test_load_endpoints_empty_file_handling(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                f.write("   \n")
+
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 2)
+            self.assertEqual(eps[0]["name"], "Local Llama Router")
+
+    def test_load_endpoints_non_list_json(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                json.dump({"error": "not a list"}, f)
+
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 2)
+
+    def test_load_endpoints_missing_fields_and_filtering(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            invalid_records = [
+                "not a dict",
+                {"url": "http://127.0.0.1:8080"},  # Missing name
+                {"name": "No URL"},  # Missing url
+                {"name": "   ", "url": "http://127.0.0.1:8080"},  # Blank name
+                {"name": "Valid", "url": "http://127.0.0.1:8080"},  # Valid, defaults api_key and is_default
+            ]
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                json.dump(invalid_records, f)
+
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 1)
+            self.assertEqual(eps[0]["name"], "Valid")
+            self.assertEqual(eps[0]["api_key"], "")
+            self.assertFalse(eps[0]["is_default"])
+
+    def test_load_endpoints_all_corrupt_records_falls_back_to_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                json.dump([{"invalid": 1}, {"bad": 2}], f)
+
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 2)
+
+    def test_save_endpoints_atomic_write_and_persistence(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "nested" / "endpoints.json"
+            data = [
+                {
+                    "name": "Router",
+                    "url": "http://127.0.0.1:8083",
+                    "api_key": "key123",
+                    "is_default": True,
+                }
+            ]
+            dashboard.save_endpoints(data, endpoints_file)
+            self.assertTrue(endpoints_file.exists())
+            self.assertFalse(endpoints_file.with_suffix(".tmp").exists())
+            with open(endpoints_file, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            self.assertEqual(len(loaded), 1)
+            self.assertEqual(loaded[0]["name"], "Router")
+
+    def test_save_endpoints_validation_errors(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            with self.assertRaisesRegex(ValueError, "Endpoints must be a list"):
+                dashboard.save_endpoints("not-a-list", endpoints_file)
+            with self.assertRaisesRegex(ValueError, "must be a dict"):
+                dashboard.save_endpoints(["not-a-dict"], endpoints_file)
+            with self.assertRaisesRegex(ValueError, "non-empty string 'name'"):
+                dashboard.save_endpoints([{"url": "http://127.0.0.1:8080"}], endpoints_file)
+            with self.assertRaisesRegex(ValueError, "non-empty string 'url'"):
+                dashboard.save_endpoints([{"name": "Ep"}], endpoints_file)
+
+    def test_add_endpoint_success_and_duplicate_handling(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            eps = dashboard.add_endpoint(
+                "New Endpoint", "http://127.0.0.1:8090", "key-xyz", is_default=True, file_path=endpoints_file
+            )
+            self.assertEqual(len(eps), 3)
+            new_ep = next(e for e in eps if e["name"] == "New Endpoint")
+            self.assertTrue(new_ep["is_default"])
+            # Old default should be unset
+            old_def = next(e for e in eps if e["name"] == "Local Llama Router")
+            self.assertFalse(old_def["is_default"])
+
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                dashboard.add_endpoint(
+                    "New Endpoint", "http://127.0.0.1:8091", file_path=endpoints_file
+                )
+            with self.assertRaisesRegex(ValueError, "Endpoint name cannot be empty"):
+                dashboard.add_endpoint(
+                    "", "http://127.0.0.1:8091", file_path=endpoints_file
+                )
+
+    def test_update_endpoint_success_and_errors(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            dashboard.load_endpoints(endpoints_file)
+
+            updated = dashboard.update_endpoint(
+                "Local Llama Router",
+                "Renamed Router",
+                "http://127.0.0.1:8095",
+                "new-key",
+                is_default=True,
+                file_path=endpoints_file,
+            )
+            names = [e["name"] for e in updated]
+            self.assertIn("Renamed Router", names)
+            self.assertNotIn("Local Llama Router", names)
+
+            with self.assertRaisesRegex(ValueError, "not found"):
+                dashboard.update_endpoint(
+                    "NonExistent", "New", "http://127.0.0.1:8080", file_path=endpoints_file
+                )
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                dashboard.update_endpoint(
+                    "Renamed Router", "Production LLM-Routing", "http://127.0.0.1:8080", file_path=endpoints_file
+                )
+            with self.assertRaisesRegex(ValueError, "Endpoint name cannot be empty"):
+                dashboard.update_endpoint(
+                    "Renamed Router", "", "http://127.0.0.1:8080", file_path=endpoints_file
+                )
+
+    def test_save_and_load_endpoints_non_string_api_key(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            dashboard.save_endpoints(
+                [{"name": "Test", "url": "http://127.0.0.1:8080", "api_key": 9999}],
+                endpoints_file,
+            )
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(eps[0]["api_key"], "")
+
+            with open(endpoints_file, "w", encoding="utf-8") as f:
+                json.dump([{"name": "Test2", "url": "http://127.0.0.1:8080", "api_key": 1234}], f)
+            eps2 = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(eps2[0]["api_key"], "")
+
+    def test_delete_endpoint_success_and_errors(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            eps = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(len(eps), 2)
+
+            with self.assertRaisesRegex(ValueError, "not found"):
+                dashboard.delete_endpoint("NonExistent", file_path=endpoints_file)
+
+            remaining = dashboard.delete_endpoint("Local Llama Router", file_path=endpoints_file)
+            self.assertEqual(len(remaining), 1)
+            self.assertEqual(remaining[0]["name"], "Production LLM-Routing")
+            # Since default was deleted, remaining becomes default
+            self.assertTrue(remaining[0]["is_default"])
+
+            with self.assertRaisesRegex(ValueError, "Cannot delete the only"):
+                dashboard.delete_endpoint("Production LLM-Routing", file_path=endpoints_file)
+
+
+class TestEndpointManagementAndRunnerUI(unittest.TestCase):
+    """Test UI endpoint management expander and runner configuration auth integration."""
+
+    def test_fetch_available_models_strips_trailing_slash(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "model-1"}]}
+        with patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get:
+            models = dashboard.fetch_available_models("http://127.0.0.1:8083/")
+            self.assertEqual(models, ["model-1"])
+            mock_get.assert_called_once_with(
+                "http://127.0.0.1:8083/v1/models", headers={}, timeout=3
+            )
+
+    def test_fetch_available_models_defensive_none_data_and_non_str_id(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": [
+                None,
+                {"id": 12345},  # Non-string id ignored
+                {"id": ""},  # Blank string ignored
+                {"id": "valid-model"},
+            ]
+        }
+        with patch.object(dashboard.requests, "get", return_value=mock_resp):
+            models = dashboard.fetch_available_models("http://127.0.0.1:8083")
+            self.assertEqual(models, ["valid-model"])
+
+    def test_fetch_available_models_data_key_is_none(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": None}
+        with (
+            patch.object(dashboard.requests, "get", return_value=mock_resp),
+            self.assertRaisesRegex(ValueError, "No models found in response"),
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+    def test_ui_manage_endpoints_save_action_validation(self):
+        mock_st_local = MagicMock()
+        ep_name = "   "
+        if not ep_name.strip():
+            mock_st_local.error("Endpoint name cannot be empty.")
+        mock_st_local.error.assert_called_once_with("Endpoint name cannot be empty.")
+
+    def test_ui_manage_endpoints_test_connection_success(self):
+        mock_st_local = MagicMock()
+        mock_fetch = MagicMock(return_value=["model-1", "model-2", "model-3"])
+        with patch.object(dashboard, "fetch_available_models", mock_fetch):
+            test_models = dashboard.fetch_available_models("http://127.0.0.1:8083", "secret")
+            mock_st_local.success(
+                f"Connection successful! {len(test_models)} models available: {', '.join(test_models[:5])}..."
+            )
+            mock_st_local.success.assert_called_once_with(
+                "Connection successful! 3 models available: model-1, model-2, model-3..."
+            )
+
+    def test_ui_manage_endpoints_test_connection_failure(self):
+        mock_st_local = MagicMock()
+        err_msg = "Connection refused"
+        mock_st_local.error(f"Connection failed: {err_msg}")
+        mock_st_local.error.assert_called_once_with("Connection failed: Connection refused")
+
+    def test_ui_manage_endpoints_save_action_success_and_error_paths(self):
+        mock_st = MagicMock()
+        mock_st.session_state = {}
+
+        # 1. Add new endpoint success
+        with patch.object(dashboard, "add_endpoint") as mock_add:
+            valid_u = dashboard.validate_endpoint_url("http://127.0.0.1:8080", allow_private=True)
+            mock_add("New", valid_u, "key", True)
+            mock_st.session_state["endpoint_notice"] = "Endpoint 'New' saved successfully."
+            mock_st.rerun()
+
+            mock_add.assert_called_once_with("New", "http://127.0.0.1:8080", "key", True)
+            self.assertEqual(mock_st.session_state["endpoint_notice"], "Endpoint 'New' saved successfully.")
+            mock_st.rerun.assert_called_once()
+
+        # 2. Update endpoint success
+        mock_st.reset_mock()
+        with patch.object(dashboard, "update_endpoint") as mock_update:
+            valid_u = dashboard.validate_endpoint_url("http://127.0.0.1:8080", allow_private=True)
+            mock_update("Old", "New", valid_u, "key", True)
+            mock_st.session_state["endpoint_notice"] = "Endpoint 'New' updated successfully."
+            mock_st.rerun()
+
+            mock_update.assert_called_once_with("Old", "New", "http://127.0.0.1:8080", "key", True)
+            self.assertEqual(mock_st.session_state["endpoint_notice"], "Endpoint 'New' updated successfully.")
+            mock_st.rerun.assert_called_once()
+
+        # 3. Invalid URL error
+        mock_st.reset_mock()
+        try:
+            dashboard.validate_endpoint_url("invalid-url", allow_private=True)
+        except ValueError as err:
+            mock_st.error(f"Failed to save endpoint: {err}")
+        mock_st.error.assert_called_once()
+
+    def test_ui_manage_endpoints_delete_action_success_and_error(self):
+        mock_st = MagicMock()
+        mock_st.session_state = {}
+
+        # Delete success
+        with patch.object(dashboard, "delete_endpoint") as mock_delete:
+            mock_delete("Target Ep")
+            mock_st.session_state["endpoint_notice"] = "Endpoint 'Target Ep' deleted successfully."
+            mock_st.rerun()
+
+            mock_delete.assert_called_once_with("Target Ep")
+            mock_st.rerun.assert_called_once()
+
+        # Delete error
+        mock_st.reset_mock()
+        with patch.object(dashboard, "delete_endpoint", side_effect=ValueError("Cannot delete")):
+            try:
+                dashboard.delete_endpoint("Target Ep")
+            except ValueError as err:
+                mock_st.error(f"Failed to delete endpoint: {err}")
+            mock_st.error.assert_called_once_with("Failed to delete endpoint: Cannot delete")
+
+    def test_runner_cmd_appends_api_key_when_present(self):
+        import sys
+
+        valid_endpoint = "http://127.0.0.1:8083"
+        valid_model = "Qwen3.6-27B"
+        valid_corpus = "kld_corpus.txt"
+        valid_tokens = 5000
+        valid_gguf = "model.gguf"
+        valid_api_key = "sk-runner-token"
+
+        cmd = [
+            sys.executable,
+            "run_suite.py",
+            "--mode",
+            "all",
+            "--endpoint",
+            valid_endpoint,
+            "--model",
+            valid_model,
+            "--tokens",
+            str(valid_tokens),
+            "--corpus",
+            valid_corpus,
+        ]
+        if valid_gguf:
+            cmd.extend(["--gguf-path", valid_gguf])
+        if valid_api_key:
+            cmd.extend(["--api-key", valid_api_key])
+
+        self.assertEqual(cmd[0], sys.executable)
+        self.assertEqual(cmd[1], "run_suite.py")
+        self.assertIn("--api-key", cmd)
+        key_idx = cmd.index("--api-key")
+        self.assertEqual(cmd[key_idx + 1], "sk-runner-token")
+
+    def test_runner_cmd_omits_api_key_when_empty(self):
+        import sys
+
+        valid_endpoint = "http://127.0.0.1:8083"
+        valid_model = "Qwen3.6-27B"
+        valid_corpus = "kld_corpus.txt"
+        valid_tokens = 5000
+        valid_gguf = ""
+        valid_api_key = ""
+
+        cmd = [
+            sys.executable,
+            "run_suite.py",
+            "--mode",
+            "all",
+            "--endpoint",
+            valid_endpoint,
+            "--model",
+            valid_model,
+            "--tokens",
+            str(valid_tokens),
+            "--corpus",
+            valid_corpus,
+        ]
+        if valid_gguf:
+            cmd.extend(["--gguf-path", valid_gguf])
+        if valid_api_key:
+            cmd.extend(["--api-key", valid_api_key])
+
+        self.assertNotIn("--api-key", cmd)
+        self.assertNotIn("--gguf-path", cmd)
+
+
 if __name__ == "__main__":
     unittest.main()

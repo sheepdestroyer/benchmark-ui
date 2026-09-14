@@ -182,7 +182,7 @@ def generate_filler_text(target_tokens=200000):
         
     return paragraphs
 
-def call_endpoint(endpoint, model, prompt, max_tokens=512):
+def call_endpoint(endpoint, model, prompt, max_tokens=512, api_key=None):
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -194,6 +194,9 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
     
     url = f"{endpoint}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
+    api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+    if api_key and api_key.strip():
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
     
     start_time = time.time()
     first_token_time = None
@@ -278,7 +281,7 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
 # BENCHMARK 1: NEEDLE IN A HAYSTACK
 # ==============================================================================
 
-def run_needle_test(endpoint, model, tokens=200000, depth=0.5):
+def run_needle_test(endpoint, model, tokens=200000, depth=0.5, api_key=None):
     print(f"\n=== Running Needle in a Haystack Test (~{tokens} tokens) ===")
     
     paragraphs = generate_filler_text(tokens)
@@ -294,7 +297,7 @@ def run_needle_test(endpoint, model, tokens=200000, depth=0.5):
     full_context = "\n\n".join(paragraphs)
     prompt = f"Context:\n{full_context}\n\nQuestion: {query}"
     
-    res = call_endpoint(endpoint, model, prompt, max_tokens=256)
+    res = call_endpoint(endpoint, model, prompt, max_tokens=256, api_key=api_key)
     if not res:
         return None
         
@@ -317,7 +320,7 @@ def run_needle_test(endpoint, model, tokens=200000, depth=0.5):
 # BENCHMARK 2: RULER (VARIABLE TRACKING CHAIN)
 # ==============================================================================
 
-def run_ruler_test(endpoint, model, tokens=200000):
+def run_ruler_test(endpoint, model, tokens=200000, api_key=None):
     print(f"\n=== Running RULER Variable Tracking Test (~{tokens} tokens) ===")
     
     paragraphs = generate_filler_text(tokens)
@@ -349,7 +352,7 @@ def run_ruler_test(endpoint, model, tokens=200000):
     full_context = "\n\n".join(paragraphs)
     prompt = f"Context:\n{full_context}\n\nQuestion: {query}"
     
-    res = call_endpoint(endpoint, model, prompt, max_tokens=256)
+    res = call_endpoint(endpoint, model, prompt, max_tokens=256, api_key=api_key)
     if not res:
         return None
         
@@ -372,7 +375,7 @@ def run_ruler_test(endpoint, model, tokens=200000):
 # BENCHMARK 3: LONGBENCH (DOCUMENT QA)
 # ==============================================================================
 
-def run_longbench_test(endpoint, model, tokens=200000):
+def run_longbench_test(endpoint, model, tokens=200000, api_key=None):
     print(f"\n=== Running LongBench Document QA Test (~{tokens} tokens) ===")
     
     paragraphs = generate_filler_text(tokens)
@@ -391,7 +394,7 @@ def run_longbench_test(endpoint, model, tokens=200000):
     full_context = "\n\n".join(paragraphs)
     prompt = f"Context:\n{full_context}\n\nQuestion: {query}"
     
-    res = call_endpoint(endpoint, model, prompt, max_tokens=256)
+    res = call_endpoint(endpoint, model, prompt, max_tokens=256, api_key=api_key)
     if not res:
         return None
         
@@ -433,7 +436,7 @@ def _extract_code_block_from_response(raw_response, reasoning):
     return new_code
 
 
-def run_swe_test(endpoint, model):
+def run_swe_test(endpoint, model, api_key=None):
     print("\n=== Running SWE-bench Codebase Debugging Test ===")
 
     toy_repo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "toy_repo")
@@ -466,7 +469,7 @@ Here is the test suite in test_calculator.py:
 Be extremely concise. Keep your internal thought trace minimal. Please output the COMPLETE corrected code of calculator.py inside a single python code block (wrapped in ```python ... ```). Do not output other text or conversational filler."""
 
     print("Sending codebase issue to LLM...")
-    res = call_endpoint(endpoint, model, prompt, max_tokens=4096)
+    res = call_endpoint(endpoint, model, prompt, max_tokens=4096, api_key=api_key)
     if not res:
         return None
 
@@ -715,7 +718,7 @@ def _parse_endpoint_preset_block(preset_str):
     return parsed
 
 
-def get_model_settings_from_endpoint(endpoint, target_model):
+def get_model_settings_from_endpoint(endpoint, target_model, api_key=None):
     settings = {
         "model_name": target_model,
         "base_quantization": "Unknown",
@@ -735,7 +738,11 @@ def get_model_settings_from_endpoint(endpoint, target_model):
 
     try:
         url = f"{endpoint}/v1/models"
-        with requests.get(url, timeout=5) as response:
+        api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        headers = {}
+        if api_key and api_key.strip():
+            headers["Authorization"] = f"Bearer {api_key.strip()}"
+        with requests.get(url, headers=headers, timeout=5) as response:
             if response.status_code == 200:
                 data = response.json()
                 model_info = None
@@ -791,10 +798,10 @@ def _print_benchmark_summary(results):
     print("--------------------------------------------------------------------------------")
 
 
-def _save_run_data(results, endpoint, model, cli_arguments, output_path=None):
+def _save_run_data(results, endpoint, model, cli_arguments, output_path=None, api_key=None):
     """Aggregate benchmark results and write structured historical run JSON."""
     timestamp = datetime.datetime.now().isoformat()
-    model_settings = get_model_settings_from_endpoint(endpoint, model)
+    model_settings = get_model_settings_from_endpoint(endpoint, model, api_key=api_key)
 
     valid_prefill = [r["prefill_speed"] for r in results if r.get("prefill_speed", 0) > 0]
     valid_decode = [r["decode_speed"] for r in results if r.get("decode_speed", 0) > 0]
@@ -857,6 +864,7 @@ def main(args=None):
     parser.add_argument("--endpoint", default="http://127.0.0.1:8083", help="LLM server API endpoint")
     parser.add_argument("--model", default="Qwen3.6-27B", help="Model name / alias to target")
     parser.add_argument("--tokens", type=int, default=200000, help="Number of context tokens for synthetic benchmarks (Needle, RULER, LongBench)")
+    parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", ""), help="API key for Bearer authentication")
     parser.add_argument("--needle", action="store_true", help="Run Needle in a Haystack benchmark (Phase 1)")
     parser.add_argument("--ruler", action="store_true", help="Run RULER variable tracking benchmark (Phase 2)")
     parser.add_argument("--longbench", action="store_true", help="Run LongBench QA benchmark (Phase 3)")
@@ -887,24 +895,27 @@ def main(args=None):
         run_all = True
 
     results = []
+    call_kwargs = {}
+    if parsed_args.api_key:
+        call_kwargs["api_key"] = parsed_args.api_key
 
     if run_needle or run_all:
-        res = run_needle_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens)
+        res = run_needle_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens, **call_kwargs)
         if res:
             results.append(res)
 
     if run_ruler or run_all:
-        res = run_ruler_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens)
+        res = run_ruler_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens, **call_kwargs)
         if res:
             results.append(res)
 
     if run_longbench or run_all:
-        res = run_longbench_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens)
+        res = run_longbench_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens, **call_kwargs)
         if res:
             results.append(res)
 
     if run_swe or run_all:
-        res = run_swe_test(parsed_args.endpoint, parsed_args.model)
+        res = run_swe_test(parsed_args.endpoint, parsed_args.model, **call_kwargs)
         if res:
             results.append(res)
 
@@ -917,6 +928,7 @@ def main(args=None):
             parsed_args.model,
             cli_args,
             output_path=parsed_args.output,
+            **call_kwargs,
         )
 
     return results

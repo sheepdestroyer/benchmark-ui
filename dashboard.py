@@ -13,6 +13,7 @@ import time
 import requests
 import queue
 import threading
+import sys
 from pathlib import Path
 from utils import validate_endpoint_url, validate_model_name
 
@@ -108,6 +109,212 @@ st.set_page_config(
 # Paths
 HISTORY_DIR = Path(__file__).parent / "history"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+ENDPOINTS_FILE = Path(os.environ.get("ENDPOINTS_FILE", HISTORY_DIR / "endpoints.json"))
+
+DEFAULT_ENDPOINTS = [
+    {
+        "name": "Local Llama Router",
+        "url": "http://127.0.0.1:8083",
+        "api_key": "",
+        "is_default": True,
+    },
+    {
+        "name": "Production LLM-Routing",
+        "url": "https://llm-routing.vendeuvre.lan",
+        "api_key": "",
+        "is_default": False,
+    },
+]
+
+
+def get_endpoints_file(file_path: Path | str | None = None) -> Path:
+    if file_path is not None:
+        return Path(file_path)
+    return Path(os.environ.get("ENDPOINTS_FILE", ENDPOINTS_FILE))
+
+
+def save_endpoints(endpoints: list[dict], file_path: Path | str | None = None) -> None:
+    if not isinstance(endpoints, list):
+        raise ValueError("Endpoints must be a list of dicts.")
+
+    sanitized = []
+    for item in endpoints:
+        if not isinstance(item, dict):
+            raise ValueError("Each endpoint record must be a dict.")
+        name = item.get("name")
+        url = item.get("url")
+        if not name or not isinstance(name, str) or not name.strip():
+            raise ValueError("Endpoint record must contain a non-empty string 'name'.")
+        if not url or not isinstance(url, str) or not url.strip():
+            raise ValueError("Endpoint record must contain a non-empty string 'url'.")
+        api_key = item.get("api_key", "")
+        if not isinstance(api_key, str):
+            api_key = ""
+        is_default = bool(item.get("is_default", False))
+        sanitized.append(
+            {
+                "name": name.strip(),
+                "url": url.strip(),
+                "api_key": api_key.strip(),
+                "is_default": is_default,
+            }
+        )
+
+    target_file = get_endpoints_file(file_path)
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_file = target_file.with_suffix(".tmp")
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(sanitized, f, indent=4)
+    os.replace(tmp_file, target_file)
+
+
+def load_endpoints(file_path: Path | str | None = None) -> list[dict]:
+    target_file = get_endpoints_file(file_path)
+    if not target_file.exists():
+        save_endpoints(DEFAULT_ENDPOINTS, target_file)
+        return [dict(e) for e in DEFAULT_ENDPOINTS]
+
+    try:
+        with open(target_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                save_endpoints(DEFAULT_ENDPOINTS, target_file)
+                return [dict(e) for e in DEFAULT_ENDPOINTS]
+            data = json.loads(content)
+    except Exception:
+        save_endpoints(DEFAULT_ENDPOINTS, target_file)
+        return [dict(e) for e in DEFAULT_ENDPOINTS]
+
+    if not isinstance(data, list):
+        save_endpoints(DEFAULT_ENDPOINTS, target_file)
+        return [dict(e) for e in DEFAULT_ENDPOINTS]
+
+    validated = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        url = item.get("url")
+        if not name or not isinstance(name, str) or not name.strip():
+            continue
+        if not url or not isinstance(url, str) or not url.strip():
+            continue
+        api_key = item.get("api_key", "")
+        if not isinstance(api_key, str):
+            api_key = ""
+        is_default = bool(item.get("is_default", False))
+        validated.append(
+            {
+                "name": name.strip(),
+                "url": url.strip(),
+                "api_key": api_key.strip(),
+                "is_default": is_default,
+            }
+        )
+
+    if not validated:
+        save_endpoints(DEFAULT_ENDPOINTS, target_file)
+        return [dict(e) for e in DEFAULT_ENDPOINTS]
+
+    return validated
+
+
+def add_endpoint(
+    name: str,
+    url: str,
+    api_key: str = "",
+    is_default: bool = False,
+    file_path: Path | str | None = None,
+) -> list[dict]:
+    if not name or not str(name).strip():
+        raise ValueError("Endpoint name cannot be empty.")
+    cleaned_name = str(name).strip()
+    valid_url = validate_endpoint_url(str(url).strip(), allow_private=True)
+    endpoints = load_endpoints(file_path)
+
+    if any(e["name"].lower() == cleaned_name.lower() for e in endpoints):
+        raise ValueError(f"Endpoint with name '{cleaned_name}' already exists.")
+
+    if is_default:
+        for ep in endpoints:
+            ep["is_default"] = False
+
+    endpoints.append(
+        {
+            "name": cleaned_name,
+            "url": valid_url,
+            "api_key": str(api_key).strip() if api_key else "",
+            "is_default": bool(is_default),
+        }
+    )
+    save_endpoints(endpoints, file_path)
+    return endpoints
+
+
+def update_endpoint(
+    original_name: str,
+    name: str,
+    url: str,
+    api_key: str = "",
+    is_default: bool = False,
+    file_path: Path | str | None = None,
+) -> list[dict]:
+    if not name or not str(name).strip():
+        raise ValueError("Endpoint name cannot be empty.")
+    cleaned_name = str(name).strip()
+    valid_url = validate_endpoint_url(str(url).strip(), allow_private=True)
+    endpoints = load_endpoints(file_path)
+
+    target_idx = None
+    for idx, ep in enumerate(endpoints):
+        if ep["name"] == original_name:
+            target_idx = idx
+            break
+
+    if target_idx is None:
+        raise ValueError(f"Endpoint '{original_name}' not found.")
+
+    if cleaned_name.lower() != original_name.lower():
+        if any(e["name"].lower() == cleaned_name.lower() for e in endpoints):
+            raise ValueError(f"Endpoint with name '{cleaned_name}' already exists.")
+
+    if is_default:
+        for ep in endpoints:
+            ep["is_default"] = False
+
+    endpoints[target_idx] = {
+        "name": cleaned_name,
+        "url": valid_url,
+        "api_key": str(api_key).strip() if api_key else "",
+        "is_default": bool(is_default),
+    }
+    save_endpoints(endpoints, file_path)
+    return endpoints
+
+
+def delete_endpoint(
+    name: str,
+    file_path: Path | str | None = None,
+) -> list[dict]:
+    endpoints = load_endpoints(file_path)
+    if len(endpoints) <= 1:
+        raise ValueError("Cannot delete the only configured endpoint.")
+
+    target_idx = None
+    for idx, ep in enumerate(endpoints):
+        if ep["name"] == name:
+            target_idx = idx
+            break
+
+    if target_idx is None:
+        raise ValueError(f"Endpoint '{name}' not found.")
+
+    removed = endpoints.pop(target_idx)
+    if removed.get("is_default") and not any(e.get("is_default") for e in endpoints):
+        endpoints[0]["is_default"] = True
+
+    save_endpoints(endpoints, file_path)
+    return endpoints
 
 TEST_SUITES = ("Needle", "RULER", "LongBench", "SWE-bench")
 PASS_FAIL_STATUSES = frozenset({"Pass", "Fail"})
@@ -1304,8 +1511,9 @@ with tab_compare:
 
 def fetch_available_models(endpoint: str, api_key: str | None = None) -> list[str]:
     """Fetch and return sorted list of model IDs from an OpenAI-compatible endpoint."""
-    validate_endpoint_url(endpoint, allow_private=True)
-    url = f"{endpoint}/v1/models"
+    cleaned_endpoint = endpoint.rstrip("/")
+    validate_endpoint_url(cleaned_endpoint, allow_private=True)
+    url = f"{cleaned_endpoint}/v1/models"
     headers = {}
     key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
     if key and key.strip():
@@ -1313,11 +1521,13 @@ def fetch_available_models(endpoint: str, api_key: str | None = None) -> list[st
     resp = requests.get(url, headers=headers, timeout=3)
     resp.raise_for_status()
     data = resp.json()
-    models_raw = data.get("data", []) if isinstance(data, dict) else []
+    models_raw = data.get("data") or [] if isinstance(data, dict) else []
     models = [
         item.get("id")
         for item in models_raw
-        if isinstance(item, dict) and item.get("id")
+        if isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and item.get("id").strip()
     ]
     if not models:
         raise ValueError("No models found in response")
@@ -1330,19 +1540,175 @@ with tab_run:
         "Select your configuration and execute the unified runner script (`run_suite.py`) in the background."
     )
 
+    endpoints = load_endpoints()
+
+    if st.session_state.get("endpoint_notice"):
+        st.success(st.session_state.pop("endpoint_notice"))
+
+    with st.expander("⚙️ Manage Server Endpoints", expanded=False):
+        manage_options = ["➕ Add New Endpoint"] + [e["name"] for e in endpoints]
+        selected_manage = st.selectbox(
+            "Select Endpoint to Manage",
+            manage_options,
+            key="manage_ep_target",
+        )
+        is_new = selected_manage == "➕ Add New Endpoint"
+        curr_ep = (
+            next((e for e in endpoints if e["name"] == selected_manage), None)
+            if not is_new
+            else None
+        )
+
+        init_name = "" if is_new else (curr_ep["name"] if curr_ep else "")
+        init_url = (
+            "http://127.0.0.1:8083" if is_new else (curr_ep["url"] if curr_ep else "")
+        )
+        init_key = (
+            "" if is_new else (curr_ep.get("api_key", "") if curr_ep else "")
+        )
+        init_def = (
+            False
+            if is_new
+            else (curr_ep.get("is_default", False) if curr_ep else False)
+        )
+
+        ep_name = st.text_input(
+            "Endpoint Label / Name", value=init_name, key="ep_mgmt_name"
+        )
+        ep_url = st.text_input(
+            "Endpoint URL", value=init_url, key="ep_mgmt_url"
+        )
+        ep_key = st.text_input(
+            "API Key (optional)",
+            value=init_key,
+            type="password",
+            key="ep_mgmt_key",
+        )
+        ep_default = st.checkbox(
+            "Set as default endpoint", value=init_def, key="ep_mgmt_default"
+        )
+
+        col_m1, col_m2, col_m3 = st.columns(3)
+        with col_m1:
+            if st.button("💾 Save Endpoint", key="btn_save_ep"):
+                if not ep_name.strip():
+                    st.error("Endpoint name cannot be empty.")
+                else:
+                    try:
+                        valid_u = validate_endpoint_url(
+                            ep_url.strip(), allow_private=True
+                        )
+                        if is_new:
+                            add_endpoint(
+                                ep_name.strip(),
+                                valid_u,
+                                ep_key.strip(),
+                                ep_default,
+                            )
+                            st.session_state["endpoint_notice"] = (
+                                f"Endpoint '{ep_name.strip()}' saved successfully."
+                            )
+                        else:
+                            update_endpoint(
+                                selected_manage,
+                                ep_name.strip(),
+                                valid_u,
+                                ep_key.strip(),
+                                ep_default,
+                            )
+                            st.session_state["endpoint_notice"] = (
+                                f"Endpoint '{ep_name.strip()}' updated successfully."
+                            )
+                        st.rerun()
+                    except Exception as err:
+                        st.error(f"Failed to save endpoint: {err}")
+
+        with col_m2:
+            if st.button("🔌 Test Connection", key="btn_test_ep"):
+                try:
+                    test_u = validate_endpoint_url(
+                        ep_url.strip(), allow_private=True
+                    )
+                    tested_models = fetch_available_models(
+                        test_u, ep_key.strip() or None
+                    )
+                    st.success(
+                        f"Connection successful! {len(tested_models)} models available: {', '.join(tested_models[:5])}..."
+                    )
+                except Exception as err:
+                    st.error(f"Connection failed: {err}")
+
+        with col_m3:
+            if not is_new and len(endpoints) > 1 and st.button("🗑️ Delete Endpoint", key="btn_delete_ep"):
+                try:
+                    delete_endpoint(selected_manage)
+                    st.session_state["endpoint_notice"] = (
+                        f"Endpoint '{selected_manage}' deleted successfully."
+                    )
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Failed to delete endpoint: {err}")
+
     col_r1, col_r2 = st.columns(2)
     with col_r1:
         new_mode = st.selectbox(
             "Benchmark Mode", ["all", "throughput", "reasoning", "kld"]
         )
-        new_endpoint = st.text_input(
-            "Server Endpoint URL", value="http://127.0.0.1:8083"
+
+        endpoint_options = [e["name"] for e in endpoints] + ["Custom Endpoint..."]
+        default_idx = 0
+        for i, ep in enumerate(endpoints):
+            if ep.get("is_default"):
+                default_idx = i
+                break
+
+        selected_endpoint = st.selectbox(
+            "Server Endpoint",
+            endpoint_options,
+            index=default_idx if endpoint_options else 0,
+            key="runner_ep_select",
         )
+
+        if selected_endpoint == "Custom Endpoint...":
+            new_endpoint = st.text_input(
+                "Endpoint URL",
+                value="http://127.0.0.1:8083",
+                key="runner_custom_url",
+            )
+            runner_api_key = st.text_input(
+                "API Key (optional)",
+                type="password",
+                value="",
+                key="runner_custom_api_key",
+            )
+        else:
+            matched_ep = next(
+                (e for e in endpoints if e["name"] == selected_endpoint),
+                endpoints[0] if endpoints else {"url": "http://127.0.0.1:8083", "api_key": ""},
+            )
+            new_endpoint = matched_ep.get("url", "http://127.0.0.1:8083")
+            runner_api_key = matched_ep.get("api_key", "")
+            st.text_input(
+                "Endpoint URL",
+                value=new_endpoint,
+                disabled=True,
+                key="runner_saved_url",
+            )
+            if runner_api_key:
+                st.text_input(
+                    "API Key (optional)",
+                    value=runner_api_key,
+                    type="password",
+                    disabled=True,
+                    key="runner_saved_api_key",
+                )
 
         # Load available models from the endpoint dynamically
         available_models = []
         try:
-            available_models = fetch_available_models(new_endpoint)
+            available_models = fetch_available_models(
+                new_endpoint, runner_api_key or None
+            )
         except Exception as err:  # noqa: BLE001
             st.warning(
                 f"Could not retrieve models from endpoint ({err}). You can enter a model identifier manually below."
@@ -1375,6 +1741,7 @@ with tab_run:
             valid_corpus = validate_corpus_name(new_corpus)
             valid_gguf = validate_gguf_path(new_gguf) if new_gguf else ""
             valid_tokens = validate_new_tokens(new_tokens)
+            valid_api_key = runner_api_key.strip() if runner_api_key else ""
         except ValueError as e:
             st.error(f"Input validation error: {e}")
             st.stop()
@@ -1383,8 +1750,8 @@ with tab_run:
         st.session_state.bench_output = []
 
         # Build arguments list
-        args = [
-            "python3",
+        cmd = [
+            sys.executable,
             "run_suite.py",
             "--mode",
             new_mode,
@@ -1398,15 +1765,17 @@ with tab_run:
             valid_corpus,
         ]
         if valid_gguf:
-            args.extend(["--gguf-path", valid_gguf])
+            cmd.extend(["--gguf-path", valid_gguf])
+        if valid_api_key:
+            cmd.extend(["--api-key", valid_api_key])
 
-        st.info(f"Running command: {' '.join(args)}")
+        st.info(f"Running command: {' '.join(cmd)}")
 
         # Execute with real-time feedback
         log_placeholder = st.empty()
 
         proc = subprocess.Popen(
-            args,
+            cmd,
             cwd=str(Path(__file__).parent),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

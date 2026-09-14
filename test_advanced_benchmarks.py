@@ -2000,5 +2000,163 @@ class TestMainRunner(unittest.TestCase):
             mock_print.assert_called()
 
 
+class TestApiKeyAndAuthSupport(unittest.TestCase):
+    """Test API key authentication in call_endpoint, get_model_settings_from_endpoint, benchmarks, and CLI."""
+
+    def _create_mock_response(self, status_code=200, lines=None):
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        mock_resp.text = "OK"
+        mock_resp.iter_lines.return_value = lines if lines is not None else []
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+        return mock_resp
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_with_api_key(self, mock_post):
+        mock_resp = self._create_mock_response(status_code=200, lines=[b"data: [DONE]"])
+        mock_post.return_value = mock_resp
+
+        call_endpoint(
+            "http://127.0.0.1:8080", "test-model", "test prompt", api_key="sk-explicit-token"
+        )
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-explicit-token")
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_with_env_var_api_key(self, mock_post):
+        mock_resp = self._create_mock_response(status_code=200, lines=[b"data: [DONE]"])
+        mock_post.return_value = mock_resp
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-env-token"}):
+            call_endpoint(
+                "http://127.0.0.1:8080", "test-model", "test prompt"
+            )
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-env-token")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_get_model_settings_from_endpoint_with_api_key(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "test-model", "status": {}}]}
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+        mock_get.return_value = mock_resp
+
+        get_model_settings_from_endpoint(
+            "http://127.0.0.1:8080", "test-model", api_key="sk-settings-key"
+        )
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-settings-key")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_get_model_settings_from_endpoint_with_env_key(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "test-model", "status": {}}]}
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+        mock_get.return_value = mock_resp
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-env-settings-key"}):
+            get_model_settings_from_endpoint(
+                "http://127.0.0.1:8080", "test-model"
+            )
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-env-settings-key")
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_needle_test_forwards_api_key(self, mock_call):
+        mock_call.return_value = {
+            "response": "The code is BANANA_SPLIT",
+            "reasoning": "",
+            "ttft": 0.1,
+            "decode_time": 0.2,
+            "prefill_speed": 100.0,
+            "decode_speed": 50.0,
+        }
+        res = advanced_benchmarks.run_needle_test(
+            "http://127.0.0.1:8080", "test-model", tokens=100, api_key="needle-key"
+        )
+        self.assertIsNotNone(res)
+        mock_call.assert_called_once()
+        self.assertEqual(mock_call.call_args.kwargs.get("api_key"), "needle-key")
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_ruler_test_forwards_api_key(self, mock_call):
+        mock_call.return_value = {
+            "response": "The value is 93",
+            "reasoning": "",
+            "ttft": 0.1,
+            "decode_time": 0.2,
+            "prefill_speed": 100.0,
+            "decode_speed": 50.0,
+        }
+        res = advanced_benchmarks.run_ruler_test(
+            "http://127.0.0.1:8080", "test-model", tokens=100, api_key="ruler-key"
+        )
+        self.assertIsNotNone(res)
+        mock_call.assert_called_once()
+        self.assertEqual(mock_call.call_args.kwargs.get("api_key"), "ruler-key")
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_longbench_test_forwards_api_key(self, mock_call):
+        mock_call.return_value = {
+            "response": "In 1452",
+            "reasoning": "",
+            "ttft": 0.1,
+            "decode_time": 0.2,
+            "prefill_speed": 100.0,
+            "decode_speed": 50.0,
+        }
+        res = advanced_benchmarks.run_longbench_test(
+            "http://127.0.0.1:8080", "test-model", tokens=100, api_key="longbench-key"
+        )
+        self.assertIsNotNone(res)
+        mock_call.assert_called_once()
+        self.assertEqual(mock_call.call_args.kwargs.get("api_key"), "longbench-key")
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_swe_test_forwards_api_key(self, mock_call):
+        mock_call.return_value = {
+            "response": "```python\npass\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+        }
+        res = run_swe_test("http://127.0.0.1:8080", "test-model", api_key="swe-key")
+        self.assertIsNotNone(res)
+        mock_call.assert_called_once()
+        self.assertEqual(mock_call.call_args.kwargs.get("api_key"), "swe-key")
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_api_key_argument(self, mock_needle, mock_save):
+        mock_needle.return_value = {
+            "benchmark": "Needle",
+            "passed": True,
+            "prompt_tokens": 100,
+            "ttft": 0.1,
+            "prefill_speed": 50.0,
+            "decode_speed": 25.0,
+        }
+        results = main(
+            [
+                "--benchmark", "needle",
+                "--api-key", "sk-cli-token",
+            ]
+        )
+        self.assertEqual(len(results), 1)
+        mock_needle.assert_called_once()
+        self.assertEqual(mock_needle.call_args.kwargs.get("api_key"), "sk-cli-token")
+        mock_save.assert_called_once()
+        self.assertEqual(mock_save.call_args.kwargs.get("api_key"), "sk-cli-token")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -747,5 +747,88 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                 self.assertEqual(data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8083")
 
 
+class TestRunSuiteApiKeyAuth(unittest.TestCase):
+    """Test API key authentication in get_model_settings, run_throughput, run_reasoning, and main."""
+
+    @patch("run_suite.requests.get")
+    def test_get_model_settings_with_api_key_bearer_header(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "my-model", "status": {}}]}
+        mock_get.return_value = mock_resp
+
+        settings = run_suite.get_model_settings(
+            "http://127.0.0.1:8081", "my-model", api_key="secret-suite-key"
+        )
+        self.assertEqual(settings["model_name"], "my-model")
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs.get("headers"), {"Authorization": "Bearer secret-suite-key"})
+
+    @patch("run_suite.subprocess.run")
+    def test_run_throughput_passes_api_key_in_env(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        run_suite.run_throughput(
+            "http://127.0.0.1:8081", "test-model", api_key="throughput-secret"
+        )
+        mock_run.assert_called_once()
+        _, kwargs = mock_run.call_args
+        self.assertIn("env", kwargs)
+        self.assertEqual(kwargs["env"].get("OPENAI_API_KEY"), "throughput-secret")
+
+    def test_run_reasoning_forwards_api_key_to_advanced_benchmarks(self):
+        mock_adv = MagicMock()
+        mock_adv.run_needle_test.return_value = {"passed": True}
+        mock_adv.run_ruler_test.return_value = {"passed": True}
+        mock_adv.run_longbench_test.return_value = {"passed": True}
+        mock_adv.run_swe_test.return_value = {"passed": True}
+
+        with patch("run_suite.advanced_benchmarks", mock_adv):
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+            )
+
+        self.assertEqual(results["needle"], "Pass")
+        mock_adv.run_needle_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+        )
+        mock_adv.run_ruler_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+        )
+        mock_adv.run_longbench_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+        )
+        mock_adv.run_swe_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "test-model", api_key="reasoning-secret"
+        )
+
+    def test_main_cli_api_key_argument(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_script_file = os.path.join(tmp_dir, "run_suite.py")
+            mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
+            test_args = [
+                "run_suite.py",
+                "--mode", "all",
+                "--api-key", "cli-test-bearer-key",
+            ]
+
+            with patch("sys.argv", test_args), \
+                 patch.object(run_suite, "__file__", fake_script_file), \
+                 patch("run_suite.run_throughput", return_value={}) as mock_tp, \
+                 patch("run_suite.run_reasoning", return_value={}) as mock_reas, \
+                 patch("run_suite.run_kld", return_value={}), \
+                 patch("run_suite.get_model_settings", return_value=mock_settings) as mock_settings_fn:
+
+                run_suite.main()
+
+                mock_tp.assert_called_once()
+                self.assertEqual(mock_tp.call_args.kwargs.get("api_key"), "cli-test-bearer-key")
+                mock_reas.assert_called_once()
+                self.assertEqual(mock_reas.call_args.kwargs.get("api_key"), "cli-test-bearer-key")
+                mock_settings_fn.assert_called_once()
+                self.assertEqual(mock_settings_fn.call_args.kwargs.get("api_key"), "cli-test-bearer-key")
+
+
 if __name__ == "__main__":
     unittest.main()
