@@ -2,6 +2,7 @@
 import argparse
 import ast
 import configparser
+import datetime
 import functools
 import json
 import os
@@ -413,23 +414,42 @@ def run_longbench_test(endpoint, model, tokens=200000):
 # BENCHMARK 4: SWE-BENCH (TOY CODEBASE DEBUGGING)
 # ==============================================================================
 
+def _extract_code_block_from_response(raw_response, reasoning):
+    """Extract a python code block from raw response or reasoning trace fallback."""
+    new_code = ""
+    raw_response = str(raw_response or "")
+    reasoning = str(reasoning or "")
+    if "```python" in raw_response:
+        parts = raw_response.split("```python")
+        if len(parts) > 1:
+            new_code = parts[1].split("```")[0].strip()
+
+    if not new_code and "```python" in reasoning:
+        print("Parsing code block from reasoning trace fallback...")
+        parts = reasoning.split("```python")
+        if len(parts) > 1:
+            new_code = parts[1].split("```")[0].strip()
+
+    return new_code
+
+
 def run_swe_test(endpoint, model):
     print("\n=== Running SWE-bench Codebase Debugging Test ===")
-    
+
     toy_repo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "toy_repo")
     code_path = os.path.join(toy_repo_dir, "calculator.py")
     test_path = os.path.join(toy_repo_dir, "test_calculator.py")
-    
+
     if not os.path.exists(code_path) or not os.path.exists(test_path):
         print("Error: Toy repository files not found.")
         return None
-        
+
     # Read files
     with open(code_path, "r", encoding="utf-8") as f:
         code_content = f.read()
     with open(test_path, "r", encoding="utf-8") as f:
         test_content = f.read()
-        
+
     # Construct prompt
     prompt = f"""You are an automated software engineer. Fix the order-of-operations bug in the file calculator.py so that all tests pass.
 
@@ -449,21 +469,10 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
     res = call_endpoint(endpoint, model, prompt, max_tokens=4096)
     if not res:
         return None
-        
+
     # Parse code block from response
-    new_code = ""
-    raw_response = res["response"]
-    if "```python" in raw_response:
-        parts = raw_response.split("```python")
-        if len(parts) > 1:
-            new_code = parts[1].split("```")[0].strip()
-            
-    if not new_code and "```python" in res["reasoning"]:
-        print("Parsing code block from reasoning trace fallback...")
-        parts = res["reasoning"].split("```python")
-        if len(parts) > 1:
-            new_code = parts[1].split("```")[0].strip()
-            
+    new_code = _extract_code_block_from_response(res.get("response", ""), res.get("reasoning", ""))
+
     if not new_code:
         print("Error: Could not parse python code block from response.")
         is_correct = False
@@ -476,42 +485,42 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
             # Backup original file
             backup_path = code_path + ".bak"
             shutil.copy2(code_path, backup_path)
-            
+
             try:
                 # Write new code
                 with open(code_path, "w", encoding="utf-8") as f:
                     f.write(new_code)
-                    
+
                 # Run unit tests
                 test_run = subprocess.run(
                     [sys.executable, "-m", "unittest", "test_calculator.py"],
                     cwd=toy_repo_dir,
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
-                
+
                 print(test_run.stdout)
                 print(test_run.stderr)
-                
-                is_correct = (test_run.returncode == 0)
+
+                is_correct = test_run.returncode == 0
             except Exception as e:
                 print(f"Failed to execute tests: {e}")
                 is_correct = False
             finally:
                 # Restore backup
-                if 'backup_path' in locals() and os.path.exists(backup_path):
+                if "backup_path" in locals() and os.path.exists(backup_path):
                     shutil.copy2(backup_path, code_path)
                     os.remove(backup_path)
-            
+
     print("\n---------------------------------------------------------")
     print(f"SWE-bench Result   : {'PASSED' if is_correct else 'FAILED'}")
-    if res["reasoning"]:
+    if res.get("reasoning"):
         print(f"Model Reasoning    : {res['reasoning'].strip()}")
-    print(f"TTFT (Prefill Lat) : {res['ttft']:.2f}s (Speed: {res['prefill_speed']:.2f} t/s)")
-    print(f"Decode Time        : {res['decode_time']:.2f}s (Speed: {res['decode_speed']:.2f} t/s)")
+    print(f"TTFT (Prefill Lat) : {res.get('ttft', 0.0):.2f}s (Speed: {res.get('prefill_speed', 0.0):.2f} t/s)")
+    print(f"Decode Time        : {res.get('decode_time', 0.0):.2f}s (Speed: {res.get('decode_speed', 0.0):.2f} t/s)")
     print("---------------------------------------------------------")
-    
+
     res["benchmark"] = "SWE-bench"
     res["passed"] = is_correct
     return res
@@ -766,7 +775,84 @@ def get_model_settings_from_endpoint(endpoint, target_model):
 
     return settings
 
-def main():
+def _print_benchmark_summary(results):
+    """Print formatted summary table of benchmark results."""
+    print("\n=== Advanced Benchmark Suite Summary ===")
+    print("--------------------------------------------------------------------------------")
+    print(f"{'Benchmark':<12} | {'Status':<6} | {'Prompt tks':<10} | {'TTFT':<6} | {'Prefill t/s':<12} | {'Decode t/s':<10}")
+    print("--------------------------------------------------------------------------------")
+    for r in results:
+        status = "PASS" if r.get("passed") else "FAIL"
+        prompt_tokens = r.get("prompt_tokens", 0)
+        ttft = r.get("ttft", 0.0)
+        prefill_speed = r.get("prefill_speed", 0.0)
+        decode_speed = r.get("decode_speed", 0.0)
+        print(f"{r.get('benchmark', ''):<12} | {status:<6} | {prompt_tokens:<10} | {ttft:>5.2f}s | {prefill_speed:>10.2f}  | {decode_speed:>8.2f}")
+    print("--------------------------------------------------------------------------------")
+
+
+def _save_run_data(results, endpoint, model, cli_arguments, output_path=None):
+    """Aggregate benchmark results and write structured historical run JSON."""
+    timestamp = datetime.datetime.now().isoformat()
+    model_settings = get_model_settings_from_endpoint(endpoint, model)
+
+    valid_prefill = [r["prefill_speed"] for r in results if r.get("prefill_speed", 0) > 0]
+    valid_decode = [r["decode_speed"] for r in results if r.get("decode_speed", 0) > 0]
+    valid_ttft = [r["ttft"] for r in results if r.get("ttft", 0) > 0]
+
+    throughput_metrics = {
+        "prefill_speed": sum(valid_prefill) / len(valid_prefill) if valid_prefill else 0.0,
+        "decode_speed": sum(valid_decode) / len(valid_decode) if valid_decode else 0.0,
+        "ttft": sum(valid_ttft) / len(valid_ttft) if valid_ttft else 0.0,
+    }
+
+    reasoning_accuracy = {
+        "needle": "N/A",
+        "ruler": "N/A",
+        "longbench": "N/A",
+        "swe_bench": "N/A",
+    }
+    for r in results:
+        bench_key = r.get("benchmark", "").lower().replace("-", "_")
+        if bench_key in SWE_BENCH_KEYS:
+            bench_key = "swe_bench"
+        if bench_key in reasoning_accuracy:
+            reasoning_accuracy[bench_key] = "Pass" if r.get("passed") else "Fail"
+
+    run_data = {
+        "run_metadata": {
+            "timestamp": timestamp,
+            "target_endpoint": endpoint,
+            "cli_arguments": cli_arguments,
+        },
+        "model_settings": model_settings,
+        "throughput_metrics": throughput_metrics,
+        "reasoning_accuracy": reasoning_accuracy,
+        "quantization_loss": {
+            "perplexity": None,
+            "mean_kld": None,
+            "same_top_match_percent": None,
+        },
+    }
+
+    if output_path:
+        output_file = output_path
+        parent_dir = os.path.dirname(output_file)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+    else:
+        history_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history")
+        os.makedirs(history_dir, exist_ok=True)
+        safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
+        output_file = os.path.join(history_dir, f"run_{safe_timestamp}.json")
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(run_data, f, indent=4)
+    print(f"[+] Saved structured historical run to {output_file}")
+    return output_file
+
+
+def main(args=None):
     parser = argparse.ArgumentParser(description="Advanced Benchmarks Runner")
     parser.add_argument("--endpoint", default="http://127.0.0.1:8081", help="LLM server API endpoint")
     parser.add_argument("--model", default="Qwen3.6-27B", help="Model name / alias to target")
@@ -776,97 +862,64 @@ def main():
     parser.add_argument("--longbench", action="store_true", help="Run LongBench QA benchmark (Phase 3)")
     parser.add_argument("--swe", action="store_true", help="Run SWE-bench toy repository debugging benchmark (Phase 4)")
     parser.add_argument("--all", action="store_true", help="Run all benchmarks sequentially")
-    
-    args = parser.parse_args()
-    
+    parser.add_argument(
+        "--benchmark",
+        choices=["needle", "ruler", "longbench", "swe", "all"],
+        default=None,
+        help="Benchmark to execute",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Custom output file path for run JSON",
+    )
+
+    parsed_args = parser.parse_args(args)
+
+    run_needle = parsed_args.needle or (parsed_args.benchmark == "needle")
+    run_ruler = parsed_args.ruler or (parsed_args.benchmark == "ruler")
+    run_longbench = parsed_args.longbench or (parsed_args.benchmark == "longbench")
+    run_swe = parsed_args.swe or (parsed_args.benchmark == "swe")
+    run_all = parsed_args.all or (parsed_args.benchmark == "all")
+
     # If no flags are set, default to running all of them
-    run_all = args.all
-    if not (args.needle or args.ruler or args.longbench or args.swe or args.all):
+    if not (run_needle or run_ruler or run_longbench or run_swe or run_all):
         run_all = True
-        
+
     results = []
-    
-    if args.needle or run_all:
-        res = run_needle_test(args.endpoint, args.model, tokens=args.tokens)
+
+    if run_needle or run_all:
+        res = run_needle_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens)
         if res:
             results.append(res)
-            
-    if args.ruler or run_all:
-        res = run_ruler_test(args.endpoint, args.model, tokens=args.tokens)
+
+    if run_ruler or run_all:
+        res = run_ruler_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens)
         if res:
             results.append(res)
-            
-    if args.longbench or run_all:
-        res = run_longbench_test(args.endpoint, args.model, tokens=args.tokens)
+
+    if run_longbench or run_all:
+        res = run_longbench_test(parsed_args.endpoint, parsed_args.model, tokens=parsed_args.tokens)
         if res:
             results.append(res)
-            
-    if args.swe or run_all:
-        res = run_swe_test(args.endpoint, args.model)
+
+    if run_swe or run_all:
+        res = run_swe_test(parsed_args.endpoint, parsed_args.model)
         if res:
             results.append(res)
 
     if results:
-        print("\n=== Advanced Benchmark Suite Summary ===")
-        print("--------------------------------------------------------------------------------")
-        print(f"{'Benchmark':<12} | {'Status':<6} | {'Prompt tks':<10} | {'TTFT':<6} | {'Prefill t/s':<12} | {'Decode t/s':<10}")
-        print("--------------------------------------------------------------------------------")
-        for r in results:
-            status = "PASS" if r["passed"] else "FAIL"
-            print(f"{r['benchmark']:<12} | {status:<6} | {r['prompt_tokens']:<10} | {r['ttft']:>5.2f}s | {r['prefill_speed']:>10.2f}  | {r['decode_speed']:>8.2f}")
-        print("--------------------------------------------------------------------------------")
+        _print_benchmark_summary(results)
+        cli_args = sys.argv[1:] if args is None else list(args)
+        _save_run_data(
+            results,
+            parsed_args.endpoint,
+            parsed_args.model,
+            cli_args,
+            output_path=parsed_args.output,
+        )
 
-        import datetime
-        timestamp = datetime.datetime.now().isoformat()
-        model_settings = get_model_settings_from_endpoint(args.endpoint, args.model)
-        
-        valid_prefill = [r["prefill_speed"] for r in results if r.get("prefill_speed", 0) > 0]
-        valid_decode = [r["decode_speed"] for r in results if r.get("decode_speed", 0) > 0]
-        valid_ttft = [r["ttft"] for r in results if r.get("ttft", 0) > 0]
-        
-        throughput_metrics = {
-            "prefill_speed": sum(valid_prefill) / len(valid_prefill) if valid_prefill else 0.0,
-            "decode_speed": sum(valid_decode) / len(valid_decode) if valid_decode else 0.0,
-            "ttft": sum(valid_ttft) / len(valid_ttft) if valid_ttft else 0.0
-        }
-        
-        reasoning_accuracy = {
-            "needle": "N/A",
-            "ruler": "N/A",
-            "longbench": "N/A",
-            "swe_bench": "N/A"
-        }
-        for r in results:
-            bench_key = r["benchmark"].lower().replace("-", "_")
-            if bench_key in SWE_BENCH_KEYS:
-                bench_key = "swe_bench"
-            if bench_key in reasoning_accuracy:
-                reasoning_accuracy[bench_key] = "Pass" if r["passed"] else "Fail"
-                
-        run_data = {
-            "run_metadata": {
-                "timestamp": timestamp,
-                "target_endpoint": args.endpoint,
-                "cli_arguments": sys.argv[1:]
-            },
-            "model_settings": model_settings,
-            "throughput_metrics": throughput_metrics,
-            "reasoning_accuracy": reasoning_accuracy,
-            "quantization_loss": {
-                "perplexity": None,
-                "mean_kld": None,
-                "same_top_match_percent": None
-            }
-        }
-        
-        history_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history")
-        os.makedirs(history_dir, exist_ok=True)
-        safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
-        output_file = os.path.join(history_dir, f"run_{safe_timestamp}.json")
-        
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(run_data, f, indent=4)
-        print(f"[+] Saved structured historical run to {output_file}")
+    return results
 
 if __name__ == "__main__":
     main()

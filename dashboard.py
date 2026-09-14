@@ -416,119 +416,134 @@ if not hasattr(st, "cache_data") or _is_mock(getattr(st, "cache_data", None)):
         pass
 
 
+def _parse_run_file(filepath):
+    """Read a single run_*.json file, parse metrics and metadata, returning a run dictionary or None."""
+    filepath = Path(filepath)
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            st.error(f"Error loading {filepath.name}: root object must be a dictionary")
+            return None
+
+        metadata = data.get("run_metadata") or {}
+        settings = data.get("model_settings") or {}
+        throughput = data.get("throughput_metrics") or {}
+        accuracy = data.get("reasoning_accuracy") or {}
+        loss = data.get("quantization_loss") or {}
+
+        # Parse context length
+        args = metadata.get("cli_arguments") or []
+        ctx_len = 200000
+        for i, arg in enumerate(args):
+            if arg == "--tokens" and i + 1 < len(args):
+                try:
+                    ctx_len = int(args[i + 1])
+                except ValueError:
+                    pass
+
+        # Prefer explicit profile_alias from log first, fallback to model_name resolution
+        profile_name = settings.get("profile_alias")
+        if not profile_name:
+            profile_name = map_repo_to_preset_alias(settings.get("model_name", "Unknown"))
+        elif "/" in str(profile_name) or str(profile_name).endswith(".gguf"):
+            mapped = map_repo_to_preset_alias(settings.get("model_name", ""))
+            if mapped and mapped != "Unknown":
+                profile_name = mapped
+
+        # If profile_name is still a path or has a raw gguf filename, clean it
+        if "/" in str(profile_name) or str(profile_name).endswith(".gguf"):
+            name = str(profile_name).split("/")[-1]
+            if name.endswith(".gguf"):
+                name = name[:-5]
+            for q in ["-Q4_K_S", "-UD-Q4_K_XL", "-UD-Q4_K_S", "-Q6_K_XL", "-Q8_0", "-F16"]:
+                name = name.replace(q, "")
+            if name.endswith("-UD"):
+                name = name[:-3]
+            profile_name = name
+
+        presets_meta = get_preset_metadata(profile_name)
+
+        # Resolve Base Quant format
+        base_quant = settings.get("base_quantization", "Unknown")
+        if not base_quant or base_quant == "Unknown":
+            model_name = settings.get("model_name", "")
+            if ":" in str(model_name):
+                base_quant = str(model_name).split(":")[-1]
+            else:
+                model_name_lower = str(model_name).lower()
+                for q_lower, q in BASE_QUANT_ALIASES:
+                    if q_lower in model_name_lower:
+                        base_quant = q
+                        break
+            if not base_quant or base_quant == "Unknown":
+                if "spec4" in str(profile_name).lower():
+                    base_quant = "Q6_K_XL"
+                else:
+                    base_quant = "Q4_K_S"
+
+        spec_type = presets_meta.get("spec_type")
+        if not spec_type or spec_type == "None":
+            spec_type = settings.get("spec_type")
+        if not spec_type or spec_type == "None":
+            spec_type = settings.get("speculative_draft_type", "None")
+
+        spec_k = presets_meta.get("spec_draft_type_k")
+        if not spec_k or spec_k == "None":
+            spec_k = settings.get("spec_draft_type_k", "None")
+
+        spec_v = presets_meta.get("spec_draft_type_v")
+        if not spec_v or spec_v == "None":
+            spec_v = settings.get("spec_draft_type_v", "None")
+        flash_attn = settings.get("flash_attn", presets_meta.get("flash_attn", "true"))
+        parallel = settings.get("parallel", presets_meta.get("parallel", "1"))
+        fit = settings.get("fit", presets_meta.get("fit", "true"))
+
+        return {
+            "Filename": filepath.name,
+            "Timestamp": metadata.get("timestamp", "Unknown"),
+            "Endpoint": metadata.get("target_endpoint", "Unknown"),
+            "Model": profile_name,
+            "Base Quant": base_quant,
+            "KV Quant": settings.get("kv_cache_quant", "Unknown"),
+            "Threads": settings.get("threads"),
+            "Ubatch Size": settings.get("ubatch_size"),
+            "Batch Size": settings.get("batch_size"),
+            "Speculative": spec_type,
+            # Preset metadata fields
+            "Spec Type": spec_type,
+            "Spec Draft Type K": spec_k,
+            "Spec Draft Type V": spec_v,
+            "Flash Attn": flash_attn,
+            "Parallel": parallel,
+            "Fit": fit,
+            "Prefill (t/s)": throughput.get("prefill_speed"),
+            "Decode (t/s)": throughput.get("decode_speed"),
+            "TTFT (s)": throughput.get("ttft"),
+            "Needle": accuracy.get("needle", "N/A"),
+            "RULER": accuracy.get("ruler", "N/A"),
+            "LongBench": accuracy.get("longbench", "N/A"),
+            "SWE-bench": accuracy.get("swe_bench", "N/A"),
+            "PPL": loss.get("perplexity"),
+            "KLD": loss.get("mean_kld"),
+            "Same Top %": loss.get("same_top_match_percent"),
+            "Context Length": ctx_len,
+        }
+    except Exception as e:
+        st.error(f"Error loading {filepath.name}: {e}")
+        return None
+
+
 # Load all runs
 @st.cache_data(ttl=60)
 def load_runs():
     runs = []
     for filepath in HISTORY_DIR.glob("run_*.json"):
-        try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-                
-            metadata = data.get("run_metadata", {})
-            settings = data.get("model_settings", {})
-            throughput = data.get("throughput_metrics", {})
-            accuracy = data.get("reasoning_accuracy", {})
-            loss = data.get("quantization_loss", {})
-            
-            # Parse context length
-            args = metadata.get("cli_arguments") or []
-            ctx_len = 200000
-            for i, arg in enumerate(args):
-                if arg == "--tokens" and i + 1 < len(args):
-                    try:
-                        ctx_len = int(args[i+1])
-                    except ValueError:
-                        pass
-            
-            # Prefer explicit profile_alias from log first, fallback to model_name resolution
-            profile_name = settings.get("profile_alias")
-            if not profile_name or "/" in str(profile_name) or str(profile_name).endswith(".gguf"):
-                profile_name = map_repo_to_preset_alias(settings.get("model_name", "Unknown"))
-                
-            # If profile_name is still a path or has a raw gguf filename, clean it
-            if "/" in str(profile_name) or str(profile_name).endswith(".gguf"):
-                name = str(profile_name).split("/")[-1]
-                if name.endswith(".gguf"):
-                    name = name[:-5]
-                for q in ["-Q4_K_S", "-UD-Q4_K_XL", "-UD-Q4_K_S", "-Q6_K_XL", "-Q8_0", "-F16"]:
-                    name = name.replace(q, "")
-                if name.endswith("-UD"):
-                    name = name[:-3]
-                profile_name = name
-                
-            presets_meta = get_preset_metadata(profile_name)
-            
-            # Resolve Base Quant format
-            base_quant = settings.get("base_quantization", "Unknown")
-            if not base_quant or base_quant == "Unknown":
-                model_name = settings.get("model_name", "")
-                if ":" in str(model_name):
-                    base_quant = str(model_name).split(":")[-1]
-                else:
-                    model_name_lower = str(model_name).lower()
-                    for q_lower, q in BASE_QUANT_ALIASES:
-                        if q_lower in model_name_lower:
-                            base_quant = q
-                            break
-                if not base_quant or base_quant == "Unknown":
-                    if "spec4" in str(profile_name).lower():
-                        base_quant = "Q6_K_XL"
-                    else:
-                        base_quant = "Q4_K_S"
-            
-            spec_type = presets_meta.get("spec_type")
-            if not spec_type or spec_type == "None":
-                spec_type = settings.get("spec_type")
-            if not spec_type or spec_type == "None":
-                spec_type = settings.get("speculative_draft_type", "None")
-                
-            spec_k = presets_meta.get("spec_draft_type_k")
-            if not spec_k or spec_k == "None":
-                spec_k = settings.get("spec_draft_type_k", "None")
-                
-            spec_v = presets_meta.get("spec_draft_type_v")
-            if not spec_v or spec_v == "None":
-                spec_v = settings.get("spec_draft_type_v", "None")
-            flash_attn = settings.get("flash_attn", presets_meta.get("flash_attn", "true"))
-            parallel = settings.get("parallel", presets_meta.get("parallel", "1"))
-            fit = settings.get("fit", presets_meta.get("fit", "true"))
-            
-            runs.append({
-                "Filename": filepath.name,
-                "Timestamp": metadata.get("timestamp", "Unknown"),
-                "Endpoint": metadata.get("target_endpoint", "Unknown"),
-                "Model": profile_name,
-                "Base Quant": base_quant,
-                "KV Quant": settings.get("kv_cache_quant", "Unknown"),
-                "Threads": settings.get("threads"),
-                "Ubatch Size": settings.get("ubatch_size"),
-                "Batch Size": settings.get("batch_size"),
-                "Speculative": spec_type,
-                
-                # Preset metadata fields
-                "Spec Type": spec_type,
-                "Spec Draft Type K": spec_k,
-                "Spec Draft Type V": spec_v,
-                "Flash Attn": flash_attn,
-                "Parallel": parallel,
-                "Fit": fit,
-                
-                "Prefill (t/s)": throughput.get("prefill_speed"),
-                "Decode (t/s)": throughput.get("decode_speed"),
-                "TTFT (s)": throughput.get("ttft"),
-                "Needle": accuracy.get("needle", "N/A"),
-                "RULER": accuracy.get("ruler", "N/A"),
-                "LongBench": accuracy.get("longbench", "N/A"),
-                "SWE-bench": accuracy.get("swe_bench", "N/A"),
-                "PPL": loss.get("perplexity"),
-                "KLD": loss.get("mean_kld"),
-                "Same Top %": loss.get("same_top_match_percent"),
-                "Context Length": ctx_len,
-            })
-        except Exception as e:
-            st.error(f"Error loading {filepath.name}: {e}")
-            
+        record = _parse_run_file(filepath)
+        if record is not None:
+            runs.append(record)
+
     df = pd.DataFrame(runs)
     if not df.empty:
         df["KLD"] = pd.to_numeric(df["KLD"], errors="coerce")

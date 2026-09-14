@@ -1,4 +1,6 @@
+import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,18 +8,24 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
+import advanced_benchmarks
 from advanced_benchmarks import (
+    _extract_code_block_from_response,
     _get_presets_config,
     _parse_endpoint_model_args,
     _parse_endpoint_preset_block,
+    _print_benchmark_summary,
+    _save_run_data,
     call_endpoint,
     generate_filler_text,
     get_model_settings_from_endpoint,
     get_preset_metadata,
     is_safe_code,
     load_presets_config,
+    main,
     map_repo_to_preset_alias,
     resolve_presets_path,
+    run_swe_test,
 )
 
 
@@ -86,7 +94,9 @@ class TestGenerateFillerText(unittest.TestCase):
         for val in invalid_types:
             with self.subTest(val=val), self.assertRaises(TypeError) as ctx:
                 generate_filler_text(val)
-            self.assertEqual(str(ctx.exception), "target_tokens must be an integer or float")
+            self.assertEqual(
+                str(ctx.exception), "target_tokens must be an integer or float"
+            )
 
     def test_float_targets(self):
         self.assertEqual(generate_filler_text(0.0), [])
@@ -1480,6 +1490,514 @@ class TestGetModelSettingsFromEndpoint(unittest.TestCase):
         self.assertEqual(settings["n_gpu_layers"], "33")
         self.assertEqual(settings["fit"], "false")
         self.assertEqual(settings["extra_custom_param"], "preset_val")
+
+
+class TestExtractCodeBlockFromResponse(unittest.TestCase):
+    def test_extract_from_raw_response(self):
+        raw = (
+            "Thought process here.\n```python\ndef solve():\n    return 42\n```\nDone."
+        )
+        res = _extract_code_block_from_response(raw, "")
+        self.assertEqual(res, "def solve():\n    return 42")
+
+    def test_extract_from_reasoning_fallback(self):
+        raw = "No code block in raw response."
+        reasoning = "Trace:\n```python\ndef fix():\n    return 100\n```\nExplanation."
+        res = _extract_code_block_from_response(raw, reasoning)
+        self.assertEqual(res, "def fix():\n    return 100")
+
+    def test_no_code_block_returns_empty(self):
+        raw = "Plain text response with no blocks."
+        reasoning = "Plain text thought trace."
+        res = _extract_code_block_from_response(raw, reasoning)
+        self.assertEqual(res, "")
+
+    def test_none_or_empty_inputs(self):
+        self.assertEqual(_extract_code_block_from_response(None, None), "")
+        self.assertEqual(_extract_code_block_from_response("", ""), "")
+
+
+class TestRunSweTest(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir_obj = tempfile.TemporaryDirectory()
+        self.tmpdir = self.tmpdir_obj.name
+        self.toy_repo_dir = os.path.join(self.tmpdir, "toy_repo")
+        os.makedirs(self.toy_repo_dir, exist_ok=True)
+        self.code_path = os.path.join(self.toy_repo_dir, "calculator.py")
+        self.test_path = os.path.join(self.toy_repo_dir, "test_calculator.py")
+        self.orig_code = "def parse_and_eval(expr):\n    return eval(expr)\n"
+        self.orig_test = (
+            "import unittest\nclass TestCalc(unittest.TestCase):\n    pass\n"
+        )
+        with open(self.code_path, "w", encoding="utf-8") as f:
+            f.write(self.orig_code)
+        with open(self.test_path, "w", encoding="utf-8") as f:
+            f.write(self.orig_test)
+        self.fake_script = os.path.join(self.tmpdir, "advanced_benchmarks.py")
+        self.file_patcher = patch.object(
+            advanced_benchmarks, "__file__", self.fake_script
+        )
+        self.file_patcher.start()
+
+    def tearDown(self):
+        self.file_patcher.stop()
+        self.tmpdir_obj.cleanup()
+
+    def test_toy_repo_files_missing(self):
+        # Missing calculator.py
+        os.remove(self.code_path)
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNone(res)
+
+        # Restore code_path, remove test_path
+        with open(self.code_path, "w", encoding="utf-8") as f:
+            f.write(self.orig_code)
+        os.remove(self.test_path)
+        res2 = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNone(res2)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_call_endpoint_failure(self, mock_call):
+        mock_call.return_value = None
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNone(res)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_no_python_code_block_in_response(self, mock_call):
+        mock_call.return_value = {
+            "response": "Here is how you fix it: simply change + to *.",
+            "reasoning": "Reasoning without code block.",
+            "ttft": 0.2,
+            "prefill_speed": 80.0,
+            "decode_time": 0.6,
+            "decode_speed": 40.0,
+        }
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertFalse(res["passed"])
+        self.assertEqual(res["benchmark"], "SWE-bench")
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_code_block_fails_is_safe_code_ast_check(self, mock_call):
+        mock_call.return_value = {
+            "response": "```python\nimport subprocess\nsubprocess.run(['rm', '-rf', '/'])\n```",
+            "reasoning": "",
+            "ttft": 0.2,
+            "prefill_speed": 80.0,
+            "decode_time": 0.6,
+            "decode_speed": 40.0,
+        }
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertFalse(res["passed"])
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_code_block_passes_ast_and_tests_pass(self, mock_call, mock_run):
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "Simple solution",
+            "ttft": 0.15,
+            "prefill_speed": 110.0,
+            "decode_time": 0.4,
+            "decode_speed": 55.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Ran 1 test in 0.001s\n\nOK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+        self.assertEqual(res["benchmark"], "SWE-bench")
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_code_block_passes_ast_and_tests_fail(self, mock_call, mock_run):
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 0\n```",
+            "reasoning": "",
+            "ttft": 0.15,
+            "prefill_speed": 110.0,
+            "decode_time": 0.4,
+            "decode_speed": 55.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="FAILED (failures=1)"
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertFalse(res["passed"])
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_subprocess_timeout_handled_gracefully(self, mock_call, mock_run):
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.15,
+            "prefill_speed": 110.0,
+            "decode_time": 0.4,
+            "decode_speed": 55.0,
+        }
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["test"], timeout=30)
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertFalse(res["passed"])
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_subprocess_exception_and_backup_cleanup(self, mock_call, mock_run):
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.15,
+            "prefill_speed": 110.0,
+            "decode_time": 0.4,
+            "decode_speed": 55.0,
+        }
+        mock_run.side_effect = RuntimeError("Uncaught subprocess failure")
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertFalse(res["passed"])
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_reasoning_trace_fallback_success(self, mock_call, mock_run):
+        mock_call.return_value = {
+            "response": "Here is my reasoning below.",
+            "reasoning": "Thinking:\n```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "ttft": 0.2,
+            "prefill_speed": 90.0,
+            "decode_time": 0.5,
+            "decode_speed": 45.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+
+
+class TestMainRunner(unittest.TestCase):
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    @patch("advanced_benchmarks.run_longbench_test")
+    @patch("advanced_benchmarks.run_ruler_test")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_benchmark_needle(
+        self, mock_needle, mock_ruler, mock_long, mock_swe, mock_save
+    ):
+        mock_needle.return_value = {
+            "benchmark": "Needle",
+            "passed": True,
+            "prompt_tokens": 100,
+            "ttft": 0.1,
+            "prefill_speed": 50.0,
+            "decode_speed": 25.0,
+        }
+        results = main(
+            [
+                "--benchmark",
+                "needle",
+                "--endpoint",
+                "http://127.0.0.1:8081",
+                "--model",
+                "Qwen",
+                "--tokens",
+                "50000",
+            ]
+        )
+        self.assertEqual(len(results), 1)
+        mock_needle.assert_called_once_with(
+            "http://127.0.0.1:8081", "Qwen", tokens=50000
+        )
+        mock_ruler.assert_not_called()
+        mock_long.assert_not_called()
+        mock_swe.assert_not_called()
+        mock_save.assert_called_once()
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    @patch("advanced_benchmarks.run_longbench_test")
+    @patch("advanced_benchmarks.run_ruler_test")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_benchmark_ruler(
+        self, mock_needle, mock_ruler, mock_long, mock_swe, mock_save
+    ):
+        mock_ruler.return_value = {
+            "benchmark": "RULER",
+            "passed": True,
+            "prompt_tokens": 100,
+            "ttft": 0.1,
+            "prefill_speed": 50.0,
+            "decode_speed": 25.0,
+        }
+        results = main(["--benchmark", "ruler"])
+        self.assertEqual(len(results), 1)
+        mock_needle.assert_not_called()
+        mock_ruler.assert_called_once()
+        mock_long.assert_not_called()
+        mock_swe.assert_not_called()
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    @patch("advanced_benchmarks.run_longbench_test")
+    @patch("advanced_benchmarks.run_ruler_test")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_benchmark_longbench(
+        self, mock_needle, mock_ruler, mock_long, mock_swe, mock_save
+    ):
+        mock_long.return_value = {
+            "benchmark": "LongBench",
+            "passed": True,
+            "prompt_tokens": 100,
+            "ttft": 0.1,
+            "prefill_speed": 50.0,
+            "decode_speed": 25.0,
+        }
+        results = main(["--benchmark", "longbench"])
+        self.assertEqual(len(results), 1)
+        mock_needle.assert_not_called()
+        mock_ruler.assert_not_called()
+        mock_long.assert_called_once()
+        mock_swe.assert_not_called()
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    @patch("advanced_benchmarks.run_longbench_test")
+    @patch("advanced_benchmarks.run_ruler_test")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_benchmark_swe(
+        self, mock_needle, mock_ruler, mock_long, mock_swe, mock_save
+    ):
+        mock_swe.return_value = {
+            "benchmark": "SWE-bench",
+            "passed": True,
+            "prompt_tokens": 100,
+            "ttft": 0.1,
+            "prefill_speed": 50.0,
+            "decode_speed": 25.0,
+        }
+        results = main(["--benchmark", "swe"])
+        self.assertEqual(len(results), 1)
+        mock_needle.assert_not_called()
+        mock_ruler.assert_not_called()
+        mock_long.assert_not_called()
+        mock_swe.assert_called_once()
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    @patch("advanced_benchmarks.run_longbench_test")
+    @patch("advanced_benchmarks.run_ruler_test")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_benchmark_all_and_default(
+        self, mock_needle, mock_ruler, mock_long, mock_swe, mock_save
+    ):
+        res_item = {
+            "benchmark": "Test",
+            "passed": True,
+            "prompt_tokens": 100,
+            "ttft": 0.1,
+            "prefill_speed": 50.0,
+            "decode_speed": 25.0,
+        }
+        mock_needle.return_value = res_item
+        mock_ruler.return_value = res_item
+        mock_long.return_value = res_item
+        mock_swe.return_value = res_item
+
+        # Explicit --benchmark all
+        results = main(["--benchmark", "all"])
+        self.assertEqual(len(results), 4)
+        self.assertEqual(mock_needle.call_count, 1)
+        self.assertEqual(mock_ruler.call_count, 1)
+        self.assertEqual(mock_long.call_count, 1)
+        self.assertEqual(mock_swe.call_count, 1)
+
+        # Default with empty arguments -> executes all
+        mock_needle.reset_mock()
+        mock_ruler.reset_mock()
+        mock_long.reset_mock()
+        mock_swe.reset_mock()
+        results2 = main([])
+        self.assertEqual(len(results2), 4)
+        self.assertEqual(mock_needle.call_count, 1)
+        self.assertEqual(mock_ruler.call_count, 1)
+        self.assertEqual(mock_long.call_count, 1)
+        self.assertEqual(mock_swe.call_count, 1)
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    @patch("advanced_benchmarks.run_longbench_test")
+    @patch("advanced_benchmarks.run_ruler_test")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_individual_flags(
+        self, mock_needle, mock_ruler, mock_long, mock_swe, mock_save
+    ):
+        res_item = {
+            "benchmark": "B",
+            "passed": True,
+            "prompt_tokens": 10,
+            "ttft": 0.1,
+            "prefill_speed": 1.0,
+            "decode_speed": 1.0,
+        }
+        mock_needle.return_value = res_item
+        mock_ruler.return_value = res_item
+        mock_long.return_value = res_item
+        mock_swe.return_value = res_item
+
+        main(["--needle"])
+        mock_needle.assert_called_once()
+        mock_ruler.assert_not_called()
+
+        mock_needle.reset_mock()
+        main(["--ruler"])
+        mock_ruler.assert_called_once()
+
+        mock_ruler.reset_mock()
+        main(["--longbench"])
+        mock_long.assert_called_once()
+
+        mock_long.reset_mock()
+        main(["--swe"])
+        mock_swe.assert_called_once()
+
+        mock_swe.reset_mock()
+        main(["--all"])
+        self.assertEqual(mock_needle.call_count, 1)
+        self.assertEqual(mock_ruler.call_count, 1)
+        self.assertEqual(mock_long.call_count, 1)
+        self.assertEqual(mock_swe.call_count, 1)
+
+    @patch("advanced_benchmarks.get_model_settings_from_endpoint")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_output_json_file_writing(self, mock_needle, mock_settings):
+        mock_settings.return_value = {"model_name": "TestModel", "threads": 4}
+        mock_needle.return_value = {
+            "benchmark": "Needle",
+            "passed": True,
+            "prompt_tokens": 1500,
+            "ttft": 0.25,
+            "prefill_speed": 120.0,
+            "decode_speed": 40.0,
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "custom_runs", "test_output.json")
+            cli_args = ["--benchmark", "needle", "--output", out_file]
+            results = main(cli_args)
+
+            self.assertEqual(len(results), 1)
+            self.assertTrue(os.path.exists(out_file))
+
+            with open(out_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            self.assertEqual(
+                data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8081"
+            )
+            self.assertEqual(data["run_metadata"]["cli_arguments"], cli_args)
+            self.assertEqual(data["model_settings"]["model_name"], "TestModel")
+            self.assertEqual(data["throughput_metrics"]["prefill_speed"], 120.0)
+            self.assertEqual(data["throughput_metrics"]["decode_speed"], 40.0)
+            self.assertEqual(data["throughput_metrics"]["ttft"], 0.25)
+            self.assertEqual(data["reasoning_accuracy"]["needle"], "Pass")
+            self.assertEqual(data["reasoning_accuracy"]["ruler"], "N/A")
+
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_empty_results_no_output_written(self, mock_needle):
+        mock_needle.return_value = None
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "not_created.json")
+            results = main(["--benchmark", "needle", "--output", out_file])
+            self.assertEqual(results, [])
+            self.assertFalse(os.path.exists(out_file))
+
+    @patch("advanced_benchmarks.get_model_settings_from_endpoint")
+    def test_save_run_data_default_history_path_and_metrics(self, mock_settings):
+        mock_settings.return_value = {"model_name": "TestModel"}
+        results = [
+            {
+                "benchmark": "Needle",
+                "passed": True,
+                "prefill_speed": 100.0,
+                "decode_speed": 50.0,
+                "ttft": 0.1,
+            },
+            {
+                "benchmark": "SWE-bench",
+                "passed": False,
+                "prefill_speed": 80.0,
+                "decode_speed": 30.0,
+                "ttft": 0.3,
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_script = os.path.join(tmpdir, "advanced_benchmarks.py")
+            with patch.object(advanced_benchmarks, "__file__", fake_script):
+                out_path = _save_run_data(
+                    results, "http://127.0.0.1:8081", "TestModel", ["--all"]
+                )
+                self.assertTrue(os.path.exists(out_path))
+                with open(out_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.assertAlmostEqual(
+                    data["throughput_metrics"]["prefill_speed"], 90.0
+                )
+                self.assertAlmostEqual(data["throughput_metrics"]["decode_speed"], 40.0)
+                self.assertAlmostEqual(data["throughput_metrics"]["ttft"], 0.2)
+                self.assertEqual(data["reasoning_accuracy"]["needle"], "Pass")
+                self.assertEqual(data["reasoning_accuracy"]["swe_bench"], "Fail")
+
+    def test_print_benchmark_summary(self):
+        results = [
+            {
+                "benchmark": "Needle",
+                "passed": True,
+                "prompt_tokens": 1000,
+                "ttft": 0.2,
+                "prefill_speed": 100.0,
+                "decode_speed": 40.0,
+            },
+            {
+                "benchmark": "SWE-bench",
+                "passed": False,
+                "prompt_tokens": 500,
+                "ttft": 0.3,
+                "prefill_speed": 80.0,
+                "decode_speed": 30.0,
+            },
+        ]
+        with patch("builtins.print") as mock_print:
+            _print_benchmark_summary(results)
+            mock_print.assert_called()
 
 
 if __name__ == "__main__":
