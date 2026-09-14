@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 import argparse
-import time
-import json
-import random
-import requests
-import sys
-import os
-import subprocess
-import shutil
 import ast
-import functools
 import configparser
+import functools
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+import requests
 
 # Pre-built mapping of (lowercase_search_string, canonical_quantization)
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
@@ -189,8 +191,8 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
     
     start_time = time.time()
     first_token_time = None
-    response_text = ""
-    reasoning_text = ""
+    response_chunks = []
+    reasoning_chunks = []
     usage = None
     
     try:
@@ -211,16 +213,16 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
                         chunk = json.loads(data_content)
                         if chunk.get("choices"):
                             delta = chunk["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            reasoning_content = delta.get("reasoning_content", "")
+                            content = delta.get("content") or ""
+                            reasoning_content = delta.get("reasoning_content") or ""
                             
                             if first_token_time is None and (content or reasoning_content):
                                 first_token_time = time.time()
                             
                             if content:
-                                response_text += content
+                                response_chunks.append(content)
                             if reasoning_content:
-                                reasoning_text += reasoning_content
+                                reasoning_chunks.append(reasoning_content)
                             
                         if chunk.get("usage"):
                             usage = chunk["usage"]
@@ -245,6 +247,9 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512):
     
     prefill_speed = prompt_tokens / ttft if ttft > 0 else 0
     decode_speed = completion_tokens / decode_time if decode_time > 0 else 0
+    
+    response_text = "".join(response_chunks)
+    reasoning_text = "".join(reasoning_chunks)
     
     return {
         "response": response_text,
