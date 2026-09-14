@@ -14,3 +14,4 @@ jobs/
 *.log
 
 data/
+history/endpoints.json

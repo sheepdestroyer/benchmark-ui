@@ -3,7 +3,7 @@ import socket
 from unittest.mock import patch
 
 import pytest
-from utils import validate_endpoint_url, validate_model_name
+from utils import redact_cli_args, validate_endpoint_url, validate_model_name
 
 
 def test_validate_endpoint_url_valid():
@@ -313,3 +313,32 @@ def test_validate_model_name():
     ]:
         with pytest.raises(ValueError, match="Invalid model name"):
             validate_model_name(invalid)
+
+
+def test_redact_cli_args():
+    assert redact_cli_args(None) == []
+    assert redact_cli_args([]) == []
+    assert redact_cli_args(["--mode", "all", "--model", "Qwen"]) == [
+        "--mode",
+        "all",
+        "--model",
+        "Qwen",
+    ]
+    assert redact_cli_args(["--api-key", "secret123", "--mode", "all"]) == [
+        "--api-key",
+        "********",
+        "--mode",
+        "all",
+    ]
+    assert redact_cli_args(["--api-key=secret123", "--mode", "all"]) == [
+        "--api-key=********",
+        "--mode",
+        "all",
+    ]
+    assert redact_cli_args(["--mode", "all", "--api-key"]) == [
+        "--mode",
+        "all",
+        "--api-key",
+        "********",
+    ]
+

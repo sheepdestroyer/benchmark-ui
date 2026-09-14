@@ -34,6 +34,12 @@ validate_model() {
 }
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
+AUTH_KEY="${OPENAI_API_KEY:-${API_KEY:-}}"
+AUTH_HEADER=()
+if [[ -n "$AUTH_KEY" ]]; then
+    AUTH_HEADER=(-H "Authorization: Bearer $AUTH_KEY")
+fi
+
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "========================================================="
     echo " LLM Benchmark Suite"
@@ -58,7 +64,7 @@ if [[ "${1:-}" == "--list" ]]; then
     echo "========================================================="
     echo " Available Models at: $ENDPOINT"
     echo "========================================================="
-    curl -L -s "${ENDPOINT}/v1/models" | jq -r '.data[].id' || echo "Error: Could not fetch models or jq is missing."
+    curl -L -s "${AUTH_HEADER[@]}" "${ENDPOINT}/v1/models" | jq -r '.data[].id' || echo "Error: Could not fetch models or jq is missing."
     echo "========================================================="
     exit 0
 fi
@@ -75,7 +81,7 @@ echo " Endpoint: $ENDPOINT"
 echo "========================================================="
 
 echo -n "Triggering model reload... "
-curl -L -s "${ENDPOINT}/v1/models?reload=1" > /dev/null && echo "Done." || echo "Failed."
+curl -L -s "${AUTH_HEADER[@]}" "${ENDPOINT}/v1/models?reload=1" > /dev/null && echo "Done." || echo "Failed."
 
 call_api() {
   local turn_name="$1"
@@ -88,6 +94,7 @@ call_api() {
   local temp_file=$(mktemp -p "$TMP_DIR")
 
   curl -L -s -N -X POST "${ENDPOINT}/v1/chat/completions" \
+    "${AUTH_HEADER[@]}" \
     -H "Content-Type: application/json" \
     -d "$payload" | while read -r line; do
       line="${line%$'\r'}"

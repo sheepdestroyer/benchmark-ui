@@ -22,6 +22,8 @@ import subprocess
 import re
 import requests
 
+from utils import redact_cli_args
+
 # Import advanced_benchmarks functions if possible
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -30,7 +32,7 @@ except ImportError:
     advanced_benchmarks = None
 
 QUANT_PRIORITIES = ("q5_1", "q8_0", "q4_0", "f16")
-def get_model_settings(endpoint, target_model):
+def get_model_settings(endpoint, target_model, api_key=None):
     settings = {
         "model_name": target_model,
         "base_quantization": "Unknown",
@@ -52,7 +54,9 @@ def get_model_settings(endpoint, target_model):
             
     try:
         url = f"{endpoint}/v1/models"
-        response = requests.get(url, timeout=5)
+        effective_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        headers = {"Authorization": f"Bearer {effective_key}"} if effective_key else {}
+        response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
             model_info = None
@@ -146,7 +150,7 @@ def get_model_settings(endpoint, target_model):
             
     return settings
 
-def run_throughput(endpoint, model):
+def run_throughput(endpoint, model, api_key=None):
     print("\n=========================================================")
     print(" Running Throughput Benchmarks (benchmark.sh)")
     print("=========================================================")
@@ -157,7 +161,11 @@ def run_throughput(endpoint, model):
         os.chmod(bench_script, 0o755)
         
     cmd = [bench_script, model, endpoint]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+    env = os.environ.copy()
+    effective_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    if effective_key:
+        env["OPENAI_API_KEY"] = effective_key
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)), env=env)
     print(result.stdout)
     if result.stderr:
         print("Error/Stderr:", result.stderr)
@@ -193,7 +201,7 @@ def run_throughput(endpoint, model):
         "ttft": sum(ttfts) / len(ttfts) if ttfts else 0.0
     }
 
-def run_reasoning(endpoint, model, tokens):
+def run_reasoning(endpoint, model, tokens, api_key=None):
     print("\n=========================================================")
     print(" Running Reasoning Benchmarks (advanced_benchmarks.py)")
     print("=========================================================")
@@ -201,9 +209,13 @@ def run_reasoning(endpoint, model, tokens):
     results = {}
     
     if advanced_benchmarks:
+        call_kw = {}
+        effective_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        if effective_key:
+            call_kw["api_key"] = effective_key
         print("[*] Executing Needle test...")
         try:
-            res = advanced_benchmarks.run_needle_test(endpoint, model, tokens=tokens)
+            res = advanced_benchmarks.run_needle_test(endpoint, model, tokens=tokens, **call_kw)
             results["needle"] = "Pass" if res and res.get("passed") else "Fail"
         except Exception as e:
             print(f"Needle failed: {e}")
@@ -211,7 +223,7 @@ def run_reasoning(endpoint, model, tokens):
             
         print("[*] Executing RULER test...")
         try:
-            res = advanced_benchmarks.run_ruler_test(endpoint, model, tokens=tokens)
+            res = advanced_benchmarks.run_ruler_test(endpoint, model, tokens=tokens, **call_kw)
             results["ruler"] = "Pass" if res and res.get("passed") else "Fail"
         except Exception as e:
             print(f"RULER failed: {e}")
@@ -219,7 +231,7 @@ def run_reasoning(endpoint, model, tokens):
             
         print("[*] Executing LongBench test...")
         try:
-            res = advanced_benchmarks.run_longbench_test(endpoint, model, tokens=tokens)
+            res = advanced_benchmarks.run_longbench_test(endpoint, model, tokens=tokens, **call_kw)
             results["longbench"] = "Pass" if res and res.get("passed") else "Fail"
         except Exception as e:
             print(f"LongBench failed: {e}")
@@ -227,7 +239,7 @@ def run_reasoning(endpoint, model, tokens):
             
         print("[*] Executing SWE-bench test...")
         try:
-            res = advanced_benchmarks.run_swe_test(endpoint, model)
+            res = advanced_benchmarks.run_swe_test(endpoint, model, **call_kw)
             results["swe_bench"] = "Pass" if res and res.get("passed") else "Fail"
         except Exception as e:
             print(f"SWE-bench failed: {e}")
@@ -282,6 +294,7 @@ def main():
     parser.add_argument("--tokens", type=int, default=200000, help="Target context token length for reasoning benchmarks")
     parser.add_argument("--gguf-path", help="Local path to the GGUF model file (for KLD benchmark)")
     parser.add_argument("--corpus", default="kld_corpus.txt", help="Path to text corpus for KLD perplexity calculation")
+    parser.add_argument("--api-key", default=os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""), help="API key for Bearer authentication")
     
     args = parser.parse_args()
     
@@ -305,15 +318,19 @@ def main():
         "mean_kld": None,
         "same_top_match_percent": None
     }
+
+    call_kw = {}
+    if getattr(args, "api_key", None):
+        call_kw["api_key"] = args.api_key
     
     # 1. Run throughput if mode is 'throughput' or 'all'
     if args.mode in ["throughput", "all"]:
-        metrics = run_throughput(args.endpoint, args.model)
+        metrics = run_throughput(args.endpoint, args.model, **call_kw)
         throughput_metrics.update(metrics)
         
     # 2. Run reasoning if mode is 'reasoning' or 'all'
     if args.mode in ["reasoning", "all"]:
-        accuracy = run_reasoning(args.endpoint, args.model, args.tokens)
+        accuracy = run_reasoning(args.endpoint, args.model, args.tokens, **call_kw)
         reasoning_accuracy.update(accuracy)
         
     # 3. Run KLD if mode is 'kld' or 'all'
@@ -322,7 +339,7 @@ def main():
         kld_results = run_kld(args.gguf_path, args.corpus)
         
     # 4. Extract model settings
-    model_settings = get_model_settings(args.endpoint, args.model)
+    model_settings = get_model_settings(args.endpoint, args.model, **call_kw)
     
     # If KLD was run, choose the quantization loss values matching the model's KV Cache quant setting
     if kld_results:
@@ -345,7 +362,7 @@ def main():
         "run_metadata": {
             "timestamp": timestamp,
             "target_endpoint": args.endpoint,
-            "cli_arguments": sys.argv[1:]
+            "cli_arguments": redact_cli_args(sys.argv[1:])
         },
         "model_settings": model_settings,
         "throughput_metrics": throughput_metrics,
