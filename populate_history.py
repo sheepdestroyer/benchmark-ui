@@ -157,6 +157,18 @@ def populate(force=False):
                     "longbench": p_cfg["longbench"],
                     "swe_bench": p_cfg["swe_bench"]
                 },
+                "agentic_metrics": {
+                    "suite": "standalone-agentic",
+                    "tasks_total": 4,
+                    "tasks_passed": 4 if "spec" not in profile_alias else 3,
+                    "average_turns": 2.5,
+                    "total_tool_calls": 6,
+                },
+                "token_breakdown": {
+                    "prompt_tokens": 1200,
+                    "reasoning_tokens": 450,
+                    "completion_tokens": 650,
+                },
                 "quantization_loss": {
                     "perplexity": round(p_cfg["ppl_base"] + q_cfg["ppl_shift"], 4),
                     "mean_kld": q_cfg["kld"],

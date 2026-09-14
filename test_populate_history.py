@@ -95,6 +95,21 @@ def test_populate_generates_expected_runs(temp_history_dir):
         assert isinstance(loss["mean_kld"], float)
         assert isinstance(loss["same_top_match_percent"], (float, int))
 
+        # Validate agentic_metrics and token_breakdown
+        assert "agentic_metrics" in data
+        agentic = data["agentic_metrics"]
+        assert agentic["suite"] in ["standalone-agentic", "terminal-bench-2"]
+        assert isinstance(agentic["tasks_total"], int)
+        assert isinstance(agentic["tasks_passed"], int)
+        assert isinstance(agentic["average_turns"], (float, int))
+        assert isinstance(agentic["total_tool_calls"], int)
+
+        assert "token_breakdown" in data
+        token_breakdown = data["token_breakdown"]
+        assert isinstance(token_breakdown["prompt_tokens"], int)
+        assert isinstance(token_breakdown["reasoning_tokens"], int)
+        assert isinstance(token_breakdown["completion_tokens"], int)
+
     assert seen_profiles == expected_profiles
     assert seen_quants == expected_quants
 
