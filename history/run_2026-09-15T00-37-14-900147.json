@@ -1,0 +1,78 @@
+{
+    "run_metadata": {
+        "timestamp": "2026-09-15T00:37:14.900147",
+        "target_endpoint": "http://127.0.0.1:8083",
+        "cli_arguments": [
+            "--mode",
+            "reasoning",
+            "--tokens",
+            "1000",
+            "--endpoint",
+            "http://127.0.0.1:8083",
+            "--model",
+            "local-qwen"
+        ]
+    },
+    "model_settings": {
+        "model_name": "local-qwen",
+        "base_quantization": "Unknown",
+        "kv_cache_quant": "Unknown",
+        "kv_cache_quant_k": "Unknown",
+        "kv_cache_quant_v": "Unknown",
+        "threads": null,
+        "ubatch_size": null,
+        "batch_size": null,
+        "speculative_draft_type": "None",
+        "spec_type": "draft-mtp,ngram-mod",
+        "spec_draft_type_k": "None",
+        "spec_draft_type_v": "None",
+        "flash_attn": "true",
+        "parallel": "1",
+        "n_gpu_layers": "99",
+        "fit": "false",
+        "jinja": "true",
+        "load_mode": "mmap",
+        "models_max": "2",
+        "no_mmproj": "true",
+        "timeout": "1200",
+        "n_predict": "32768",
+        "cache_type_k": "q8_0",
+        "cache_type_v": "q8_0",
+        "cache_ram": "32768",
+        "metrics": "true",
+        "main_gpu": "0",
+        "split_mode": "layer",
+        "alias": "locallama-qwen, local-qwen",
+        "load_on_startup": "true",
+        "hf_repo": "unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL",
+        "tensor_split": "36,30",
+        "ctx_size": "240896",
+        "spec_draft_n_max": "3",
+        "spec_draft_p_min": "0.35",
+        "reasoning": "true",
+        "reasoning_preserve": "true",
+        "temp": "1.0",
+        "top_p": "0.95",
+        "top_k": "20",
+        "min_p": "0.0",
+        "presence_penalty": "0.0",
+        "repeat_penalty": "1.0",
+        "profile_alias": "Qwen3.8-27B-spec"
+    },
+    "throughput_metrics": {
+        "prefill_speed": null,
+        "decode_speed": null,
+        "ttft": null
+    },
+    "reasoning_accuracy": {
+        "needle": "Pass",
+        "ruler": "Pass",
+        "longbench": "Pass",
+        "swe_bench": "Fail"
+    },
+    "quantization_loss": {
+        "perplexity": null,
+        "mean_kld": null,
+        "same_top_match_percent": null
+    }
+}
