@@ -1,17 +1,22 @@
-import unittest
-from unittest.mock import patch, MagicMock
 import os
 import tempfile
+import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import requests
+
 from advanced_benchmarks import (
-    is_safe_code,
-    generate_filler_text,
-    load_presets_config,
     _get_presets_config,
-    map_repo_to_preset_alias,
+    call_endpoint,
+    generate_filler_text,
     get_preset_metadata,
+    is_safe_code,
+    load_presets_config,
+    map_repo_to_preset_alias,
     resolve_presets_path,
 )
+
 
 class TestIsSafeCode(unittest.TestCase):
     def test_valid_code(self):
@@ -591,6 +596,266 @@ l = len(c)
                 safe, msg = is_safe_code(bad_input)
                 self.assertFalse(safe)
                 self.assertIn("Invalid code input", msg)
+
+
+class TestCallEndpoint(unittest.TestCase):
+    def _create_mock_response(self, status_code=200, lines=None, text=""):
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        mock_resp.text = text
+        mock_resp.iter_lines.return_value = lines if lines is not None else []
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+        return mock_resp
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_normal_sse_streaming(self, mock_post):
+        """Normal SSE streaming response with delta content, delta reasoning_content, usage metrics, and [DONE] token."""
+        lines = [
+            b"",  # Empty line skipped
+            b"event: ping",  # Non-data line skipped
+            b'data: {"choices": [{"delta": {"role": "assistant"}}]}',
+            b'data: {"choices": [{"delta": {"reasoning_content": "Thinking step 1. "}}]}',
+            b'data: {"choices": [{"delta": {"reasoning_content": "Thinking step 2."}}]}',
+            b'data: {"choices": [{"delta": {"content": "Hello, "}}]}',
+            b'data: {"choices": [{"delta": {"content": "world!"}}]}',
+            b'data: {"usage": {"prompt_tokens": 42, "completion_tokens": 18}}',
+            b"data: [DONE]",
+            b'data: {"choices": [{"delta": {"content": "Should be ignored after [DONE]"}}]}',
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt", max_tokens=256)
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response"], "Hello, world!")
+        self.assertEqual(res["reasoning"], "Thinking step 1. Thinking step 2.")
+        self.assertEqual(res["prompt_tokens"], 42)
+        self.assertEqual(res["completion_tokens"], 18)
+        self.assertGreater(res["ttft"], 0.0)
+        self.assertGreaterEqual(res["decode_time"], 0.0)
+        self.assertGreater(res["total_time"], 0.0)
+        self.assertGreater(res["prefill_speed"], 0.0)
+        self.assertGreaterEqual(res["decode_speed"], 0.0)
+
+        # Verify requests.post payload and parameters
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], "http://127.0.0.1:8080/v1/chat/completions")
+        self.assertEqual(kwargs["headers"], {"Content-Type": "application/json"})
+        self.assertTrue(kwargs["stream"])
+        self.assertEqual(kwargs["timeout"], 300)
+        self.assertEqual(
+            kwargs["json"],
+            {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "test prompt"}],
+                "max_tokens": 256,
+                "temperature": 0.0,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+            },
+        )
+
+    @patch("advanced_benchmarks.time.time")
+    @patch("advanced_benchmarks.requests.post")
+    def test_first_token_timing_detection_content_first(self, mock_post, mock_time):
+        """Early first token timing detection when content arrives first."""
+        # Timeline:
+        # Call 1 (start_time): 10.0
+        # Call 2 (first_token_time): 12.0 (when content arrives)
+        # Call 3 (end_time): 15.0
+        mock_time.side_effect = [10.0, 12.0, 15.0]
+
+        lines = [
+            b'data: {"choices": [{"delta": {"role": "assistant"}}]}',
+            b'data: {"choices": [{"delta": {"content": "First "}}]}',
+            b'data: {"choices": [{"delta": {"content": "second."}}]}',
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response"], "First second.")
+        self.assertEqual(res["reasoning"], "")
+        self.assertAlmostEqual(res["ttft"], 2.0)  # 12.0 - 10.0
+        self.assertAlmostEqual(res["decode_time"], 3.0)  # 15.0 - 12.0
+        self.assertAlmostEqual(res["total_time"], 5.0)  # 15.0 - 10.0
+
+    @patch("advanced_benchmarks.time.time")
+    @patch("advanced_benchmarks.requests.post")
+    def test_first_token_timing_detection_reasoning_first(self, mock_post, mock_time):
+        """Early first token timing detection when reasoning_content arrives first."""
+        # Timeline:
+        # Call 1 (start_time): 20.0
+        # Call 2 (first_token_time): 21.5 (when reasoning_content arrives)
+        # Call 3 (end_time): 25.0
+        mock_time.side_effect = [20.0, 21.5, 25.0]
+
+        lines = [
+            b'data: {"choices": [{"delta": {"role": "assistant"}}]}',
+            b'data: {"choices": [{"delta": {"reasoning_content": "Thinking..."}}]}',
+            b'data: {"choices": [{"delta": {"content": "Answer"}}]}',
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response"], "Answer")
+        self.assertEqual(res["reasoning"], "Thinking...")
+        self.assertAlmostEqual(res["ttft"], 1.5)  # 21.5 - 20.0
+        self.assertAlmostEqual(res["decode_time"], 3.5)  # 25.0 - 21.5
+        self.assertAlmostEqual(res["total_time"], 5.0)  # 25.0 - 20.0
+
+    @patch("advanced_benchmarks.time.time")
+    @patch("advanced_benchmarks.requests.post")
+    def test_first_token_timing_detection_no_tokens(self, mock_post, mock_time):
+        """When no content or reasoning tokens arrive, first_token_time defaults to end_time."""
+        mock_time.side_effect = [30.0, 32.0]
+
+        lines = [
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response"], "")
+        self.assertEqual(res["reasoning"], "")
+        self.assertAlmostEqual(res["ttft"], 2.0)  # end_time - start_time
+        self.assertAlmostEqual(res["decode_time"], 0.0)  # end_time - first_token_time (which is end_time)
+        self.assertAlmostEqual(res["total_time"], 2.0)
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_http_non_200(self, mock_post):
+        """Non-200 HTTP status (e.g. 500, 404) returns None."""
+        for code in [400, 404, 500, 503]:
+            with self.subTest(status_code=code):
+                mock_resp = self._create_mock_response(status_code=code, text="HTTP error")
+                mock_post.return_value = mock_resp
+                res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+                self.assertIsNone(res)
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_network_exception(self, mock_post):
+        """Network/connection exception during requests.post returns None."""
+        exceptions = [
+            requests.exceptions.ConnectionError("Connection refused"),
+            requests.exceptions.Timeout("Read timed out"),
+            requests.exceptions.RequestException("Request failure"),
+            RuntimeError("Unexpected socket error"),
+        ]
+        for exc in exceptions:
+            with self.subTest(exc=type(exc).__name__):
+                mock_post.side_effect = exc
+                res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+                self.assertIsNone(res)
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_malformed_sse_json(self, mock_post):
+        """Malformed SSE JSON chunk is gracefully skipped without interrupting stream."""
+        lines = [
+            b"data: {invalid-json-chunk",
+            b"data: not-json",
+            b'data: {"choices": [{"delta": {"content": "Recovered content"}}]}',
+            b"data: {broken: json",
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response"], "Recovered content")
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_unexpected_chunk_exception(self, mock_post):
+        """Unexpected exception during chunk processing is handled gracefully without crashing."""
+        lines = [
+            # choices is not a subscriptable list -> TypeError
+            b'data: {"choices": 12345}',
+            # choices[0] is None -> AttributeError on .get()
+            b'data: {"choices": [null]}',
+            # delta content is non-string (int) -> TypeError
+            b'data: {"choices": [{"delta": {"content": 123}}]}',
+            # delta reasoning_content is non-string (list) -> TypeError
+            b'data: {"choices": [{"delta": {"reasoning_content": [1, 2, 3]}}]}',
+            # Valid chunk afterwards
+            b'data: {"choices": [{"delta": {"content": "Working content"}}]}',
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["response"], "Working content")
+
+    @patch("advanced_benchmarks.time.time")
+    @patch("advanced_benchmarks.requests.post")
+    def test_speed_calculations_and_zero_division_guard(self, mock_post, mock_time):
+        """Verify speed calculations for positive times and division by zero guard when times are 0."""
+        # Case 1: Positive ttft and decode_time
+        mock_time.side_effect = [100.0, 102.0, 107.0]  # ttft = 2.0, decode = 5.0
+        lines = [
+            b'data: {"choices": [{"delta": {"content": "token"}}]}',
+            b'data: {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}',
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+        self.assertIsNotNone(res)
+        self.assertAlmostEqual(res["ttft"], 2.0)
+        self.assertAlmostEqual(res["decode_time"], 5.0)
+        self.assertAlmostEqual(res["prefill_speed"], 50.0)  # 100 / 2.0
+        self.assertAlmostEqual(res["decode_speed"], 10.0)  # 50 / 5.0
+
+        # Case 2: Zero ttft and zero decode_time (start == first_token == end)
+        mock_time.side_effect = [50.0, 50.0, 50.0]
+        lines = [
+            b'data: {"choices": [{"delta": {"content": "instant"}}]}',
+            b'data: {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}',
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res_zero = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+        self.assertIsNotNone(res_zero)
+        self.assertEqual(res_zero["ttft"], 0.0)
+        self.assertEqual(res_zero["decode_time"], 0.0)
+        self.assertEqual(res_zero["prefill_speed"], 0)
+        self.assertEqual(res_zero["decode_speed"], 0)
+
+        # Case 3: Missing usage dictionary
+        mock_time.side_effect = [10.0, 12.0, 14.0]
+        lines = [
+            b'data: {"choices": [{"delta": {"content": "no-usage"}}]}',
+            b"data: [DONE]",
+        ]
+        mock_resp = self._create_mock_response(status_code=200, lines=lines)
+        mock_post.return_value = mock_resp
+
+        res_no_usage = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+        self.assertIsNotNone(res_no_usage)
+        self.assertEqual(res_no_usage["prompt_tokens"], 0)
+        self.assertEqual(res_no_usage["completion_tokens"], 0)
+        self.assertEqual(res_no_usage["prefill_speed"], 0)
+        self.assertEqual(res_no_usage["decode_speed"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
