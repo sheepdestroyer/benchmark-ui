@@ -616,6 +616,128 @@ with tab_history:
     else:
         st.info("No runs match the filter criteria.")
 
+def build_throughput_figure(tp_df, model_colors=None):
+    """Build Plotly figure for throughput (PP vs TG) across models and quantization formats."""
+    from plotly.subplots import make_subplots
+    import plotly.graph_objects as go
+    
+    if model_colors is None:
+        model_colors = {
+            "Qwen3.6-27B": "#3b82f6",          # Blue
+            "Qwen3.6-27B-spec3": "#10b981",    # Green
+            "Qwen3.6-27B-spec4": "#8b5cf6",    # Purple
+            "Qwen3.6-35B-A3B-spec": "#f97316", # Orange
+            "Qwen3.6-35B-A3B": "#ef4444"       # Red
+        }
+
+    # Create subplot figure with secondary y-axis
+    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Custom hover template
+    hover_template_pp = (
+        "<b>%{customdata[0]}</b> (PP)<br>"
+        "Context: %{x} tokens<br>"
+        "PP (Prefill): %{y:.2f} t/s<br>"
+        "KV Cache: %{customdata[1]}<br>"
+        "<extra></extra>"
+    )
+    hover_template_tg = (
+        "<b>%{customdata[0]}</b> (TG)<br>"
+        "Context: %{x} tokens<br>"
+        "TG (Decode): %{y:.2f} t/s<br>"
+        "KV Cache: %{customdata[1]}<br>"
+        "<extra></extra>"
+    )
+    
+    # Pre-sort and group by ("Model", "KV Quant") to eliminate redundant O(N) filtering in nested loops
+    tp_sorted = tp_df.dropna(subset=["KV Quant"]).sort_values(by="Context Length")
+    seen_models = set()
+    
+    for (model, quant), q_df in tp_sorted.groupby(["Model", "KV Quant"], sort=True):
+        if q_df.empty:  # pragma: no cover
+            continue
+            
+        color = model_colors.get(model, "#94a3b8")
+        show_legend = model not in seen_models # Show in legend only once per model
+        seen_models.add(model)
+        
+        customdata = tuple(zip(q_df["Model"], q_df["KV Quant"]))
+        
+        # Select dash style based on quant format
+        dash_style = "solid" if quant == "f16" else ("dash" if quant == "q8_0" else ("dot" if quant == "q5_1" else "dashdot"))
+        
+        # Add PP (Prefill) trace - Left Y-axis (secondary_y=False)
+        fig1.add_trace(
+            go.Scatter(
+                x=q_df["Context Length"],
+                y=q_df["Prefill (t/s)"],
+                mode="lines+markers",
+                name=f"{model} (PP)",
+                legendgroup=f"{model}_PP",
+                showlegend=show_legend,
+                marker=dict(
+                    symbol="square",
+                    size=10,
+                    color=color,
+                    opacity=0.8,
+                    line=dict(width=1, color="#1e293b")
+                ),
+                line=dict(
+                    color=color,
+                    width=1.5,
+                    dash=dash_style
+                ),
+                customdata=customdata,
+                hovertemplate=hover_template_pp
+            ),
+            secondary_y=False
+        )
+        
+        # Add TG (Decode) trace - Right Y-axis (secondary_y=True)
+        fig1.add_trace(
+            go.Scatter(
+                x=q_df["Context Length"],
+                y=q_df["Decode (t/s)"],
+                mode="lines+markers",
+                name=f"{model} (TG)",
+                legendgroup=f"{model}_TG",
+                showlegend=show_legend,
+                marker=dict(
+                    symbol="circle",
+                    size=10,
+                    color=color,
+                    opacity=0.8,
+                    line=dict(width=1, color="#1e293b")
+                ),
+                line=dict(
+                    color=color,
+                    width=1.5,
+                    dash=dash_style
+                ),
+                customdata=customdata,
+                hovertemplate=hover_template_tg
+            ),
+            secondary_y=True
+        )
+    
+    # Update layout, axes titles, log scale, and dark template
+    fig1.update_layout(
+        template="plotly_dark",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        title="Read/Write (PP vs TG) Generation Speeds across Cache Formats",
+        xaxis_title="Context Length (tokens, log scale)",
+        xaxis_type="log"
+    )
+    
+    # Left Y-axis (PP)
+    fig1.update_yaxes(title_text="Prompt Processing (PP) Speed (tokens/sec)", secondary_y=False)
+    # Right Y-axis (TG)
+    fig1.update_yaxes(title_text="Token Generation (TG) Speed (tokens/sec)", secondary_y=True)
+    
+    return fig1
+
+
 with tab_plots:
     st.subheader("Performance & Quantization Trade-off Analysis")
     if not filtered_df.empty:
@@ -626,123 +748,7 @@ with tab_plots:
             # Filter rows with throughput values
             tp_df = filtered_df.dropna(subset=["Prefill (t/s)", "Decode (t/s)"])
             if not tp_df.empty:
-                from plotly.subplots import make_subplots
-                
-                # Create subplot figure with secondary y-axis
-                fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-                
-                model_colors = {
-                    "Qwen3.6-27B": "#3b82f6",          # Blue
-                    "Qwen3.6-27B-spec3": "#10b981",    # Green
-                    "Qwen3.6-27B-spec4": "#8b5cf6",    # Purple
-                    "Qwen3.6-35B-A3B-spec": "#f97316", # Orange
-                    "Qwen3.6-35B-A3B": "#ef4444"       # Red
-                }
-                
-                # Sort unique models so they appear consistently
-                unique_models = sorted(list(tp_df["Model"].unique()))
-                
-                for model in unique_models:
-                    m_df = tp_df[tp_df["Model"] == model]
-                    color = model_colors.get(model, "#94a3b8")
-                    
-                    # Custom hover template
-                    hover_template_pp = (
-                        "<b>%{customdata[0]}</b> (PP)<br>"
-                        "Context: %{x} tokens<br>"
-                        "PP (Prefill): %{y:.2f} t/s<br>"
-                        "KV Cache: %{customdata[1]}<br>"
-                        "<extra></extra>"
-                    )
-                    hover_template_tg = (
-                        "<b>%{customdata[0]}</b> (TG)<br>"
-                        "Context: %{x} tokens<br>"
-                        "TG (Decode): %{y:.2f} t/s<br>"
-                        "KV Cache: %{customdata[1]}<br>"
-                        "<extra></extra>"
-                    )
-                    
-                    unique_quants = sorted(list(m_df["KV Quant"].dropna().unique()))
-                    for idx, quant in enumerate(unique_quants):
-                        q_df = m_df[m_df["KV Quant"] == quant].sort_values(by="Context Length")
-                        if q_df.empty:
-                            continue
-                            
-                        customdata = list(zip(q_df["Model"], q_df["KV Quant"]))
-                        show_legend = (idx == 0) # Show in legend only once per model
-                        
-                        # Select dash style based on quant format
-                        dash_style = "solid" if quant == "f16" else ("dash" if quant == "q8_0" else ("dot" if quant == "q5_1" else "dashdot"))
-                        
-                        # Add PP (Prefill) trace - Left Y-axis (secondary_y=False)
-                        fig1.add_trace(
-                            go.Scatter(
-                                x=q_df["Context Length"],
-                                y=q_df["Prefill (t/s)"],
-                                mode="lines+markers",
-                                name=f"{model} (PP)",
-                                legendgroup=f"{model}_PP",
-                                showlegend=show_legend,
-                                marker=dict(
-                                    symbol="square",
-                                    size=10,
-                                    color=color,
-                                    opacity=0.8,
-                                    line=dict(width=1, color="#1e293b")
-                                ),
-                                line=dict(
-                                    color=color,
-                                    width=1.5,
-                                    dash=dash_style
-                                ),
-                                customdata=customdata,
-                                hovertemplate=hover_template_pp
-                            ),
-                            secondary_y=False
-                        )
-                        
-                        # Add TG (Decode) trace - Right Y-axis (secondary_y=True)
-                        fig1.add_trace(
-                            go.Scatter(
-                                x=q_df["Context Length"],
-                                y=q_df["Decode (t/s)"],
-                                mode="lines+markers",
-                                name=f"{model} (TG)",
-                                legendgroup=f"{model}_TG",
-                                showlegend=show_legend,
-                                marker=dict(
-                                    symbol="circle",
-                                    size=10,
-                                    color=color,
-                                    opacity=0.8,
-                                    line=dict(width=1, color="#1e293b")
-                                ),
-                                line=dict(
-                                    color=color,
-                                    width=1.5,
-                                    dash=dash_style
-                                ),
-                                customdata=customdata,
-                                hovertemplate=hover_template_tg
-                            ),
-                            secondary_y=True
-                        )
-                
-                # Update layout, axes titles, log scale, and dark template
-                fig1.update_layout(
-                    template="plotly_dark",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    title="Read/Write (PP vs TG) Generation Speeds across Cache Formats",
-                    xaxis_title="Context Length (tokens, log scale)",
-                    xaxis_type="log"
-                )
-                
-                # Left Y-axis (PP)
-                fig1.update_yaxes(title_text="Prompt Processing (PP) Speed (tokens/sec)", secondary_y=False)
-                # Right Y-axis (TG)
-                fig1.update_yaxes(title_text="Token Generation (TG) Speed (tokens/sec)", secondary_y=True)
-                
+                fig1 = build_throughput_figure(tp_df)
                 st.plotly_chart(fig1)
             else:
                 st.info("No throughput metrics available for plots.")
