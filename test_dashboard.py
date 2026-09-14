@@ -848,11 +848,38 @@ HAS_PANDAS_AND_PLOTLY = (
 
 @unittest.skipUnless(HAS_PANDAS_AND_PLOTLY, "pandas and plotly required for throughput figure tests")
 class TestBuildThroughputFigure(unittest.TestCase):
+    def setUp(self):
+        import plotly.graph_objects as real_go
+        self._orig_go = dashboard.go
+        dashboard.go = real_go
+
+    def tearDown(self):
+        dashboard.go = self._orig_go
+
     def test_empty_dataframe(self):
         import pandas as pd
         df = pd.DataFrame(columns=["Model", "KV Quant", "Context Length", "Prefill (t/s)", "Decode (t/s)"])
         fig = dashboard.build_throughput_figure(df)
         self.assertEqual(len(fig.data), 0)
+
+    def test_bare_empty_dataframe(self):
+        import pandas as pd
+        fig = dashboard.build_throughput_figure(pd.DataFrame())
+        self.assertEqual(len(fig.data), 0)
+
+    def test_none_input(self):
+        fig = dashboard.build_throughput_figure(None)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_missing_schema_columns(self):
+        import pandas as pd
+        fig = dashboard.build_throughput_figure(pd.DataFrame({"Model": ["M1"]}))
+        self.assertEqual(len(fig.data), 0)
+
+    def test_non_dataframe_input(self):
+        self.assertEqual(len(dashboard.build_throughput_figure("invalid_string").data), 0)
+        self.assertEqual(len(dashboard.build_throughput_figure([1, 2, 3]).data), 0)
+        self.assertEqual(len(dashboard.build_throughput_figure(123).data), 0)
 
     def test_missing_and_nan_quants(self):
         import pandas as pd

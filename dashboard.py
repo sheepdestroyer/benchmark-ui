@@ -18,6 +18,7 @@ from utils import validate_endpoint_url, validate_model_name
 
 BASE_QUANT_TYPES = ("Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M")
 BASE_QUANT_ALIASES = tuple((q.lower(), q) for q in BASE_QUANT_TYPES)
+REQUIRED_THROUGHPUT_COLS = ("Model", "KV Quant", "Context Length", "Prefill (t/s)", "Decode (t/s)")
 
 
 
@@ -619,8 +620,18 @@ with tab_history:
 def build_throughput_figure(tp_df, model_colors=None):
     """Build Plotly figure for throughput (PP vs TG) across models and quantization formats."""
     from plotly.subplots import make_subplots
-    import plotly.graph_objects as go
-    
+
+    # Create subplot figure with secondary y-axis
+    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if (
+        tp_df is None
+        or getattr(tp_df, "empty", True)
+        or not hasattr(tp_df, "columns")
+        or not set(REQUIRED_THROUGHPUT_COLS).issubset(tp_df.columns)
+    ):
+        return fig1
+
     if model_colors is None:
         model_colors = {
             "Qwen3.6-27B": "#3b82f6",          # Blue
@@ -629,9 +640,6 @@ def build_throughput_figure(tp_df, model_colors=None):
             "Qwen3.6-35B-A3B-spec": "#f97316", # Orange
             "Qwen3.6-35B-A3B": "#ef4444"       # Red
         }
-
-    # Create subplot figure with secondary y-axis
-    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
     
     # Custom hover template
     hover_template_pp = (
