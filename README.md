@@ -71,6 +71,7 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 - `--endpoint`: Server endpoint URL (default: `http://127.0.0.1:8083`).
 - `--model`: Model alias or name loaded on the endpoint.
 - `--tokens`: Target token context length for reasoning tests (e.g. 5000 for validation, 200000 for full scaling).
+- `--api-key`: API key for Bearer authentication (falls back to `API_KEY` / `OPENAI_API_KEY` environment variables).
 - `--gguf-path`: Local GGUF file path (for KLD mode, auto-detects Hugging Face cache if blank).
 - `--corpus`: Corpus prose file path for local perplexity calculation.
 
@@ -78,7 +79,7 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 
 ## Automated Testing & CI/CD
  
-The repository maintains an automated unit test suite (346 tests) covering input validation, UI logic, benchmark execution, and data formatting.
+The repository maintains an automated unit test suite (403 tests) covering input validation, UI logic, benchmark execution, and data formatting.
  
 Install development dependencies and run the test suite using `pytest`:
  
