@@ -891,7 +891,7 @@ def _parse_run_file(filepath):
             "RULER": accuracy.get("ruler", "N/A"),
             "LongBench": accuracy.get("longbench", "N/A"),
             "SWE-bench": accuracy.get("swe_bench", "N/A"),
-            "Agentic Suite": agentic.get("suite", "N/A"),
+            "Agentic Suite": agentic.get("suite") or "N/A",
             "Agentic Total": tasks_total,
             "Agentic Passed": tasks_passed,
             "Agentic Pass Rate": pass_rate,
@@ -1484,8 +1484,8 @@ def build_context_scaling_figure(df, model_colors=None):
                 name=f"{prefix}TTFT (s)",
                 legendgroup=f"{model}_ttft",
                 showlegend=show_legend,
-                marker=dict(symbol="triangle-up", size=8),
-                line=dict(width=1.5, dash="dot"),
+                marker=dict(symbol="triangle-up", size=8, color=color),
+                line=dict(color=color, width=1.5, dash="dot"),
                 hovertemplate=f"<b>{model} TTFT</b><br>Context: %{{x}} tokens<br>TTFT: %{{y:.3f}} s<extra></extra>",
             ),
             secondary_y=True,
@@ -1529,8 +1529,8 @@ def build_reasoning_ratio_figure(df):
         fig.update_layout(template="plotly_dark")
         return fig
 
-    clean_df["Reasoning Tokens"] = clean_df["Reasoning Tokens"].fillna(0)
-    clean_df["Completion Tokens"] = clean_df["Completion Tokens"].fillna(0)
+    clean_df["Reasoning Tokens"] = clean_df["Reasoning Tokens"].fillna(0).clip(lower=0)
+    clean_df["Completion Tokens"] = clean_df["Completion Tokens"].fillna(0).clip(lower=0)
 
     clean_df = clean_df[
         (clean_df["Reasoning Tokens"] > 0) | (clean_df["Completion Tokens"] > 0)
@@ -1940,8 +1940,12 @@ with tab_compare:
                 ),
                 (
                     "Agentic Suite",
-                    str(runA.get("Agentic Suite", "N/A")),
-                    str(runB.get("Agentic Suite", "N/A")),
+                    str(runA.get("Agentic Suite"))
+                    if pd.notna(runA.get("Agentic Suite")) and runA.get("Agentic Suite")
+                    else "N/A",
+                    str(runB.get("Agentic Suite"))
+                    if pd.notna(runB.get("Agentic Suite")) and runB.get("Agentic Suite")
+                    else "N/A",
                 ),
                 (
                     "Agentic Pass Rate",
@@ -1954,13 +1958,13 @@ with tab_compare:
                 ),
                 (
                     "Agentic Turns",
-                    str(runA.get("Agentic Turns", "N/A")),
-                    str(runB.get("Agentic Turns", "N/A")),
+                    fmt_num(runA.get("Agentic Turns"), "{:.1f}"),
+                    fmt_num(runB.get("Agentic Turns"), "{:.1f}"),
                 ),
                 (
                     "Agentic Tool Calls",
-                    str(runA.get("Agentic Tool Calls", "N/A")),
-                    str(runB.get("Agentic Tool Calls", "N/A")),
+                    fmt_num(runA.get("Agentic Tool Calls"), "{:.0f}"),
+                    fmt_num(runB.get("Agentic Tool Calls"), "{:.0f}"),
                 ),
                 (
                     "Perplexity (PPL)",

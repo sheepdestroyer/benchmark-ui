@@ -1180,6 +1180,26 @@ class TestParseRunFile(unittest.TestCase):
             self.assertIsNone(res["Reasoning Tokens"])
             self.assertIsNone(res["Completion Tokens"])
 
+    def test_parse_run_file_agentic_null_suite(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_null_suite.json"
+            data = {
+                "agentic_metrics": {"suite": None},
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Agentic Suite"], "N/A")
+
+            file_path2 = Path(tmpdir) / "run_empty_suite.json"
+            data2 = {
+                "agentic_metrics": {"suite": ""},
+            }
+            file_path2.write_text(json.dumps(data2), encoding="utf-8")
+            res2 = dashboard._parse_run_file(file_path2)
+            self.assertIsNotNone(res2)
+            self.assertEqual(res2["Agentic Suite"], "N/A")
+
     def test_parse_run_file_invalid_tokens_arg(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "run_invalid_tokens.json"
@@ -1869,6 +1889,9 @@ class TestBuildContextScalingFigure(unittest.TestCase):
         )
         self.assertEqual(len(fig.data), 3)
         self.assertEqual(fig.data[0].marker.color, "#ff0000")
+        self.assertEqual(fig.data[1].marker.color, "#ff0000")
+        self.assertEqual(fig.data[2].marker.color, "#ff0000")
+        self.assertEqual(fig.data[2].line.color, "#ff0000")
 
 
 @unittest.skipUnless(
@@ -1963,6 +1986,21 @@ class TestBuildReasoningRatioFigure(unittest.TestCase):
         fig = dashboard.build_reasoning_ratio_figure(df)
         self.assertEqual(len(fig.data), 2)
         self.assertEqual(list(fig.data[0].x), ["Default"])
+
+    def test_negative_tokens_clipped_to_zero(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["Model_Neg"],
+                "Reasoning Tokens": [-100],
+                "Completion Tokens": [500],
+            }
+        )
+        fig = dashboard.build_reasoning_ratio_figure(df)
+        self.assertEqual(len(fig.data), 2)
+        self.assertEqual(list(fig.data[0].y), [0])
+        self.assertEqual(list(fig.data[1].y), [500])
 
 
 class TestEnqueueOutput(unittest.TestCase):
@@ -3039,6 +3077,28 @@ class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
             at.selectbox(key="quant_a").select("q4_0")
             at.run(timeout=10)
             self.assertFalse(at.exception)
+
+            self.assertTrue(len(at.table) > 0)
+            comp_df = at.table[0].value
+            row_map = {row["Metric"]: row for _, row in comp_df.iterrows()}
+
+            # Configuration A (has agentic metrics)
+            self.assertEqual(
+                row_map["Agentic Suite"]["Configuration A"], "standalone-agentic"
+            )
+            self.assertEqual(row_map["Agentic Pass Rate"]["Configuration A"], "80.0%")
+            self.assertEqual(row_map["Agentic Turns"]["Configuration A"], "2.2")
+            self.assertEqual(row_map["Agentic Tool Calls"]["Configuration A"], "8")
+
+            # Configuration B (no agentic metrics: must be "N/A", never "nan")
+            self.assertEqual(row_map["Agentic Suite"]["Configuration B"], "N/A")
+            self.assertEqual(row_map["Agentic Pass Rate"]["Configuration B"], "N/A")
+            self.assertEqual(row_map["Agentic Turns"]["Configuration B"], "N/A")
+            self.assertEqual(row_map["Agentic Tool Calls"]["Configuration B"], "N/A")
+
+            # Verify no literal "nan" strings exist in comparison table configurations
+            for col in ["Configuration A", "Configuration B"]:
+                self.assertNotIn("nan", comp_df[col].astype(str).str.lower().values)
 
 
 if __name__ == "__main__":
