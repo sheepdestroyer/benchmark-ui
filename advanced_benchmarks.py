@@ -638,6 +638,69 @@ def get_preset_metadata(profile_name, presets_file=None):
 
     return metadata
 
+
+def _parse_endpoint_model_args(args):
+    """Parse runtime model CLI arguments for threads, batch sizes, and cache types."""
+    parsed = {}
+    if not args or not isinstance(args, (list, tuple)):
+        return parsed
+
+    for i, arg in enumerate(args):
+        if not isinstance(arg, str):
+            continue
+        if arg == "--threads" and i + 1 < len(args):
+            try:
+                parsed["threads"] = int(args[i + 1])
+            except (ValueError, TypeError):
+                parsed["threads"] = None
+        elif arg == "--batch-size" and i + 1 < len(args):
+            try:
+                parsed["batch_size"] = int(args[i + 1])
+            except (ValueError, TypeError):
+                parsed["batch_size"] = None
+        elif arg == "--ubatch-size" and i + 1 < len(args):
+            try:
+                parsed["ubatch_size"] = int(args[i + 1])
+            except (ValueError, TypeError):
+                parsed["ubatch_size"] = None
+        elif arg in CACHE_TYPE_CLI_ARGS and i + 1 < len(args):
+            parsed["kv_cache_quant"] = args[i + 1]
+
+    return parsed
+
+
+def _parse_endpoint_preset_block(preset_str):
+    """Parse preset block string for threads, batch sizes, and cache type keys."""
+    parsed = {}
+    if not preset_str or not isinstance(preset_str, str):
+        return parsed
+
+    for line in preset_str.split("\n"):
+        line = line.strip()
+        if "=" in line:
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if k == "threads":
+                try:
+                    parsed["threads"] = int(v)
+                except (ValueError, TypeError):
+                    parsed["threads"] = None
+            elif k == "batch-size":
+                try:
+                    parsed["batch_size"] = int(v)
+                except (ValueError, TypeError):
+                    parsed["batch_size"] = None
+            elif k == "ubatch-size":
+                try:
+                    parsed["ubatch_size"] = int(v)
+                except (ValueError, TypeError):
+                    parsed["ubatch_size"] = None
+            elif k in CACHE_TYPE_KEYS:
+                parsed["kv_cache_quant"] = v
+
+    return parsed
+
+
 def get_model_settings_from_endpoint(endpoint, target_model):
     settings = {
         "model_name": target_model,
@@ -646,16 +709,16 @@ def get_model_settings_from_endpoint(endpoint, target_model):
         "threads": None,
         "ubatch_size": None,
         "batch_size": None,
-        "speculative_draft_type": "None"
+        "speculative_draft_type": "None",
     }
-    
+
     # Try parsing base quantization from target_model name if it's there
     target_model_lower = target_model.lower()
     for q_lower, q in QUANTIZATIONS:
         if q_lower in target_model_lower:
             settings["base_quantization"] = q
             break
-            
+
     try:
         url = f"{endpoint}/v1/models"
         with requests.get(url, timeout=5) as response:
@@ -666,78 +729,36 @@ def get_model_settings_from_endpoint(endpoint, target_model):
                     if item.get("id") == target_model or target_model in item.get("id", ""):
                         model_info = item
                         break
-                
+
                 if model_info:
                     status = model_info.get("status", {})
                     args = status.get("args", [])
                     preset = status.get("preset", "")
-                    
-                    # Check args
-                    for i, arg in enumerate(args):
-                        if arg == "--threads" and i + 1 < len(args):
-                            try:
-                                settings["threads"] = int(args[i+1])
-                            except (ValueError, TypeError):
-                                settings["threads"] = None
-                        elif arg == "--batch-size" and i + 1 < len(args):
-                            try:
-                                settings["batch_size"] = int(args[i+1])
-                            except (ValueError, TypeError):
-                                settings["batch_size"] = None
-                        elif arg == "--ubatch-size" and i + 1 < len(args):
-                            try:
-                                settings["ubatch_size"] = int(args[i+1])
-                            except (ValueError, TypeError):
-                                settings["ubatch_size"] = None
-                        elif arg in CACHE_TYPE_CLI_ARGS and i + 1 < len(args):
-                            settings["kv_cache_quant"] = args[i+1]
-                    
-                    # Try preset parsing
-                    if preset:
-                        for line in preset.split("\n"):
-                            line = line.strip()
-                            if "=" in line:
-                                k, v = line.split("=", 1)
-                                k, v = k.strip(), v.strip()
-                                if k == "threads":
-                                    try:
-                                        settings["threads"] = int(v)
-                                    except (ValueError, TypeError):
-                                        settings["threads"] = None
-                                elif k == "batch-size":
-                                    try:
-                                        settings["batch_size"] = int(v)
-                                    except (ValueError, TypeError):
-                                        settings["batch_size"] = None
-                                elif k == "ubatch-size":
-                                    try:
-                                        settings["ubatch_size"] = int(v)
-                                    except (ValueError, TypeError):
-                                        settings["ubatch_size"] = None
-                                elif k in CACHE_TYPE_KEYS:
-                                    settings["kv_cache_quant"] = v
-                                    
+
+                    settings.update(_parse_endpoint_model_args(args))
+                    settings.update(_parse_endpoint_preset_block(preset))
+
                     repo_or_id = model_info.get("id", "")
                     repo_or_id_lower = repo_or_id.lower()
                     for q_lower, q in QUANTIZATIONS:
                         if q_lower in repo_or_id_lower:
                             settings["base_quantization"] = q
                             break
-                    
+
                     if "mtp" in repo_or_id_lower or any("spec" in str(arg).lower() for arg in args):
                         settings["speculative_draft_type"] = "ngram"
                     else:
                         settings["speculative_draft_type"] = "None"
     except Exception as e:
         print(f"[*] Could not fetch model settings from endpoint: {e}")
-        
+
     # Merge preset metadata fields
     profile_name = map_repo_to_preset_alias(target_model)
     presets_meta = get_preset_metadata(profile_name)
     for k, v in presets_meta.items():
         settings.setdefault(k, v)
     settings["profile_alias"] = profile_name
-        
+
     return settings
 
 def main():

@@ -8,8 +8,11 @@ import requests
 
 from advanced_benchmarks import (
     _get_presets_config,
+    _parse_endpoint_model_args,
+    _parse_endpoint_preset_block,
     call_endpoint,
     generate_filler_text,
+    get_model_settings_from_endpoint,
     get_preset_metadata,
     is_safe_code,
     load_presets_config,
@@ -47,6 +50,7 @@ class TestIsSafeCode(unittest.TestCase):
                 self.assertIsNotNone(msg)
                 self.assertIn(expected_keyword, msg)
 
+
 class TestGenerateFillerText(unittest.TestCase):
     def test_zero_target(self):
         res = generate_filler_text(0)
@@ -64,7 +68,7 @@ class TestGenerateFillerText(unittest.TestCase):
         total_chars = sum(len(p) + 1 for p in res)
         self.assertGreaterEqual(total_chars, 45)
 
-    @patch('advanced_benchmarks.random.choice')
+    @patch("advanced_benchmarks.random.choice")
     def test_paragraph_structure(self, mock_choice):
         mock_choice.return_value = "A sentence."
         # One paragraph of 5 sentences is "A sentence. A sentence. A sentence. A sentence. A sentence."
@@ -73,7 +77,9 @@ class TestGenerateFillerText(unittest.TestCase):
         # This should generate exactly 1 paragraph.
         res = generate_filler_text(10)
         self.assertEqual(len(res), 1)
-        self.assertEqual(res[0], "A sentence. A sentence. A sentence. A sentence. A sentence.")
+        self.assertEqual(
+            res[0], "A sentence. A sentence. A sentence. A sentence. A sentence."
+        )
 
 
 class TestPresetsConfigAndAlias(unittest.TestCase):
@@ -90,7 +96,9 @@ class TestPresetsConfigAndAlias(unittest.TestCase):
         self.assertIsNone(config)
 
     def test_load_presets_config_default_nonexistent(self):
-        with patch.dict(os.environ, {"PRESETS_FILE": "/nonexistent/default/model_presets.ini"}):
+        with patch.dict(
+            os.environ, {"PRESETS_FILE": "/nonexistent/default/model_presets.ini"}
+        ):
             load_presets_config.cache_clear()
             config = load_presets_config(None)
             self.assertIsNone(config)
@@ -98,7 +106,9 @@ class TestPresetsConfigAndAlias(unittest.TestCase):
     def test_load_presets_config_caching(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             presets_file = Path(tmp_dir) / "model_presets.ini"
-            presets_file.write_text("[TestModel]\nalias = TestAlias\n", encoding="utf-8")
+            presets_file.write_text(
+                "[TestModel]\nalias = TestAlias\n", encoding="utf-8"
+            )
 
             c1 = load_presets_config(str(presets_file))
             c2 = load_presets_config(str(presets_file))
@@ -109,7 +119,9 @@ class TestPresetsConfigAndAlias(unittest.TestCase):
     def test_load_presets_config_corrupt_ini(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             presets_file = Path(tmp_dir) / "corrupt.ini"
-            presets_file.write_text("corrupt header without closing bracket\nkey = val\n", encoding="utf-8")
+            presets_file.write_text(
+                "corrupt header without closing bracket\nkey = val\n", encoding="utf-8"
+            )
 
             config = load_presets_config(str(presets_file))
             self.assertIsNone(config)
@@ -123,7 +135,9 @@ class TestPresetsConfigAndAlias(unittest.TestCase):
         self.assertEqual(map_repo_to_preset_alias(12345), 12345)
 
     def test_map_repo_to_preset_alias_nonexistent_file(self):
-        res = map_repo_to_preset_alias("my-model", presets_file="/nonexistent/model_presets.ini")
+        res = map_repo_to_preset_alias(
+            "my-model", presets_file="/nonexistent/model_presets.ini"
+        )
         self.assertEqual(res, "my-model")
 
     def test_map_repo_to_preset_alias_matching_section(self):
@@ -132,29 +146,40 @@ class TestPresetsConfigAndAlias(unittest.TestCase):
             presets_file.write_text("[Qwen3.6-27B]\nthreads = 8\n", encoding="utf-8")
 
             # Exact match case-insensitive
-            res1 = map_repo_to_preset_alias("qwen3.6-27b", presets_file=str(presets_file))
+            res1 = map_repo_to_preset_alias(
+                "qwen3.6-27b", presets_file=str(presets_file)
+            )
             self.assertEqual(res1, "Qwen3.6-27B")
 
-            res2 = map_repo_to_preset_alias("QWEN3.6-27B", presets_file=str(presets_file))
+            res2 = map_repo_to_preset_alias(
+                "QWEN3.6-27B", presets_file=str(presets_file)
+            )
             self.assertEqual(res2, "Qwen3.6-27B")
 
     def test_map_repo_to_preset_alias_fallback_hf_repo_and_alias(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             presets_file = Path(tmp_dir) / "model_presets.ini"
-            presets_file.write_text("""[*]
+            presets_file.write_text(
+                """[*]
 flash-attn = true
 
 [Qwen3.6-27B-spec3]
 hf-repo = unsloth/Qwen3.6-27B-spec3-GGUF
 alias = qwen-spec-alias
-""", encoding="utf-8")
+""",
+                encoding="utf-8",
+            )
 
             # hf-repo match
-            res_repo = map_repo_to_preset_alias("unsloth/qwen3.6-27b-spec3-gguf", presets_file=str(presets_file))
+            res_repo = map_repo_to_preset_alias(
+                "unsloth/qwen3.6-27b-spec3-gguf", presets_file=str(presets_file)
+            )
             self.assertEqual(res_repo, "Qwen3.6-27B-spec3")
 
             # alias match
-            res_alias = map_repo_to_preset_alias("QWEN-SPEC-ALIAS", presets_file=str(presets_file))
+            res_alias = map_repo_to_preset_alias(
+                "QWEN-SPEC-ALIAS", presets_file=str(presets_file)
+            )
             self.assertEqual(res_alias, "Qwen3.6-27B-spec3")
 
     def test_map_repo_to_preset_alias_fallback_no_match(self):
@@ -162,7 +187,9 @@ alias = qwen-spec-alias
             presets_file = Path(tmp_dir) / "model_presets.ini"
             presets_file.write_text("[Qwen3.6-27B]\nthreads = 8\n", encoding="utf-8")
 
-            res = map_repo_to_preset_alias("completely-unknown-repo", presets_file=str(presets_file))
+            res = map_repo_to_preset_alias(
+                "completely-unknown-repo", presets_file=str(presets_file)
+            )
             self.assertEqual(res, "completely-unknown-repo")
 
     def test_map_repo_to_preset_alias_caching(self):
@@ -170,8 +197,12 @@ alias = qwen-spec-alias
             presets_file = Path(tmp_dir) / "model_presets.ini"
             presets_file.write_text("[CachedModel]\nalias = CM\n", encoding="utf-8")
 
-            res1 = map_repo_to_preset_alias("CachedModel", presets_file=str(presets_file))
-            res2 = map_repo_to_preset_alias("CachedModel", presets_file=str(presets_file))
+            res1 = map_repo_to_preset_alias(
+                "CachedModel", presets_file=str(presets_file)
+            )
+            res2 = map_repo_to_preset_alias(
+                "CachedModel", presets_file=str(presets_file)
+            )
             self.assertEqual(res1, "CachedModel")
             self.assertEqual(res2, "CachedModel")
             self.assertEqual(map_repo_to_preset_alias.cache_info().hits, 1)
@@ -181,36 +212,58 @@ alias = qwen-spec-alias
             presets_file = Path(tmp_dir) / "corrupt.ini"
             presets_file.write_text("[invalid ini", encoding="utf-8")
 
-            res = map_repo_to_preset_alias("fallback-model", presets_file=str(presets_file))
+            res = map_repo_to_preset_alias(
+                "fallback-model", presets_file=str(presets_file)
+            )
             self.assertEqual(res, "fallback-model")
 
     def test_resolve_presets_path(self):
         # 1. Explicit path
-        self.assertEqual(resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini")
-        self.assertEqual(resolve_presets_path(Path("/explicit/path2.ini")), "/explicit/path2.ini")
+        self.assertEqual(
+            resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini"
+        )
+        self.assertEqual(
+            resolve_presets_path(Path("/explicit/path2.ini")), "/explicit/path2.ini"
+        )
 
         # 2. PRESETS_FILE environment variable
         with patch.dict(os.environ, {"PRESETS_FILE": "/env/path.ini"}):
             self.assertEqual(resolve_presets_path(None), "/env/path.ini")
 
         # 3. Default fallback logic when PRESETS_FILE is not set
-        primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-        fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+        primary = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"
+            )
+        )
+        fallback = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini")
+        )
 
         # Primary exists
-        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == primary):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("os.path.exists", side_effect=lambda p: str(p) == primary),
+        ):
             self.assertEqual(resolve_presets_path(None), primary)
 
         # Primary does not exist, fallback exists
-        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == fallback):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("os.path.exists", side_effect=lambda p: str(p) == fallback),
+        ):
             self.assertEqual(resolve_presets_path(None), fallback)
 
         # Neither exists -> returns primary
-        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", return_value=False):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("os.path.exists", return_value=False),
+        ):
             self.assertEqual(resolve_presets_path(None), primary)
 
     def test_normalize_repo_id_and_repo_id_matches_helpers(self):
         from advanced_benchmarks import _normalize_repo_id, _repo_id_matches
+
         self.assertEqual(_normalize_repo_id(None), "")
         self.assertEqual(_normalize_repo_id(""), "")
         self.assertEqual(_normalize_repo_id(123), "")
@@ -229,14 +282,19 @@ alias = qwen-spec-alias
     def test_map_repo_to_preset_alias_full_alias_and_exception(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             presets_file = Path(tmp_dir) / "model_presets.ini"
-            presets_file.write_text("""[ProfileX]
+            presets_file.write_text(
+                """[ProfileX]
 alias = unsloth/alias1, alias2
-""", encoding="utf-8")
+""",
+                encoding="utf-8",
+            )
 
             # Match full alias with unsloth prefix
             self.assertEqual(
-                map_repo_to_preset_alias("unsloth/alias1, alias2", presets_file=str(presets_file)),
-                "ProfileX"
+                map_repo_to_preset_alias(
+                    "unsloth/alias1, alias2", presets_file=str(presets_file)
+                ),
+                "ProfileX",
             )
 
         mock_cfg = MagicMock()
@@ -247,9 +305,17 @@ alias = unsloth/alias1, alias2
     def test_load_presets_config_fallback_path(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             fallback_ini = Path(tmp_dir) / "model_presets.ini"
-            fallback_ini.write_text("[FallbackProfile]\nthreads = 12\n", encoding="utf-8")
+            fallback_ini.write_text(
+                "[FallbackProfile]\nthreads = 12\n", encoding="utf-8"
+            )
 
-            with patch.dict(os.environ, {}, clear=True), patch("advanced_benchmarks.resolve_presets_path", return_value=str(fallback_ini)):
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch(
+                    "advanced_benchmarks.resolve_presets_path",
+                    return_value=str(fallback_ini),
+                ),
+            ):
                 load_presets_config.cache_clear()
                 cfg = load_presets_config(None)
                 self.assertIsNotNone(cfg)
@@ -258,7 +324,8 @@ alias = unsloth/alias1, alias2
     def test_map_repo_to_preset_alias_unsloth_prefix_normalization(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             presets_file = Path(tmp_dir) / "model_presets.ini"
-            presets_file.write_text("""[*]
+            presets_file.write_text(
+                """[*]
 flash-attn = true
 
 [Qwen3.8-27B-spec]
@@ -271,53 +338,73 @@ alias = plain-alias
 
 [unsloth/PrefixSection]
 hf-repo = PrefixRepo:latest
-""", encoding="utf-8")
+""",
+                encoding="utf-8",
+            )
 
             # 1. Query has prefix, hf-repo has prefix
             self.assertEqual(
-                map_repo_to_preset_alias("unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL", presets_file=str(presets_file)),
-                "Qwen3.8-27B-spec"
+                map_repo_to_preset_alias(
+                    "unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL",
+                    presets_file=str(presets_file),
+                ),
+                "Qwen3.8-27B-spec",
             )
             # 2. Query has NO prefix, hf-repo HAS prefix
             self.assertEqual(
-                map_repo_to_preset_alias("Qwen3.8-27B-GGUF:UD-Q5_K_XL", presets_file=str(presets_file)),
-                "Qwen3.8-27B-spec"
+                map_repo_to_preset_alias(
+                    "Qwen3.8-27B-GGUF:UD-Q5_K_XL", presets_file=str(presets_file)
+                ),
+                "Qwen3.8-27B-spec",
             )
             # 3. Query has prefix, hf-repo has NO prefix
             self.assertEqual(
-                map_repo_to_preset_alias("unsloth/PlainRepo:latest", presets_file=str(presets_file)),
-                "PlainSection"
+                map_repo_to_preset_alias(
+                    "unsloth/PlainRepo:latest", presets_file=str(presets_file)
+                ),
+                "PlainSection",
             )
             # 4. Query has NO prefix, section HAS prefix
             self.assertEqual(
-                map_repo_to_preset_alias("PrefixSection", presets_file=str(presets_file)),
-                "unsloth/PrefixSection"
+                map_repo_to_preset_alias(
+                    "PrefixSection", presets_file=str(presets_file)
+                ),
+                "unsloth/PrefixSection",
             )
             # 5. Query has prefix, section has NO prefix
             self.assertEqual(
-                map_repo_to_preset_alias("unsloth/PlainSection", presets_file=str(presets_file)),
-                "PlainSection"
+                map_repo_to_preset_alias(
+                    "unsloth/PlainSection", presets_file=str(presets_file)
+                ),
+                "PlainSection",
             )
             # 6. Alias normalization: query has no prefix, alias has prefix
             self.assertEqual(
-                map_repo_to_preset_alias("locallama-qwen", presets_file=str(presets_file)),
-                "Qwen3.8-27B-spec"
+                map_repo_to_preset_alias(
+                    "locallama-qwen", presets_file=str(presets_file)
+                ),
+                "Qwen3.8-27B-spec",
             )
             # 7. Alias normalization: query has prefix, alias has no prefix
             self.assertEqual(
-                map_repo_to_preset_alias("unsloth/local-qwen", presets_file=str(presets_file)),
-                "Qwen3.8-27B-spec"
+                map_repo_to_preset_alias(
+                    "unsloth/local-qwen", presets_file=str(presets_file)
+                ),
+                "Qwen3.8-27B-spec",
             )
             # 8. Single alias with prefix
             self.assertEqual(
-                map_repo_to_preset_alias("unsloth/plain-alias", presets_file=str(presets_file)),
-                "PlainSection"
+                map_repo_to_preset_alias(
+                    "unsloth/plain-alias", presets_file=str(presets_file)
+                ),
+                "PlainSection",
             )
 
     def test_get_preset_metadata(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             presets_file = Path(tmp_dir) / "model_presets.ini"
-            presets_file.write_text("""[*]
+            presets_file.write_text(
+                """[*]
 flash-attn = true
 parallel = 2
 
@@ -325,7 +412,9 @@ parallel = 2
 parallel = 4
 n-gpu-layers = 33
 custom-param = hello
-""", encoding="utf-8")
+""",
+                encoding="utf-8",
+            )
 
             meta = get_preset_metadata("MyProfile", presets_file=str(presets_file))
             self.assertEqual(meta["flash_attn"], "true")
@@ -334,16 +423,21 @@ custom-param = hello
             self.assertEqual(meta["custom_param"], "hello")
 
             # Nonexistent section still gets globals and defaults
-            meta_default = get_preset_metadata("UnknownProfile", presets_file=str(presets_file))
+            meta_default = get_preset_metadata(
+                "UnknownProfile", presets_file=str(presets_file)
+            )
             self.assertEqual(meta_default["flash_attn"], "true")
             self.assertEqual(meta_default["parallel"], "2")
             self.assertEqual(meta_default["n_gpu_layers"], "99")
 
     def test_get_preset_metadata_nonexistent_file(self):
-        meta = get_preset_metadata("AnyProfile", presets_file="/nonexistent/model_presets.ini")
+        meta = get_preset_metadata(
+            "AnyProfile", presets_file="/nonexistent/model_presets.ini"
+        )
         self.assertEqual(meta["parallel"], "1")
         self.assertEqual(meta["n_gpu_layers"], "99")
         self.assertEqual(meta["spec_type"], "None")
+
 
 class TestASTSafetyCheck(unittest.TestCase):
     def test_safe_code_snippets(self):
@@ -351,13 +445,20 @@ class TestASTSafetyCheck(unittest.TestCase):
             # Arithmetic & math
             ("1 + 2 * 3 - 4 / 2 ** 2", "arithmetic precedence"),
             ("x = 10 % 3\ny = 2 ** 5\nz = x + y", "basic math operators"),
-            ("import math\nval = math.sqrt(16) + math.sin(math.pi / 2)", "math module functions"),
+            (
+                "import math\nval = math.sqrt(16) + math.sin(math.pi / 2)",
+                "math module functions",
+            ),
             # String formatting & manipulation
-            ("name = 'world'\nmsg = f'hello {name}'\ns = msg.upper().strip()", "f-strings and string methods"),
+            (
+                "name = 'world'\nmsg = f'hello {name}'\ns = msg.upper().strip()",
+                "f-strings and string methods",
+            ),
             ("formatted = 'Value: {:.2f}'.format(3.14159)", "str.format"),
             ("parts = 'a,b,c'.split(',')\njoined = '-'.join(parts)", "split and join"),
             # Loops & control flow
-            ("""
+            (
+                """
 def sum_evens(n):
     total = 0
     for i in range(n):
@@ -366,34 +467,49 @@ def sum_evens(n):
         else:
             continue
     return total
-""", "for loop with if/else/continue"),
-            ("""
+""",
+                "for loop with if/else/continue",
+            ),
+            (
+                """
 count = 0
 while count < 5:
     count += 1
-""", "while loop"),
-            ("""
+""",
+                "while loop",
+            ),
+            (
+                """
 try:
     x = 10 / 2
 except ZeroDivisionError:
     x = 0
 finally:
     done = True
-""", "try-except-finally block"),
+""",
+                "try-except-finally block",
+            ),
             # Dict, list, set, tuple manipulation
             ("d = {'a': 1, 'b': 2}\nd['c'] = 3\nval = d.get('a')", "dict manipulation"),
-            ("items = [1, 2, 3]\nitems.append(4)\npopped = items.pop()", "list methods"),
+            (
+                "items = [1, 2, 3]\nitems.append(4)\npopped = items.pop()",
+                "list methods",
+            ),
             ("squares = [x**2 for x in range(10) if x % 2 == 0]", "list comprehension"),
             ("unique = {x % 3 for x in range(10)}", "set comprehension"),
             ("lookup = {k: v for k, v in [('a', 1), ('b', 2)]}", "dict comprehension"),
             # Algorithms & recursion
-            ("""
+            (
+                """
 def fib(n):
     if n <= 1:
         return n
     return fib(n - 1) + fib(n - 2)
-""", "recursive fibonacci"),
-            ("""
+""",
+                "recursive fibonacci",
+            ),
+            (
+                """
 def binary_search(arr, target):
     low, high = 0, len(arr) - 1
     while low <= high:
@@ -405,44 +521,68 @@ def binary_search(arr, target):
         else:
             high = mid - 1
     return -1
-""", "binary search algorithm"),
+""",
+                "binary search algorithm",
+            ),
             # Safe imports
-            ("""
+            (
+                """
 import json
 data = json.loads('{"a": 1}')
-""", "json import"),
-            ("""
+""",
+                "json import",
+            ),
+            (
+                """
 import re
 match = re.match(r'\\d+', '123')
-""", "re import"),
+""",
+                "re import",
+            ),
             ("import collections\nq = collections.deque()", "collections import"),
-            ("import itertools\ncomb = list(itertools.combinations([1, 2], 2))", "itertools import"),
+            (
+                "import itertools\ncomb = list(itertools.combinations([1, 2], 2))",
+                "itertools import",
+            ),
             ("import random\nr = random.randint(1, 10)", "random import"),
             ("import time\nt = time.time()", "time import"),
             ("import datetime\nnow = datetime.datetime.now()", "datetime import"),
             # Benign patterns requested by reviewer
             ("import re\npattern = re.compile(r'\\d+')", "re.compile allowed"),
-            ("""
+            (
+                """
 class Base:
     def __init__(self):
         self.x = 1
 class Sub(Base):
     def __init__(self):
         super().__init__()
-""", "super().__init__() allowed"),
-            ("""
+""",
+                "super().__init__() allowed",
+            ),
+            (
+                """
 class Encapsulated:
     def __init__(self):
         self.__secret = 42
     def get_secret(self):
         return self.__secret
-""", "private attributes self.__var allowed"),
-            ("from __future__ import annotations", "from __future__ import annotations allowed"),
-            ("""
+""",
+                "private attributes self.__var allowed",
+            ),
+            (
+                "from __future__ import annotations",
+                "from __future__ import annotations allowed",
+            ),
+            (
+                """
 if __name__ == '__main__':
     msg = __doc__
-""", "if __name__ == '__main__' and __doc__ allowed"),
-            ("""
+""",
+                "if __name__ == '__main__' and __doc__ allowed",
+            ),
+            (
+                """
 class Container:
     def __len__(self):
         return 0
@@ -455,7 +595,9 @@ class Container:
 c = Container()
 s = str(c)
 l = len(c)
-""", "safe dunder methods allowed"),
+""",
+                "safe dunder methods allowed",
+            ),
             # Single underscore variables
             ("_private = 42\nx = _private + 1", "single underscore identifiers"),
         ]
@@ -569,11 +711,13 @@ l = len(c)
         for code, label in exploit_snippets:
             with self.subTest(case=label):
                 safe, msg = is_safe_code(code)
-                self.assertFalse(safe, f"Expected exploit to be blocked for '{label}' ({code})")
+                self.assertFalse(
+                    safe, f"Expected exploit to be blocked for '{label}' ({code})"
+                )
                 self.assertIsNotNone(msg)
                 self.assertTrue(
                     any(kw in msg for kw in ("Forbidden", "Syntax error", "Invalid")),
-                    f"Expected security violation keyword in msg for '{label}', got: {msg}"
+                    f"Expected security violation keyword in msg for '{label}', got: {msg}",
                 )
 
     def test_syntax_error_handling(self):
@@ -626,7 +770,9 @@ class TestCallEndpoint(unittest.TestCase):
         mock_resp = self._create_mock_response(status_code=200, lines=lines)
         mock_post.return_value = mock_resp
 
-        res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt", max_tokens=256)
+        res = call_endpoint(
+            "http://127.0.0.1:8080", "test-model", "test prompt", max_tokens=256
+        )
 
         self.assertIsNotNone(res)
         self.assertEqual(res["response"], "Hello, world!")
@@ -732,7 +878,9 @@ class TestCallEndpoint(unittest.TestCase):
         self.assertEqual(res["response"], "")
         self.assertEqual(res["reasoning"], "")
         self.assertAlmostEqual(res["ttft"], 2.0)  # end_time - start_time
-        self.assertAlmostEqual(res["decode_time"], 0.0)  # end_time - first_token_time (which is end_time)
+        self.assertAlmostEqual(
+            res["decode_time"], 0.0
+        )  # end_time - first_token_time (which is end_time)
         self.assertAlmostEqual(res["total_time"], 2.0)
 
     @patch("advanced_benchmarks.requests.post")
@@ -740,9 +888,13 @@ class TestCallEndpoint(unittest.TestCase):
         """Non-200 HTTP status (e.g. 500, 404) returns None."""
         for code in [400, 404, 500, 503]:
             with self.subTest(status_code=code):
-                mock_resp = self._create_mock_response(status_code=code, text="HTTP error")
+                mock_resp = self._create_mock_response(
+                    status_code=code, text="HTTP error"
+                )
                 mock_post.return_value = mock_resp
-                res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+                res = call_endpoint(
+                    "http://127.0.0.1:8080", "test-model", "test prompt"
+                )
                 self.assertIsNone(res)
 
     @patch("advanced_benchmarks.requests.post")
@@ -757,7 +909,9 @@ class TestCallEndpoint(unittest.TestCase):
         for exc in exceptions:
             with self.subTest(exc=type(exc).__name__):
                 mock_post.side_effect = exc
-                res = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+                res = call_endpoint(
+                    "http://127.0.0.1:8080", "test-model", "test prompt"
+                )
                 self.assertIsNone(res)
 
     @patch("advanced_benchmarks.requests.post")
@@ -849,12 +1003,470 @@ class TestCallEndpoint(unittest.TestCase):
         mock_resp = self._create_mock_response(status_code=200, lines=lines)
         mock_post.return_value = mock_resp
 
-        res_no_usage = call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
+        res_no_usage = call_endpoint(
+            "http://127.0.0.1:8080", "test-model", "test prompt"
+        )
         self.assertIsNotNone(res_no_usage)
         self.assertEqual(res_no_usage["prompt_tokens"], 0)
         self.assertEqual(res_no_usage["completion_tokens"], 0)
         self.assertEqual(res_no_usage["prefill_speed"], 0)
         self.assertEqual(res_no_usage["decode_speed"], 0)
+
+
+class TestGetModelSettingsFromEndpoint(unittest.TestCase):
+    """Comprehensive test suite for get_model_settings_from_endpoint and its helpers."""
+
+    def _create_mock_response(self, status_code=200, json_data=None):
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        if json_data is not None:
+            mock_resp.json.return_value = json_data
+        else:
+            mock_resp.json.return_value = {}
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+        return mock_resp
+
+    def test_parse_endpoint_model_args_helpers(self):
+        """Test _parse_endpoint_model_args helper with various valid, invalid, and empty inputs."""
+        # Empty or non-sequence inputs
+        self.assertEqual(_parse_endpoint_model_args(None), {})
+        self.assertEqual(_parse_endpoint_model_args([]), {})
+        self.assertEqual(_parse_endpoint_model_args("not-a-list"), {})
+        self.assertEqual(_parse_endpoint_model_args(123), {})
+
+        # Trailing flags with no following value
+        self.assertEqual(_parse_endpoint_model_args(["--threads"]), {})
+        self.assertEqual(_parse_endpoint_model_args(["--batch-size"]), {})
+        self.assertEqual(_parse_endpoint_model_args(["--ubatch-size"]), {})
+        self.assertEqual(_parse_endpoint_model_args(["--cache-type-k"]), {})
+
+        # Non-integer arguments
+        invalid_args = [
+            "--threads",
+            "abc",
+            "--batch-size",
+            "xyz",
+            "--ubatch-size",
+            "bad",
+        ]
+        parsed = _parse_endpoint_model_args(invalid_args)
+        self.assertIsNone(parsed["threads"])
+        self.assertIsNone(parsed["batch_size"])
+        self.assertIsNone(parsed["ubatch_size"])
+
+        # Type error cases (e.g. non-string / None values in args)
+        type_err_args = ["--threads", None, "--batch-size", [1], "--ubatch-size", {2}]
+        parsed_types = _parse_endpoint_model_args(type_err_args)
+        self.assertIsNone(parsed_types["threads"])
+        self.assertIsNone(parsed_types["batch_size"])
+        self.assertIsNone(parsed_types["ubatch_size"])
+
+        # Valid arguments
+        valid_args = [
+            "--threads",
+            "8",
+            "--batch-size",
+            "512",
+            "--ubatch-size",
+            "128",
+            "--cache-type-k",
+            "q8_0",
+        ]
+        expected = {
+            "threads": 8,
+            "batch_size": 512,
+            "ubatch_size": 128,
+            "kv_cache_quant": "q8_0",
+        }
+        self.assertEqual(_parse_endpoint_model_args(valid_args), expected)
+
+        # Cache type v override
+        args_with_v = ["--cache-type-k", "q8_0", "--cache-type-v", "q4_0"]
+        self.assertEqual(
+            _parse_endpoint_model_args(args_with_v)["kv_cache_quant"], "q4_0"
+        )
+
+    def test_parse_endpoint_preset_block_helpers(self):
+        """Test _parse_endpoint_preset_block helper with various valid, invalid, and empty inputs."""
+        # Empty or non-string inputs
+        self.assertEqual(_parse_endpoint_preset_block(None), {})
+        self.assertEqual(_parse_endpoint_preset_block(""), {})
+        self.assertEqual(_parse_endpoint_preset_block(123), {})
+        self.assertEqual(_parse_endpoint_preset_block(["not", "str"]), {})
+
+        # Lines without '=' or empty lines
+        unstructured = "\n# Just a comment\nno_equal_sign\n   \n"
+        self.assertEqual(_parse_endpoint_preset_block(unstructured), {})
+
+        # Invalid integer values
+        invalid_preset = "threads=invalid\nbatch-size=foo\nubatch-size=bar"
+        parsed = _parse_endpoint_preset_block(invalid_preset)
+        self.assertIsNone(parsed["threads"])
+        self.assertIsNone(parsed["batch_size"])
+        self.assertIsNone(parsed["ubatch_size"])
+
+        # Valid preset block with whitespace and both cache types
+        valid_preset = """
+        threads = 16
+        batch-size = 1024
+        ubatch-size = 256
+        cache-type-k = q5_1
+        cache-type-v = q8_0
+        other-setting = ignored
+        """
+        expected = {
+            "threads": 16,
+            "batch_size": 1024,
+            "ubatch_size": 256,
+            "kv_cache_quant": "q8_0",
+        }
+        self.assertEqual(_parse_endpoint_preset_block(valid_preset), expected)
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_successful_fetch_exact_match(self, mock_get):
+        """Successful /v1/models fetch with exact target_model match."""
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [
+                    {
+                        "id": "qwen3.6-27b",
+                        "status": {
+                            "args": ["--threads", "8", "--batch-size", "512"],
+                            "preset": "ubatch-size=128",
+                        },
+                    },
+                    {
+                        "id": "qwen3.6-27b-extended",
+                        "status": {"args": ["--threads", "16"]},
+                    },
+                ]
+            },
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "qwen3.6-27b"
+        )
+        self.assertEqual(settings["model_name"], "qwen3.6-27b")
+        self.assertEqual(settings["threads"], 8)
+        self.assertEqual(settings["batch_size"], 512)
+        self.assertEqual(settings["ubatch_size"], 128)
+        self.assertEqual(settings["speculative_draft_type"], "None")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_successful_fetch_partial_match(self, mock_get):
+        """Successful /v1/models fetch with partial target_model match."""
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [
+                    {
+                        "id": "unsloth/Qwen3.6-27B-Instruct-GGUF",
+                        "status": {
+                            "args": ["--threads", "12", "--batch-size", "256"],
+                            "preset": "cache-type-k=q4_k_m",
+                        },
+                    }
+                ]
+            },
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "Qwen3.6-27B"
+        )
+        self.assertEqual(settings["model_name"], "Qwen3.6-27B")
+        self.assertEqual(settings["threads"], 12)
+        self.assertEqual(settings["batch_size"], 256)
+        self.assertEqual(settings["kv_cache_quant"], "q4_k_m")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_successful_fetch_no_matching_model(self, mock_get):
+        """Successful /v1/models fetch but no item matches target_model."""
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [{"id": "llama-3-8b", "status": {"args": ["--threads", "8"]}}]
+            },
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "unmatched-model"
+        )
+        self.assertEqual(settings["model_name"], "unmatched-model")
+        self.assertIsNone(settings["threads"])
+        self.assertIsNone(settings["batch_size"])
+        self.assertIsNone(settings["ubatch_size"])
+        self.assertEqual(settings["kv_cache_quant"], "Unknown")
+        self.assertEqual(settings["speculative_draft_type"], "None")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_parsing_args_from_status_args(self, mock_get):
+        """Parsing args from status.args (--threads, --batch-size, --ubatch-size, --cache-type-k, etc.)."""
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [
+                    {
+                        "id": "test-model",
+                        "status": {
+                            "args": [
+                                "--threads",
+                                "6",
+                                "--batch-size",
+                                "1024",
+                                "--ubatch-size",
+                                "512",
+                                "--cache-type-k",
+                                "q8_0",
+                            ],
+                            "preset": "",
+                        },
+                    }
+                ]
+            },
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "test-model"
+        )
+        self.assertEqual(settings["threads"], 6)
+        self.assertEqual(settings["batch_size"], 1024)
+        self.assertEqual(settings["ubatch_size"], 512)
+        self.assertEqual(settings["kv_cache_quant"], "q8_0")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_parsing_preset_string_block_overrides_args(self, mock_get):
+        """Parsing preset string block with valid values overriding status.args and invalid values resetting to None."""
+        # Case 1: Preset overrides args
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [
+                    {
+                        "id": "test-model",
+                        "status": {
+                            "args": [
+                                "--threads",
+                                "4",
+                                "--batch-size",
+                                "256",
+                                "--ubatch-size",
+                                "64",
+                                "--cache-type-k",
+                                "q4_0",
+                            ],
+                            "preset": "threads=12\nbatch-size=512\nubatch-size=128\ncache-type-k=q5_1",
+                        },
+                    }
+                ]
+            },
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "test-model"
+        )
+        self.assertEqual(settings["threads"], 12)
+        self.assertEqual(settings["batch_size"], 512)
+        self.assertEqual(settings["ubatch_size"], 128)
+        self.assertEqual(settings["kv_cache_quant"], "q5_1")
+
+        # Case 2: Preset invalid values reset to None
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [
+                    {
+                        "id": "test-model",
+                        "status": {
+                            "args": [
+                                "--threads",
+                                "4",
+                                "--batch-size",
+                                "256",
+                                "--ubatch-size",
+                                "64",
+                            ],
+                            "preset": "threads=invalid\nbatch-size=invalid\nubatch-size=invalid",
+                        },
+                    }
+                ]
+            },
+        )
+        settings_invalid = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "test-model"
+        )
+        self.assertIsNone(settings_invalid["threads"])
+        self.assertIsNone(settings_invalid["batch_size"])
+        self.assertIsNone(settings_invalid["ubatch_size"])
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_speculative_draft_type_detection(self, mock_get):
+        """Speculative draft type detection: ngram if 'mtp' in ID or 'spec' in args, otherwise None."""
+        test_cases = [
+            (
+                "mtp in ID, no spec in args",
+                "deepseek-v3-mtp-q4_k_m",
+                ["--threads", "8"],
+                "ngram",
+            ),
+            (
+                "spec in args, no mtp in ID",
+                "qwen3.6-27b",
+                ["--speculative-draft", "model"],
+                "ngram",
+            ),
+            ("spec flag in args", "llama-3", ["--spec-draft", "true"], "ngram"),
+            ("both mtp in ID and spec in args", "model-mtp", ["--spec", "on"], "ngram"),
+            (
+                "neither mtp in ID nor spec in args",
+                "standard-model",
+                ["--threads", "8", "--batch-size", "512"],
+                "None",
+            ),
+        ]
+        for label, model_id, args, expected_draft in test_cases:
+            with self.subTest(case=label):
+                mock_get.return_value = self._create_mock_response(
+                    status_code=200,
+                    json_data={"data": [{"id": model_id, "status": {"args": args}}]},
+                )
+                settings = get_model_settings_from_endpoint(
+                    "http://127.0.0.1:8081", model_id
+                )
+                self.assertEqual(settings["speculative_draft_type"], expected_draft)
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_base_quantization_resolution(self, mock_get):
+        """Base quantization resolution from model ID / name."""
+        quant_cases = [
+            ("q4_k_s", "Q4_K_S"),
+            ("q4_k_m", "Q4_K_M"),
+            ("q4_k_l", "Q4_K_L"),
+            ("q4_k_xl", "Q4_K_XL"),
+            ("q5_k_s", "Q5_K_S"),
+            ("q5_k_m", "Q5_K_M"),
+            ("q8_0", "Q8_0"),
+            ("f16", "f16"),
+        ]
+        for q_token, expected_quant in quant_cases:
+            with self.subTest(quant=q_token):
+                # 1. Resolved from target_model name directly when endpoint is offline
+                mock_get.side_effect = requests.exceptions.ConnectionError("Offline")
+                settings = get_model_settings_from_endpoint(
+                    "http://127.0.0.1:8081", f"model-{q_token}"
+                )
+                self.assertEqual(settings["base_quantization"], expected_quant)
+
+        # 2. Resolved from returned model ID when target_model has no quant substring
+        mock_get.side_effect = None
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={"data": [{"id": "model-q8_0", "status": {}}]},
+        )
+        settings = get_model_settings_from_endpoint("http://127.0.0.1:8081", "model")
+        self.assertEqual(settings["base_quantization"], "Q8_0")
+
+        # 3. Model ID overrides target_model if both have quantization
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={"data": [{"id": "model-q8_0-variant-q4_k_m", "status": {}}]},
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "model-q8_0"
+        )
+        self.assertEqual(settings["base_quantization"], "Q4_K_M")
+
+        # 4. Unknown when neither has quantization
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={"data": [{"id": "model-plain", "status": {}}]},
+        )
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "model-plain"
+        )
+        self.assertEqual(settings["base_quantization"], "Unknown")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_fallback_non_200_status_code(self, mock_get):
+        """Fallback when endpoint returns non-200 status code."""
+        for code in (404, 500, 502):
+            with self.subTest(status_code=code):
+                mock_get.return_value = self._create_mock_response(status_code=code)
+                settings = get_model_settings_from_endpoint(
+                    "http://127.0.0.1:8081", "target-q4_k_m"
+                )
+                self.assertEqual(settings["model_name"], "target-q4_k_m")
+                self.assertEqual(settings["base_quantization"], "Q4_K_M")
+                self.assertEqual(settings["kv_cache_quant"], "Unknown")
+                self.assertIsNone(settings["threads"])
+                self.assertIsNone(settings["batch_size"])
+                self.assertIsNone(settings["ubatch_size"])
+                self.assertEqual(settings["speculative_draft_type"], "None")
+                self.assertIn("profile_alias", settings)
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_fallback_request_exception(self, mock_get):
+        """Fallback when endpoint request raises an exception (requests.exceptions.RequestException)."""
+        exceptions = [
+            requests.exceptions.RequestException("Generic request exception"),
+            requests.exceptions.ConnectionError("Connection failed"),
+            requests.exceptions.Timeout("Request timed out"),
+            ValueError("Malformed JSON response"),
+        ]
+        for exc in exceptions:
+            with self.subTest(exc=type(exc).__name__):
+                if isinstance(exc, ValueError):
+                    mock_resp = self._create_mock_response(status_code=200)
+                    mock_resp.json.side_effect = exc
+                    mock_get.return_value = mock_resp
+                else:
+                    mock_get.side_effect = exc
+
+                settings = get_model_settings_from_endpoint(
+                    "http://127.0.0.1:8081", "custom-model"
+                )
+                self.assertEqual(settings["model_name"], "custom-model")
+                self.assertEqual(settings["base_quantization"], "Unknown")
+                self.assertIsNone(settings["threads"])
+                self.assertEqual(settings["speculative_draft_type"], "None")
+
+    @patch("advanced_benchmarks.get_preset_metadata")
+    @patch("advanced_benchmarks.map_repo_to_preset_alias")
+    @patch("advanced_benchmarks.requests.get")
+    def test_merging_with_preset_metadata_and_profile_alias(
+        self, mock_get, mock_alias, mock_meta
+    ):
+        """Merging with preset metadata and profile_alias, respecting setdefault semantics."""
+        mock_alias.return_value = "custom-alias"
+        mock_meta.return_value = {
+            "flash_attn": "true",
+            "parallel": "4",
+            "n_gpu_layers": "33",
+            "fit": "false",
+            "threads": 99,  # Should NOT overwrite threads parsed from endpoint
+            "extra_custom_param": "preset_val",
+        }
+        mock_get.return_value = self._create_mock_response(
+            status_code=200,
+            json_data={
+                "data": [
+                    {
+                        "id": "custom-alias",
+                        "status": {"args": ["--threads", "16", "--batch-size", "256"]},
+                    }
+                ]
+            },
+        )
+
+        settings = get_model_settings_from_endpoint(
+            "http://127.0.0.1:8081", "custom-alias"
+        )
+        self.assertEqual(settings["profile_alias"], "custom-alias")
+        # threads should be 16 from args, not overwritten by 99 from preset_metadata
+        self.assertEqual(settings["threads"], 16)
+        self.assertEqual(settings["batch_size"], 256)
+        # Preset metadata fields should be merged in
+        self.assertEqual(settings["flash_attn"], "true")
+        self.assertEqual(settings["parallel"], "4")
+        self.assertEqual(settings["n_gpu_layers"], "33")
+        self.assertEqual(settings["fit"], "false")
+        self.assertEqual(settings["extra_custom_param"], "preset_val")
 
 
 if __name__ == "__main__":
