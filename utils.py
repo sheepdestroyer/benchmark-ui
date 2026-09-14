@@ -79,3 +79,26 @@ def validate_model_name(model_name):
             f"Invalid model name '{model_name}'. Must match ^[a-zA-Z0-9._:/-]+$"
         )
     return model_name
+
+
+def redact_cli_args(args: list[str] | None) -> list[str]:
+    """Redact sensitive arguments (such as API keys) from CLI argument lists."""
+    if not args:
+        return []
+    redacted = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            redacted.append("********")
+            skip_next = False
+        elif arg == "--api-key":
+            redacted.append(arg)
+            skip_next = True
+        elif arg.startswith("--api-key="):
+            redacted.append("--api-key=********")
+        else:
+            redacted.append(arg)
+    if skip_next:
+        redacted.append("********")
+    return redacted
+

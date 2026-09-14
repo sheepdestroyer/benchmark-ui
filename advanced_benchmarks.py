@@ -15,6 +15,8 @@ import time
 
 import requests
 
+from utils import redact_cli_args
+
 # Pre-built mapping of (lowercase_search_string, canonical_quantization)
 QUANTIZATION_OPTIONS = ("Q4_K_S", "Q4_K_M", "Q4_K_L", "Q4_K_XL", "Q5_K_S", "Q5_K_M", "Q8_0", "f16")
 QUANTIZATIONS = tuple((q.lower(), q) for q in QUANTIZATION_OPTIONS)
@@ -194,7 +196,7 @@ def call_endpoint(endpoint, model, prompt, max_tokens=512, api_key=None):
     
     url = f"{endpoint}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
-    api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+    api_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
     if api_key and api_key.strip():
         headers["Authorization"] = f"Bearer {api_key.strip()}"
     
@@ -738,7 +740,7 @@ def get_model_settings_from_endpoint(endpoint, target_model, api_key=None):
 
     try:
         url = f"{endpoint}/v1/models"
-        api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        api_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
         headers = {}
         if api_key and api_key.strip():
             headers["Authorization"] = f"Bearer {api_key.strip()}"
@@ -830,7 +832,7 @@ def _save_run_data(results, endpoint, model, cli_arguments, output_path=None, ap
         "run_metadata": {
             "timestamp": timestamp,
             "target_endpoint": endpoint,
-            "cli_arguments": cli_arguments,
+            "cli_arguments": redact_cli_args(cli_arguments),
         },
         "model_settings": model_settings,
         "throughput_metrics": throughput_metrics,
@@ -855,6 +857,7 @@ def _save_run_data(results, endpoint, model, cli_arguments, output_path=None, ap
 
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(run_data, f, indent=4)
+
     print(f"[+] Saved structured historical run to {output_file}")
     return output_file
 
@@ -864,7 +867,7 @@ def main(args=None):
     parser.add_argument("--endpoint", default="http://127.0.0.1:8083", help="LLM server API endpoint")
     parser.add_argument("--model", default="Qwen3.6-27B", help="Model name / alias to target")
     parser.add_argument("--tokens", type=int, default=200000, help="Number of context tokens for synthetic benchmarks (Needle, RULER, LongBench)")
-    parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", ""), help="API key for Bearer authentication")
+    parser.add_argument("--api-key", default=os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""), help="API key for Bearer authentication")
     parser.add_argument("--needle", action="store_true", help="Run Needle in a Haystack benchmark (Phase 1)")
     parser.add_argument("--ruler", action="store_true", help="Run RULER variable tracking benchmark (Phase 2)")
     parser.add_argument("--longbench", action="store_true", help="Run LongBench QA benchmark (Phase 3)")

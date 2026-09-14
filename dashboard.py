@@ -15,7 +15,7 @@ import queue
 import threading
 import sys
 from pathlib import Path
-from utils import validate_endpoint_url, validate_model_name
+from utils import redact_cli_args, validate_endpoint_url, validate_model_name
 
 BASE_QUANT_TYPES = (
     "Q4_K_XL",
@@ -154,7 +154,7 @@ def save_endpoints(endpoints: list[dict], file_path: Path | str | None = None) -
         sanitized.append(
             {
                 "name": name.strip(),
-                "url": url.strip(),
+                "url": url.strip().rstrip("/"),
                 "api_key": api_key.strip(),
                 "is_default": is_default,
             }
@@ -165,6 +165,7 @@ def save_endpoints(endpoints: list[dict], file_path: Path | str | None = None) -
     tmp_file = target_file.with_suffix(".tmp")
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
+    os.chmod(tmp_file, 0o600)
     os.replace(tmp_file, target_file)
 
 
@@ -206,7 +207,7 @@ def load_endpoints(file_path: Path | str | None = None) -> list[dict]:
         validated.append(
             {
                 "name": name.strip(),
-                "url": url.strip(),
+                "url": url.strip().rstrip("/"),
                 "api_key": api_key.strip(),
                 "is_default": is_default,
             }
@@ -229,7 +230,7 @@ def add_endpoint(
     if not name or not str(name).strip():
         raise ValueError("Endpoint name cannot be empty.")
     cleaned_name = str(name).strip()
-    valid_url = validate_endpoint_url(str(url).strip(), allow_private=True)
+    valid_url = validate_endpoint_url(str(url).strip(), allow_private=True).rstrip("/")
     endpoints = load_endpoints(file_path)
 
     if any(e["name"].lower() == cleaned_name.lower() for e in endpoints):
@@ -262,7 +263,7 @@ def update_endpoint(
     if not name or not str(name).strip():
         raise ValueError("Endpoint name cannot be empty.")
     cleaned_name = str(name).strip()
-    valid_url = validate_endpoint_url(str(url).strip(), allow_private=True)
+    valid_url = validate_endpoint_url(str(url).strip(), allow_private=True).rstrip("/")
     endpoints = load_endpoints(file_path)
 
     target_idx = None
@@ -1515,7 +1516,7 @@ def fetch_available_models(endpoint: str, api_key: str | None = None) -> list[st
     validate_endpoint_url(cleaned_endpoint, allow_private=True)
     url = f"{cleaned_endpoint}/v1/models"
     headers = {}
-    key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
+    key = api_key if api_key is not None else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
     if key and key.strip():
         headers["Authorization"] = f"Bearer {key.strip()}"
     resp = requests.get(url, headers=headers, timeout=3)
@@ -1573,19 +1574,19 @@ with tab_run:
         )
 
         ep_name = st.text_input(
-            "Endpoint Label / Name", value=init_name, key="ep_mgmt_name"
+            "Endpoint Label / Name", value=init_name, key=f"ep_mgmt_name_{selected_manage}"
         )
         ep_url = st.text_input(
-            "Endpoint URL", value=init_url, key="ep_mgmt_url"
+            "Endpoint URL", value=init_url, key=f"ep_mgmt_url_{selected_manage}"
         )
         ep_key = st.text_input(
             "API Key (optional)",
             value=init_key,
             type="password",
-            key="ep_mgmt_key",
+            key=f"ep_mgmt_key_{selected_manage}",
         )
         ep_default = st.checkbox(
-            "Set as default endpoint", value=init_def, key="ep_mgmt_default"
+            "Set as default endpoint", value=init_def, key=f"ep_mgmt_default_{selected_manage}"
         )
 
         col_m1, col_m2, col_m3 = st.columns(3)
@@ -1597,7 +1598,7 @@ with tab_run:
                     try:
                         valid_u = validate_endpoint_url(
                             ep_url.strip(), allow_private=True
-                        )
+                        ).rstrip("/")
                         if is_new:
                             add_endpoint(
                                 ep_name.strip(),
@@ -1692,7 +1693,7 @@ with tab_run:
                 "Endpoint URL",
                 value=new_endpoint,
                 disabled=True,
-                key="runner_saved_url",
+                key=f"runner_saved_url_{selected_endpoint}",
             )
             if runner_api_key:
                 st.text_input(
@@ -1700,7 +1701,7 @@ with tab_run:
                     value=runner_api_key,
                     type="password",
                     disabled=True,
-                    key="runner_saved_api_key",
+                    key=f"runner_saved_api_key_{selected_endpoint}",
                 )
 
         # Load available models from the endpoint dynamically
@@ -1741,7 +1742,7 @@ with tab_run:
             valid_corpus = validate_corpus_name(new_corpus)
             valid_gguf = validate_gguf_path(new_gguf) if new_gguf else ""
             valid_tokens = validate_new_tokens(new_tokens)
-            valid_api_key = runner_api_key.strip() if runner_api_key else ""
+            valid_api_key = runner_api_key.strip() if runner_api_key else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
         except ValueError as e:
             st.error(f"Input validation error: {e}")
             st.stop()
@@ -1769,7 +1770,7 @@ with tab_run:
         if valid_api_key:
             cmd.extend(["--api-key", valid_api_key])
 
-        st.info(f"Running command: {' '.join(cmd)}")
+        st.info(f"Running command: {' '.join(redact_cli_args(cmd))}")
 
         # Execute with real-time feedback
         log_placeholder = st.empty()

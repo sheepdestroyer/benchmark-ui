@@ -22,6 +22,8 @@ import subprocess
 import re
 import requests
 
+from utils import redact_cli_args
+
 # Import advanced_benchmarks functions if possible
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -52,7 +54,8 @@ def get_model_settings(endpoint, target_model, api_key=None):
             
     try:
         url = f"{endpoint}/v1/models"
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        effective_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        headers = {"Authorization": f"Bearer {effective_key}"} if effective_key else {}
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
@@ -159,8 +162,9 @@ def run_throughput(endpoint, model, api_key=None):
         
     cmd = [bench_script, model, endpoint]
     env = os.environ.copy()
-    if api_key:
-        env["OPENAI_API_KEY"] = api_key
+    effective_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    if effective_key:
+        env["OPENAI_API_KEY"] = effective_key
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)), env=env)
     print(result.stdout)
     if result.stderr:
@@ -206,8 +210,9 @@ def run_reasoning(endpoint, model, tokens, api_key=None):
     
     if advanced_benchmarks:
         call_kw = {}
-        if api_key:
-            call_kw["api_key"] = api_key
+        effective_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+        if effective_key:
+            call_kw["api_key"] = effective_key
         print("[*] Executing Needle test...")
         try:
             res = advanced_benchmarks.run_needle_test(endpoint, model, tokens=tokens, **call_kw)
@@ -289,7 +294,7 @@ def main():
     parser.add_argument("--tokens", type=int, default=200000, help="Target context token length for reasoning benchmarks")
     parser.add_argument("--gguf-path", help="Local path to the GGUF model file (for KLD benchmark)")
     parser.add_argument("--corpus", default="kld_corpus.txt", help="Path to text corpus for KLD perplexity calculation")
-    parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", ""), help="API key for Bearer authentication")
+    parser.add_argument("--api-key", default=os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""), help="API key for Bearer authentication")
     
     args = parser.parse_args()
     
@@ -357,7 +362,7 @@ def main():
         "run_metadata": {
             "timestamp": timestamp,
             "target_endpoint": args.endpoint,
-            "cli_arguments": sys.argv[1:]
+            "cli_arguments": redact_cli_args(sys.argv[1:])
         },
         "model_settings": model_settings,
         "throughput_metrics": throughput_metrics,

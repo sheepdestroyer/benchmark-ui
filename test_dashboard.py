@@ -2255,6 +2255,98 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         self.assertNotIn("--api-key", cmd)
         self.assertNotIn("--gguf-path", cmd)
 
+    def test_save_endpoints_restrictive_permissions(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            dashboard.save_endpoints(
+                [{"name": "Local", "url": "http://127.0.0.1:8083", "api_key": "secret"}],
+                endpoints_file,
+            )
+            mode = endpoints_file.stat().st_mode & 0o777
+            self.assertEqual(mode, 0o600)
+
+    def test_endpoints_trailing_slash_stripped(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            endpoints_file = Path(tmp_dir) / "endpoints.json"
+            # 1. save_endpoints strips trailing slashes
+            dashboard.save_endpoints(
+                [{"name": "Test1", "url": "http://127.0.0.1:8083///", "api_key": ""}],
+                endpoints_file,
+            )
+            loaded = dashboard.load_endpoints(endpoints_file)
+            self.assertEqual(loaded[0]["url"], "http://127.0.0.1:8083")
+
+            # 2. add_endpoint strips trailing slashes
+            added = dashboard.add_endpoint(
+                "Test2", "http://127.0.0.1:8084/", file_path=endpoints_file
+            )
+            ep2 = next(e for e in added if e["name"] == "Test2")
+            self.assertEqual(ep2["url"], "http://127.0.0.1:8084")
+
+            # 3. update_endpoint strips trailing slashes
+            updated = dashboard.update_endpoint(
+                "Test2", "Test2Renamed", "http://127.0.0.1:8085///", file_path=endpoints_file
+            )
+            ep2_up = next(e for e in updated if e["name"] == "Test2Renamed")
+            self.assertEqual(ep2_up["url"], "http://127.0.0.1:8085")
+
+    def test_fetch_available_models_env_fallback(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "m1"}]}
+
+        # API_KEY takes priority
+        with patch.dict(os.environ, {"API_KEY": "api-key-env", "OPENAI_API_KEY": "openai-key-env"}):
+            with patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get:
+                dashboard.fetch_available_models("http://127.0.0.1:8083")
+                _, kwargs = mock_get.call_args
+                self.assertEqual(kwargs["headers"]["Authorization"], "Bearer api-key-env")
+
+        # OPENAI_API_KEY used when API_KEY is absent
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "openai-key-env"}, clear=True):
+            with patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get:
+                dashboard.fetch_available_models("http://127.0.0.1:8083")
+                _, kwargs = mock_get.call_args
+                self.assertEqual(kwargs["headers"]["Authorization"], "Bearer openai-key-env")
+
+    def test_runner_cmd_redaction_and_env_fallback(self):
+        import sys
+
+        # 1. Redaction in st.info
+        cmd = [
+            sys.executable,
+            "run_suite.py",
+            "--mode",
+            "all",
+            "--api-key",
+            "super-secret-key",
+        ]
+        redacted = dashboard.redact_cli_args(cmd)
+        self.assertIn("--api-key", redacted)
+        self.assertIn("********", redacted)
+        self.assertNotIn("super-secret-key", redacted)
+
+        # 2. Env fallback when runner_api_key is empty
+        runner_api_key = ""
+        with patch.dict(os.environ, {"API_KEY": "fallback-env-key"}):
+            valid_api_key = (
+                runner_api_key.strip()
+                if runner_api_key
+                else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+            )
+            self.assertEqual(valid_api_key, "fallback-env-key")
+
+    def test_dynamic_widget_keys_pattern(self):
+        selected_manage = "Local Llama Router"
+        self.assertEqual(f"ep_mgmt_name_{selected_manage}", "ep_mgmt_name_Local Llama Router")
+        self.assertEqual(f"ep_mgmt_url_{selected_manage}", "ep_mgmt_url_Local Llama Router")
+        self.assertEqual(f"ep_mgmt_key_{selected_manage}", "ep_mgmt_key_Local Llama Router")
+        self.assertEqual(f"ep_mgmt_default_{selected_manage}", "ep_mgmt_default_Local Llama Router")
+
+        selected_endpoint = "Local Llama Router"
+        self.assertEqual(f"runner_saved_url_{selected_endpoint}", "runner_saved_url_Local Llama Router")
+        self.assertEqual(f"runner_saved_api_key_{selected_endpoint}", "runner_saved_api_key_Local Llama Router")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2157,6 +2157,64 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         mock_save.assert_called_once()
         self.assertEqual(mock_save.call_args.kwargs.get("api_key"), "sk-cli-token")
 
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_env_fallback(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.iter_lines.return_value = [
+            b'data: {"choices": [{"delta": {"content": "hi"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}',
+            b'data: [DONE]'
+        ]
+        mock_post.return_value.__enter__.return_value = mock_resp
+
+        # API_KEY priority
+        with patch.dict(os.environ, {"API_KEY": "env-call-key", "OPENAI_API_KEY": "openai-call-key"}):
+            advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "prompt")
+            _, kwargs = mock_post.call_args
+            self.assertEqual(kwargs["headers"]["Authorization"], "Bearer env-call-key")
+
+        # OPENAI_API_KEY fallback
+        mock_post.reset_mock()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "openai-call-key"}, clear=True):
+            advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "prompt")
+            _, kwargs = mock_post.call_args
+            self.assertEqual(kwargs["headers"]["Authorization"], "Bearer openai-call-key")
+
+    @patch("advanced_benchmarks.requests.get")
+    def test_get_model_settings_from_endpoint_env_fallback(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "m1"}]}
+        mock_get.return_value.__enter__.return_value = mock_resp
+
+        with patch.dict(os.environ, {"API_KEY": "env-model-key"}, clear=True):
+            advanced_benchmarks.get_model_settings_from_endpoint("http://127.0.0.1:8080", "m1")
+            _, kwargs = mock_get.call_args
+            self.assertEqual(kwargs["headers"]["Authorization"], "Bearer env-model-key")
+
+    def test_save_run_data_redacts_api_key_in_cli_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_file = os.path.join(tmp_dir, "run_test.json")
+            cli_args = ["--endpoint", "http://127.0.0.1:8080", "--api-key", "super-secret-pass", "--mode", "all"]
+            results = [{
+                "benchmark": "Needle",
+                "passed": True,
+                "prefill_speed": 100.0,
+                "decode_speed": 50.0,
+                "ttft": 0.1,
+            }]
+            with patch("advanced_benchmarks.get_model_settings_from_endpoint", return_value={"model_name": "m1"}):
+                advanced_benchmarks._save_run_data(results, "http://127.0.0.1:8080", "m1", cli_args, output_path=out_file)
+
+            self.assertTrue(os.path.exists(out_file))
+            with open(out_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+
+            saved_cli = saved["run_metadata"]["cli_arguments"]
+            self.assertIn("--api-key", saved_cli)
+            self.assertIn("********", saved_cli)
+            self.assertNotIn("super-secret-pass", saved_cli)
+
 
 if __name__ == "__main__":
     unittest.main()
