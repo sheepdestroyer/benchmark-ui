@@ -1087,5 +1087,78 @@ class TestBuildThroughputFigure(unittest.TestCase):
         self.assertEqual(list(t0.x), [512, 4096])
 
 
+class TestEnqueueOutput(unittest.TestCase):
+    def test_reading_multi_line_text(self):
+        import io
+        import queue
+
+        text = "line 1\nline 2\nline 3\n"
+        stream = io.StringIO(text)
+        q = queue.Queue()
+
+        dashboard.enqueue_output(stream, q)
+
+        results = []
+        while not q.empty():
+            results.append(q.get_nowait())
+
+        self.assertEqual(results, ["line 1\n", "line 2\n", "line 3\n"])
+        self.assertTrue(stream.closed)
+
+    def test_reading_empty_stream(self):
+        import io
+        import queue
+
+        stream = io.StringIO("")
+        q = queue.Queue()
+
+        dashboard.enqueue_output(stream, q)
+
+        self.assertTrue(q.empty())
+        self.assertTrue(stream.closed)
+
+    def test_stream_closed_on_completion_with_mock(self):
+        import queue
+
+        mock_stream = MagicMock()
+        mock_stream.readline.side_effect = ["output 1\n", "output 2\n", ""]
+        q = queue.Queue()
+
+        dashboard.enqueue_output(mock_stream, q)
+
+        results = []
+        while not q.empty():
+            results.append(q.get_nowait())
+
+        self.assertEqual(results, ["output 1\n", "output 2\n"])
+        mock_stream.close.assert_called_once()
+
+    def test_stream_closed_on_exception(self):
+        import queue
+
+        mock_stream = MagicMock()
+        mock_stream.readline.side_effect = RuntimeError("Read error")
+        q = queue.Queue()
+
+        with self.assertRaises(RuntimeError) as ctx:
+            dashboard.enqueue_output(mock_stream, q)
+        self.assertEqual(str(ctx.exception), "Read error")
+        mock_stream.close.assert_called_once()
+
+    def test_stream_close_exception_suppressed(self):
+        import queue
+
+        mock_stream = MagicMock()
+        mock_stream.readline.side_effect = ["line 1\n", ""]
+        mock_stream.close.side_effect = OSError("Failed to close stream")
+        q = queue.Queue()
+
+        dashboard.enqueue_output(mock_stream, q)
+
+        self.assertEqual(q.get_nowait(), "line 1\n")
+        self.assertTrue(q.empty())
+        mock_stream.close.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

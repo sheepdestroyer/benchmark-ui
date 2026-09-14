@@ -151,6 +151,11 @@ def is_safe_code(code_str):
 # ==============================================================================
 
 def generate_filler_text(target_tokens=200000):
+    if not (isinstance(target_tokens, (int, float)) and not isinstance(target_tokens, bool)):
+        raise TypeError("target_tokens must be an integer or float")
+    if target_tokens <= 0:
+        return []
+
     distractors = [
         "The software architecture patterns dictate that services must be decoupled.",
         "Quantum computing relies on superposition and entanglement to perform computations.",
