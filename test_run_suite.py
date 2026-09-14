@@ -801,7 +801,31 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
             "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
         )
         mock_adv.run_swe_test.assert_called_once_with(
-            "http://127.0.0.1:8081", "test-model", api_key="reasoning-secret"
+            "http://127.0.0.1:8081", "test-model", max_tokens=16384, api_key="reasoning-secret"
+        )
+
+    def test_run_reasoning_forwards_custom_max_tokens(self):
+        mock_adv = MagicMock()
+        mock_adv.run_needle_test.return_value = {"passed": True}
+        mock_adv.run_ruler_test.return_value = {"passed": True}
+        mock_adv.run_longbench_test.return_value = {"passed": True}
+        mock_adv.run_swe_test.return_value = {"passed": True}
+
+        with patch("run_suite.advanced_benchmarks", mock_adv):
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081",
+                "test-model",
+                tokens=1000,
+                api_key="reasoning-secret",
+                max_tokens=32768,
+            )
+
+        self.assertEqual(results["swe_bench"], "Pass")
+        mock_adv.run_swe_test.assert_called_once_with(
+            "http://127.0.0.1:8081",
+            "test-model",
+            max_tokens=32768,
+            api_key="reasoning-secret",
         )
 
     def test_main_cli_api_key_argument(self):

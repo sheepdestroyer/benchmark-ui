@@ -1703,6 +1703,191 @@ class TestRunSweTest(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertTrue(res["passed"])
 
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_uses_buggy_calculator_fixture_when_available(self, mock_call, mock_run):
+        fixtures_dir = os.path.join(self.toy_repo_dir, "fixtures")
+        os.makedirs(fixtures_dir, exist_ok=True)
+        buggy_path = os.path.join(fixtures_dir, "buggy_calculator.py")
+        buggy_code = "# BUGGY FIXTURE CODE\ndef parse_and_eval(expr):\n    return 0\n"
+        with open(buggy_path, "w", encoding="utf-8") as f:
+            f.write(buggy_code)
+
+        captured_prompt = {}
+
+        def fake_call(endpoint, model, prompt, max_tokens=16384, api_key=None):
+            captured_prompt["prompt"] = prompt
+            return {
+                "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+                "reasoning": "",
+                "ttft": 0.1,
+                "prefill_speed": 100.0,
+                "decode_time": 0.1,
+                "decode_speed": 50.0,
+            }
+
+        mock_call.side_effect = fake_call
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+
+        # Verify prompt contained the buggy fixture code and prompt instruction
+        self.assertIn("# BUGGY FIXTURE CODE", captured_prompt.get("prompt", ""))
+        self.assertIn(
+            "Fix the order-of-operations bug in the file calculator.py so that all tests pass. "
+            "If all tests already pass or once fixed, output the complete python code block "
+            "immediately without exhaustive verification.",
+            captured_prompt.get("prompt", ""),
+        )
+
+        # Verify calculator.py is safely restored to original clean state
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_restores_clean_state_when_exception_in_endpoint(self, mock_call):
+        fixtures_dir = os.path.join(self.toy_repo_dir, "fixtures")
+        os.makedirs(fixtures_dir, exist_ok=True)
+        buggy_path = os.path.join(fixtures_dir, "buggy_calculator.py")
+        with open(buggy_path, "w", encoding="utf-8") as f:
+            f.write("# BUGGY\n")
+
+        mock_call.side_effect = RuntimeError("Endpoint network failure")
+
+        with self.assertRaises(RuntimeError):
+            run_swe_test("http://127.0.0.1:8081", "test-model")
+
+        # Verify calculator.py was safely restored even on exception
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_restores_clean_state_when_tests_fail_with_fixture(self, mock_call, mock_run):
+        fixtures_dir = os.path.join(self.toy_repo_dir, "fixtures")
+        os.makedirs(fixtures_dir, exist_ok=True)
+        buggy_path = os.path.join(fixtures_dir, "buggy_calculator.py")
+        with open(buggy_path, "w", encoding="utf-8") as f:
+            f.write("# BUGGY\n")
+
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 0\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+            "decode_time": 0.1,
+            "decode_speed": 50.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="FAILED"
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertFalse(res["passed"])
+
+        # Verify calculator.py is restored and backup removed
+        backup_path = self.code_path + ".bak"
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_swe_test_forwards_custom_max_tokens(self, mock_call):
+        mock_call.return_value = {
+            "response": "```python\npass\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+        }
+        # Test default max_tokens is 16384
+        res_default = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res_default)
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 16384)
+
+        # Test custom max_tokens forwarded
+        mock_call.reset_mock()
+        res_custom = run_swe_test("http://127.0.0.1:8081", "test-model", max_tokens=8192)
+        self.assertIsNotNone(res_custom)
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 8192)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_recovers_from_preexisting_backup_file(self, mock_call, mock_run):
+        # Simulate an interrupted previous run:
+        # calculator.py has broken/corrupted code
+        corrupted_code = "# CORRUPTED LEFTOVER CODE\ndef parse_and_eval(expr):\n    return -999\n"
+        with open(self.code_path, "w", encoding="utf-8") as f:
+            f.write(corrupted_code)
+
+        # calculator.py.bak has the original pristine code
+        pristine_backup_code = "# PRISTINE CLEAN CODE\ndef parse_and_eval(expr):\n    return 42\n"
+        backup_path = self.code_path + ".bak"
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(pristine_backup_code)
+
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+            "decode_time": 0.1,
+            "decode_speed": 50.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+
+        # Verify calculator.py was restored to pristine_backup_code, not corrupted_code
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), pristine_backup_code)
+
+    @patch("advanced_benchmarks.os.replace")
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_os_replace_oserror_fallback_in_pre_recovery_and_finally(
+        self, mock_call, mock_run, mock_replace
+    ):
+        mock_replace.side_effect = OSError("Cross-device link error")
+
+        # Simulate pre-existing backup
+        backup_path = self.code_path + ".bak"
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(self.orig_code)
+
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+            "decode_time": 0.1,
+            "decode_speed": 50.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
 
 class TestMainRunner(unittest.TestCase):
     @patch("advanced_benchmarks._save_run_data")

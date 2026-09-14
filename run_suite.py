@@ -201,7 +201,7 @@ def run_throughput(endpoint, model, api_key=None):
         "ttft": sum(ttfts) / len(ttfts) if ttfts else 0.0
     }
 
-def run_reasoning(endpoint, model, tokens, api_key=None):
+def run_reasoning(endpoint, model, tokens, api_key=None, max_tokens=16384):
     print("\n=========================================================")
     print(" Running Reasoning Benchmarks (advanced_benchmarks.py)")
     print("=========================================================")
@@ -239,7 +239,7 @@ def run_reasoning(endpoint, model, tokens, api_key=None):
             
         print("[*] Executing SWE-bench test...")
         try:
-            res = advanced_benchmarks.run_swe_test(endpoint, model, **call_kw)
+            res = advanced_benchmarks.run_swe_test(endpoint, model, max_tokens=max_tokens, **call_kw)
             results["swe_bench"] = "Pass" if res and res.get("passed") else "Fail"
         except Exception as e:
             print(f"SWE-bench failed: {e}")

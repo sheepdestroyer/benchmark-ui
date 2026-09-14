@@ -438,25 +438,44 @@ def _extract_code_block_from_response(raw_response, reasoning):
     return new_code
 
 
-def run_swe_test(endpoint, model, api_key=None):
+def run_swe_test(endpoint, model, max_tokens=16384, api_key=None):
     print("\n=== Running SWE-bench Codebase Debugging Test ===")
 
     toy_repo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "toy_repo")
     code_path = os.path.join(toy_repo_dir, "calculator.py")
     test_path = os.path.join(toy_repo_dir, "test_calculator.py")
+    buggy_fixture_path = os.path.join(toy_repo_dir, "fixtures", "buggy_calculator.py")
 
     if not os.path.exists(code_path) or not os.path.exists(test_path):
         print("Error: Toy repository files not found.")
         return None
 
-    # Read files
-    with open(code_path, "r", encoding="utf-8") as f:
-        code_content = f.read()
-    with open(test_path, "r", encoding="utf-8") as f:
-        test_content = f.read()
+    backup_path = code_path + ".bak"
 
-    # Construct prompt
-    prompt = f"""You are an automated software engineer. Fix the order-of-operations bug in the file calculator.py so that all tests pass.
+    # Recover cleanly from a previously interrupted run if backup exists
+    if os.path.exists(backup_path):
+        try:
+            os.replace(backup_path, code_path)
+        except OSError:
+            shutil.copy2(backup_path, code_path)
+            os.remove(backup_path)
+
+    has_backup = False
+
+    try:
+        if os.path.exists(buggy_fixture_path):
+            shutil.copy2(code_path, backup_path)
+            has_backup = True
+            shutil.copy2(buggy_fixture_path, code_path)
+
+        # Read files
+        with open(code_path, "r", encoding="utf-8") as f:
+            code_content = f.read()
+        with open(test_path, "r", encoding="utf-8") as f:
+            test_content = f.read()
+
+        # Construct prompt
+        prompt = f"""You are an automated software engineer. Fix the order-of-operations bug in the file calculator.py so that all tests pass. If all tests already pass or once fixed, output the complete python code block immediately without exhaustive verification.
 
 Here is the code of calculator.py:
 ```python
@@ -470,53 +489,57 @@ Here is the test suite in test_calculator.py:
 
 Be extremely concise. Keep your internal thought trace minimal. Please output the COMPLETE corrected code of calculator.py inside a single python code block (wrapped in ```python ... ```). Do not output other text or conversational filler."""
 
-    print("Sending codebase issue to LLM...")
-    res = call_endpoint(endpoint, model, prompt, max_tokens=4096, api_key=api_key)
-    if not res:
-        return None
+        print("Sending codebase issue to LLM...")
+        res = call_endpoint(endpoint, model, prompt, max_tokens=max_tokens, api_key=api_key)
+        if not res:
+            return None
 
-    # Parse code block from response
-    new_code = _extract_code_block_from_response(res.get("response", ""), res.get("reasoning", ""))
+        # Parse code block from response
+        new_code = _extract_code_block_from_response(res.get("response", ""), res.get("reasoning", ""))
 
-    if not new_code:
-        print("Error: Could not parse python code block from response.")
-        is_correct = False
-    else:
-        is_safe, reason = is_safe_code(new_code)
-        if not is_safe:
-            print(f"Error: Generated code failed security sandboxing check: {reason}")
+        if not new_code:
+            print("Error: Could not parse python code block from response.")
             is_correct = False
         else:
-            # Backup original file
-            backup_path = code_path + ".bak"
-            shutil.copy2(code_path, backup_path)
+            is_safe, reason = is_safe_code(new_code)
+            if not is_safe:
+                print(f"Error: Generated code failed security sandboxing check: {reason}")
+                is_correct = False
+            else:
+                if not has_backup:
+                    shutil.copy2(code_path, backup_path)
+                    has_backup = True
 
-            try:
                 # Write new code
                 with open(code_path, "w", encoding="utf-8") as f:
                     f.write(new_code)
 
                 # Run unit tests
-                test_run = subprocess.run(
-                    [sys.executable, "-m", "unittest", "test_calculator.py"],
-                    cwd=toy_repo_dir,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
+                try:
+                    test_run = subprocess.run(
+                        [sys.executable, "-m", "unittest", "test_calculator.py"],
+                        cwd=toy_repo_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        check=False,
+                    )
 
-                print(test_run.stdout)
-                print(test_run.stderr)
+                    print(test_run.stdout)
+                    print(test_run.stderr)
 
-                is_correct = test_run.returncode == 0
-            except Exception as e:
-                print(f"Failed to execute tests: {e}")
-                is_correct = False
-            finally:
-                # Restore backup
-                if "backup_path" in locals() and os.path.exists(backup_path):
-                    shutil.copy2(backup_path, code_path)
-                    os.remove(backup_path)
+                    is_correct = test_run.returncode == 0
+                except Exception as e:
+                    print(f"Failed to execute tests: {e}")
+                    is_correct = False
+    finally:
+        # Restore backup
+        if os.path.exists(backup_path):
+            try:
+                os.replace(backup_path, code_path)
+            except OSError:
+                shutil.copy2(backup_path, code_path)
+                os.remove(backup_path)
 
     print("\n---------------------------------------------------------")
     print(f"SWE-bench Result   : {'PASSED' if is_correct else 'FAILED'}")
