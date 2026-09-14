@@ -1063,6 +1063,122 @@ class TestParseRunFile(unittest.TestCase):
             self.assertEqual(res["Flash Attn"], "true")
             self.assertEqual(res["Parallel"], "1")
             self.assertIn(res["Fit"], ("true", "false"))
+            self.assertEqual(res["Agentic Suite"], "N/A")
+            self.assertIsNone(res["Agentic Total"])
+            self.assertIsNone(res["Agentic Passed"])
+            self.assertIsNone(res["Agentic Pass Rate"])
+            self.assertIsNone(res["Agentic Turns"])
+            self.assertIsNone(res["Agentic Tool Calls"])
+            self.assertIsNone(res["Prompt Tokens"])
+            self.assertIsNone(res["Reasoning Tokens"])
+            self.assertIsNone(res["Completion Tokens"])
+
+    def test_parse_run_file_agentic_valid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_agentic.json"
+            data = {
+                "run_metadata": {"timestamp": "2026-09-15T00:00:00"},
+                "agentic_metrics": {
+                    "suite": "terminal-bench-2",
+                    "tasks_total": 10,
+                    "tasks_passed": 8,
+                    "average_turns": 3.5,
+                    "total_tool_calls": 24,
+                },
+                "token_breakdown": {
+                    "prompt_tokens": 5000,
+                    "reasoning_tokens": 1500,
+                    "completion_tokens": 2500,
+                },
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Agentic Suite"], "terminal-bench-2")
+            self.assertEqual(res["Agentic Total"], 10)
+            self.assertEqual(res["Agentic Passed"], 8)
+            self.assertEqual(res["Agentic Pass Rate"], 80.0)
+            self.assertEqual(res["Agentic Turns"], 3.5)
+            self.assertEqual(res["Agentic Tool Calls"], 24)
+            self.assertEqual(res["Prompt Tokens"], 5000)
+            self.assertEqual(res["Reasoning Tokens"], 1500)
+            self.assertEqual(res["Completion Tokens"], 2500)
+
+    def test_parse_run_file_agentic_partial(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_partial.json"
+            data = {
+                "agentic_metrics": {
+                    "tasks_total": 0,
+                    "tasks_passed": 0,
+                },
+                "token_breakdown": {
+                    "prompt_tokens": 200,
+                },
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Agentic Suite"], "N/A")
+            self.assertEqual(res["Agentic Total"], 0)
+            self.assertEqual(res["Agentic Passed"], 0)
+            self.assertIsNone(res["Agentic Pass Rate"])
+            self.assertIsNone(res["Agentic Turns"])
+            self.assertIsNone(res["Agentic Tool Calls"])
+            self.assertEqual(res["Prompt Tokens"], 200)
+            self.assertIsNone(res["Reasoning Tokens"])
+            self.assertIsNone(res["Completion Tokens"])
+
+            file_path2 = Path(tmpdir) / "run_partial2.json"
+            data2 = {
+                "agentic_metrics": {
+                    "tasks_total": 5,
+                    "tasks_passed": None,
+                }
+            }
+            file_path2.write_text(json.dumps(data2), encoding="utf-8")
+            res2 = dashboard._parse_run_file(file_path2)
+            self.assertIsNone(res2["Agentic Pass Rate"])
+
+    def test_parse_run_file_agentic_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_empty_agentic.json"
+            data = {
+                "agentic_metrics": {},
+                "token_breakdown": {},
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Agentic Suite"], "N/A")
+            self.assertIsNone(res["Agentic Total"])
+            self.assertIsNone(res["Agentic Passed"])
+            self.assertIsNone(res["Agentic Pass Rate"])
+            self.assertIsNone(res["Agentic Turns"])
+            self.assertIsNone(res["Agentic Tool Calls"])
+            self.assertIsNone(res["Prompt Tokens"])
+            self.assertIsNone(res["Reasoning Tokens"])
+            self.assertIsNone(res["Completion Tokens"])
+
+    def test_parse_run_file_agentic_none(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_none_agentic.json"
+            data = {
+                "agentic_metrics": None,
+                "token_breakdown": None,
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Agentic Suite"], "N/A")
+            self.assertIsNone(res["Agentic Total"])
+            self.assertIsNone(res["Agentic Passed"])
+            self.assertIsNone(res["Agentic Pass Rate"])
+            self.assertIsNone(res["Agentic Turns"])
+            self.assertIsNone(res["Agentic Tool Calls"])
+            self.assertIsNone(res["Prompt Tokens"])
+            self.assertIsNone(res["Reasoning Tokens"])
+            self.assertIsNone(res["Completion Tokens"])
 
     def test_parse_run_file_invalid_tokens_arg(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1605,6 +1721,248 @@ class TestBuildThroughputFigure(unittest.TestCase):
         fig = dashboard.build_throughput_figure(df)
         t0 = fig.data[0]
         self.assertEqual(list(t0.x), [512, 4096])
+
+
+@unittest.skipUnless(
+    HAS_PANDAS_AND_PLOTLY, "pandas and plotly required for context scaling tests"
+)
+class TestBuildContextScalingFigure(unittest.TestCase):
+    def setUp(self):
+        import pandas as real_pd
+        import plotly.graph_objects as real_go
+
+        self._orig_go = dashboard.go
+        self._orig_pd = dashboard.pd
+        dashboard.go = real_go
+        dashboard.pd = real_pd
+
+    def tearDown(self):
+        dashboard.go = self._orig_go
+        dashboard.pd = self._orig_pd
+
+    def test_empty_dataframe(self):
+        import pandas as pd
+
+        fig = dashboard.build_context_scaling_figure(pd.DataFrame())
+        self.assertEqual(len(fig.data), 0)
+
+    def test_none_input(self):
+        fig = dashboard.build_context_scaling_figure(None)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_missing_schema_columns(self):
+        import pandas as pd
+
+        df = pd.DataFrame({"Model": ["M1"], "Context Length": [1024]})
+        fig = dashboard.build_context_scaling_figure(df)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_non_dataframe_input(self):
+        self.assertEqual(len(dashboard.build_context_scaling_figure("not_a_df").data), 0)
+        self.assertEqual(len(dashboard.build_context_scaling_figure([1, 2, 3]).data), 0)
+
+    def test_single_context_dataframe(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["Qwen3.6-27B"],
+                "Context Length": [1024],
+                "Prefill (t/s)": [1200.5],
+                "Decode (t/s)": [42.0],
+                "TTFT (s)": [0.45],
+            }
+        )
+        fig = dashboard.build_context_scaling_figure(df)
+        self.assertEqual(len(fig.data), 3)
+        self.assertEqual(list(fig.data[0].x), [1024])
+        self.assertEqual(list(fig.data[0].y), [1200.5])
+        self.assertEqual(list(fig.data[1].y), [42.0])
+        self.assertEqual(list(fig.data[2].y), [0.45])
+
+    def test_multi_context_up_to_240k(self):
+        import pandas as pd
+
+        contexts = [1024, 8192, 32768, 65536, 131072, 240000]
+        df = pd.DataFrame(
+            {
+                "Model": ["Model_A"] * 6 + ["Model_B"] * 6,
+                "Context Length": contexts * 2,
+                "Prefill (t/s)": [
+                    1500,
+                    1400,
+                    1300,
+                    1200,
+                    1000,
+                    800,
+                    2000,
+                    1900,
+                    1800,
+                    1700,
+                    1500,
+                    1200,
+                ],
+                "Decode (t/s)": [50, 48, 45, 42, 38, 30, 80, 78, 75, 70, 65, 55],
+                "TTFT (s)": [
+                    0.1,
+                    0.3,
+                    0.8,
+                    1.5,
+                    3.2,
+                    6.0,
+                    0.08,
+                    0.25,
+                    0.6,
+                    1.2,
+                    2.8,
+                    5.2,
+                ],
+            }
+        )
+        fig = dashboard.build_context_scaling_figure(df)
+        self.assertEqual(len(fig.data), 6)
+        self.assertEqual(list(fig.data[0].x), contexts)
+
+    def test_dataframe_with_no_model_column(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Context Length": [1000, 2000],
+                "Prefill (t/s)": [1000.0, 900.0],
+                "Decode (t/s)": [40.0, 38.0],
+                "TTFT (s)": [0.2, 0.4],
+            }
+        )
+        fig = dashboard.build_context_scaling_figure(df)
+        self.assertEqual(len(fig.data), 3)
+
+    def test_dataframe_with_invalid_or_negative_context(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["M1"],
+                "Context Length": [-10],
+                "Prefill (t/s)": [100.0],
+                "Decode (t/s)": [40.0],
+                "TTFT (s)": [0.2],
+            }
+        )
+        fig = dashboard.build_context_scaling_figure(df)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_context_scaling_custom_model_colors(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["CustomModel"],
+                "Context Length": [1024],
+                "Prefill (t/s)": [1200.0],
+                "Decode (t/s)": [40.0],
+                "TTFT (s)": [0.5],
+            }
+        )
+        fig = dashboard.build_context_scaling_figure(
+            df, model_colors={"CustomModel": "#ff0000"}
+        )
+        self.assertEqual(len(fig.data), 3)
+        self.assertEqual(fig.data[0].marker.color, "#ff0000")
+
+
+@unittest.skipUnless(
+    HAS_PANDAS_AND_PLOTLY, "pandas and plotly required for reasoning ratio tests"
+)
+class TestBuildReasoningRatioFigure(unittest.TestCase):
+    def setUp(self):
+        import pandas as real_pd
+        import plotly.graph_objects as real_go
+
+        self._orig_go = dashboard.go
+        self._orig_pd = dashboard.pd
+        dashboard.go = real_go
+        dashboard.pd = real_pd
+
+    def tearDown(self):
+        dashboard.go = self._orig_go
+        dashboard.pd = self._orig_pd
+
+    def test_missing_or_empty_dataframe(self):
+        import pandas as pd
+
+        self.assertEqual(len(dashboard.build_reasoning_ratio_figure(None).data), 0)
+        self.assertEqual(
+            len(dashboard.build_reasoning_ratio_figure(pd.DataFrame()).data), 0
+        )
+        self.assertEqual(
+            len(
+                dashboard.build_reasoning_ratio_figure(
+                    pd.DataFrame({"Model": ["M1"]})
+                ).data
+            ),
+            0,
+        )
+        self.assertEqual(
+            len(dashboard.build_reasoning_ratio_figure("not a df").data), 0
+        )
+
+    def test_missing_token_breakdown_all_nan(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["M1", "M2"],
+                "Reasoning Tokens": [None, float("nan")],
+                "Completion Tokens": [None, float("nan")],
+            }
+        )
+        fig = dashboard.build_reasoning_ratio_figure(df)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_all_zeros_token_breakdown(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["M1"],
+                "Reasoning Tokens": [0],
+                "Completion Tokens": [0],
+            }
+        )
+        fig = dashboard.build_reasoning_ratio_figure(df)
+        self.assertEqual(len(fig.data), 0)
+
+    def test_valid_token_breakdown(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Model": ["Model_B", "Model_A"],
+                "Reasoning Tokens": [1200, 600],
+                "Completion Tokens": [2000, 1000],
+            }
+        )
+        fig = dashboard.build_reasoning_ratio_figure(df)
+        self.assertEqual(len(fig.data), 2)
+        self.assertEqual(list(fig.data[0].x), ["Model_A", "Model_B"])
+        self.assertEqual(list(fig.data[0].y), [600, 1200])
+        self.assertEqual(list(fig.data[1].x), ["Model_A", "Model_B"])
+        self.assertEqual(list(fig.data[1].y), [1000, 2000])
+        self.assertEqual(fig.layout.barmode, "group")
+
+    def test_valid_token_breakdown_without_model_column(self):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Reasoning Tokens": [500],
+                "Completion Tokens": [1000],
+            }
+        )
+        fig = dashboard.build_reasoning_ratio_figure(df)
+        self.assertEqual(len(fig.data), 2)
+        self.assertEqual(list(fig.data[0].x), ["Default"])
 
 
 class TestEnqueueOutput(unittest.TestCase):
@@ -2508,8 +2866,35 @@ class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--corpus") + 1], "kld_corpus.txt")
         self.assertIn("--max-tokens", cmd)
         self.assertEqual(cmd[cmd.index("--max-tokens") + 1], "16384")
+        self.assertIn("--agentic-tasks", cmd)
+        self.assertEqual(cmd[cmd.index("--agentic-tasks") + 1], "all")
         self.assertNotIn("--gguf-path", cmd)
         self.assertNotIn("--api-key", cmd)
+
+    def test_build_runner_cmd_agentic_mode_and_tasks(self):
+        cmd = dashboard.build_runner_cmd(
+            mode="agentic",
+            endpoint="http://127.0.0.1:8083",
+            model="Qwen3.6-27B",
+            tokens=32768,
+            corpus="kld_corpus.txt",
+            agentic_tasks="git-repair",
+        )
+        self.assertIn("--mode", cmd)
+        self.assertEqual(cmd[cmd.index("--mode") + 1], "agentic")
+        self.assertIn("--agentic-tasks", cmd)
+        self.assertEqual(cmd[cmd.index("--agentic-tasks") + 1], "git-repair")
+
+    def test_build_runner_cmd_throughput_mode_ignores_agentic_tasks(self):
+        cmd = dashboard.build_runner_cmd(
+            mode="throughput",
+            endpoint="http://127.0.0.1:8083",
+            model="Qwen3.6-27B",
+            tokens=32768,
+            corpus="kld_corpus.txt",
+            agentic_tasks="fix-syntax",
+        )
+        self.assertNotIn("--agentic-tasks", cmd)
 
     def test_build_runner_cmd_custom_max_tokens_and_options(self):
         cmd = dashboard.build_runner_cmd(
@@ -2526,10 +2911,59 @@ class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--max-tokens") + 1], "8192")
         self.assertIn("--tokens", cmd)
         self.assertEqual(cmd[cmd.index("--tokens") + 1], "240000")
+        self.assertNotIn("--agentic-tasks", cmd)
         self.assertIn("--gguf-path", cmd)
         self.assertEqual(cmd[cmd.index("--gguf-path") + 1], "path/to/model.gguf")
         self.assertIn("--api-key", cmd)
         self.assertEqual(cmd[cmd.index("--api-key") + 1], "secret-pat")
+
+    def test_app_test_mode_selection_and_agentic_tasks_filter(self):
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:  # pragma: no cover
+            self.skipTest("streamlit.testing.v1.AppTest is not available")
+
+        at = AppTest.from_file("dashboard.py")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions on initial run: {at.exception}",
+        )
+
+        # Default mode is "all" -> Agentic Tasks Filter is present with default "all"
+        mode_sb = at.selectbox(key="runner_benchmark_mode")
+        self.assertEqual(mode_sb.value, "all")
+        agentic_sb = at.selectbox(key="runner_agentic_tasks")
+        self.assertEqual(agentic_sb.value, "all")
+
+        # Switch to "throughput" -> Agentic Tasks Filter is hidden
+        mode_sb.select("throughput")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting throughput: {at.exception}",
+        )
+        select_keys = [sb.key for sb in at.selectbox]
+        self.assertNotIn("runner_agentic_tasks", select_keys)
+
+        # Switch to "agentic" -> Agentic Tasks Filter is visible
+        at.selectbox(key="runner_benchmark_mode").select("agentic")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting agentic: {at.exception}",
+        )
+        select_keys = [sb.key for sb in at.selectbox]
+        self.assertIn("runner_agentic_tasks", select_keys)
+
+        # Select a specific task filter
+        at.selectbox(key="runner_agentic_tasks").select("fix-syntax")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting fix-syntax: {at.exception}",
+        )
+        self.assertEqual(at.selectbox(key="runner_agentic_tasks").value, "fix-syntax")
 
     def test_app_test_context_tier_switch_updates_tokens_input(self):
         try:
@@ -2589,6 +3023,22 @@ class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
             f"AppTest raised exceptions after selecting Custom: {at.exception}",
         )
         self.assertEqual(at.number_input(key="runner_context_tokens_input").value, 8192)
+
+    def test_app_test_compare_tab_with_agentic(self):
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:  # pragma: no cover
+            self.skipTest("streamlit.testing.v1.AppTest is not available")
+
+        at = AppTest.from_file("dashboard.py")
+        at.run(timeout=10)
+        self.assertFalse(at.exception)
+
+        # Select quant_a that has agentic metrics (q4_0)
+        if "quant_a" in [sb.key for sb in at.selectbox]:
+            at.selectbox(key="quant_a").select("q4_0")
+            at.run(timeout=10)
+            self.assertFalse(at.exception)
 
 
 if __name__ == "__main__":

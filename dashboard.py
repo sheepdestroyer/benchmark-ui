@@ -42,6 +42,16 @@ REQUIRED_THROUGHPUT_COLS = (
     "Prefill (t/s)",
     "Decode (t/s)",
 )
+REQUIRED_CONTEXT_SCALING_COLS = (
+    "Context Length",
+    "Prefill (t/s)",
+    "Decode (t/s)",
+    "TTFT (s)",
+)
+REQUIRED_REASONING_RATIO_COLS = (
+    "Reasoning Tokens",
+    "Completion Tokens",
+)
 
 
 def validate_gguf_path(gguf_path_str):
@@ -146,6 +156,7 @@ def build_runner_cmd(
     gguf_path=None,
     api_key=None,
     max_tokens=16384,
+    agentic_tasks="all",
 ):
     cmd = [
         sys.executable,
@@ -163,6 +174,8 @@ def build_runner_cmd(
         "--max-tokens",
         str(max_tokens),
     ]
+    if mode in ["agentic", "all"]:
+        cmd.extend(["--agentic-tasks", str(agentic_tasks)])
     if gguf_path:
         cmd.extend(["--gguf-path", str(gguf_path)])
     if api_key:
@@ -844,6 +857,15 @@ def _parse_run_file(filepath):
         parallel = settings.get("parallel", presets_meta.get("parallel", "1"))
         fit = settings.get("fit", presets_meta.get("fit", "true"))
 
+        # Safely extract agentic metrics and token breakdown
+        agentic = data.get("agentic_metrics") or {}
+        token_breakdown = data.get("token_breakdown") or {}
+        tasks_total = agentic.get("tasks_total")
+        tasks_passed = agentic.get("tasks_passed")
+        pass_rate = None
+        if tasks_total and tasks_total > 0 and tasks_passed is not None:
+            pass_rate = round((tasks_passed / tasks_total) * 100, 1)
+
         return {
             "Filename": filepath.name,
             "Timestamp": metadata.get("timestamp", "Unknown"),
@@ -869,6 +891,15 @@ def _parse_run_file(filepath):
             "RULER": accuracy.get("ruler", "N/A"),
             "LongBench": accuracy.get("longbench", "N/A"),
             "SWE-bench": accuracy.get("swe_bench", "N/A"),
+            "Agentic Suite": agentic.get("suite", "N/A"),
+            "Agentic Total": tasks_total,
+            "Agentic Passed": tasks_passed,
+            "Agentic Pass Rate": pass_rate,
+            "Agentic Turns": agentic.get("average_turns"),
+            "Agentic Tool Calls": agentic.get("total_tool_calls"),
+            "Prompt Tokens": token_breakdown.get("prompt_tokens"),
+            "Reasoning Tokens": token_breakdown.get("reasoning_tokens"),
+            "Completion Tokens": token_breakdown.get("completion_tokens"),
             "PPL": loss.get("perplexity"),
             "KLD": loss.get("mean_kld"),
             "Same Top %": loss.get("same_top_match_percent"),
@@ -1014,6 +1045,40 @@ with tab_history:
         )
         unified_df = filtered_df[~is_kld_file]
 
+        # Check and display Agentic Benchmark Summary metrics if present
+        has_agentic = (
+            "Agentic Total" in unified_df.columns
+            and unified_df["Agentic Total"].notna().any()
+        )
+        if has_agentic:
+            st.markdown("### 🤖 Agentic Benchmark Summary")
+            agentic_df = unified_df[unified_df["Agentic Total"].notna()]
+            total_tasks = int(agentic_df["Agentic Total"].sum())
+            total_passed = int(agentic_df["Agentic Passed"].fillna(0).sum())
+            overall_pass_rate = (
+                round((total_passed / total_tasks) * 100, 1) if total_tasks > 0 else 0.0
+            )
+            avg_turns = (
+                round(agentic_df["Agentic Turns"].dropna().mean(), 1)
+                if not agentic_df["Agentic Turns"].dropna().empty
+                else 0.0
+            )
+            total_tools = (
+                int(agentic_df["Agentic Tool Calls"].dropna().sum())
+                if not agentic_df["Agentic Tool Calls"].dropna().empty
+                else 0
+            )
+
+            col_ag1, col_ag2, col_ag3, col_ag4 = st.columns(4)
+            with col_ag1:
+                st.metric("Agentic Tasks Run", total_tasks)
+            with col_ag2:
+                st.metric("Pass Rate %", f"{overall_pass_rate}%")
+            with col_ag3:
+                st.metric("Average Turns", avg_turns)
+            with col_ag4:
+                st.metric("Tool Calls", total_tools)
+
         # Grouped Summary table
         st.markdown("### 📊 Profile & Quantization Summary (Grouped Averages)")
         summary_cols = [
@@ -1029,6 +1094,13 @@ with tab_history:
             "PPL",
             "KLD",
         ]
+        if (
+            "Agentic Pass Rate" in unified_df.columns
+            and unified_df["Agentic Pass Rate"].notna().any()
+        ):
+            summary_cols.extend(
+                ["Agentic Pass Rate", "Agentic Turns", "Agentic Tool Calls"]
+            )
         grouped_df = (
             unified_df[summary_cols]
             .groupby(
@@ -1098,23 +1170,38 @@ with tab_history:
             "RULER": "RULER Pass Rate",
             "LongBench": "LongBench Pass Rate",
             "SWE-bench": "SWE-bench Pass Rate",
+            "Agentic Pass Rate": "Avg Agentic Pass Rate",
+            "Agentic Turns": "Avg Agentic Turns",
+            "Agentic Tool Calls": "Avg Agentic Tool Calls",
         }
         merged_grouped = merged_grouped.rename(columns=rename_dict)
 
+        grouped_format = {
+            "Avg Prefill (t/s)": "{:.2f}",
+            "Avg Decode (t/s)": "{:.2f}",
+            "Avg TTFT (s)": "{:.3f}",
+            "Avg PPL": "{:.4f}",
+            "Avg KLD": "{:.6f}",
+            "Needle Pass Rate": "{:.0%}",
+            "RULER Pass Rate": "{:.0%}",
+            "LongBench Pass Rate": "{:.0%}",
+            "SWE-bench Pass Rate": "{:.0%}",
+        }
+        if "Avg Agentic Pass Rate" in merged_grouped.columns:
+            grouped_format["Avg Agentic Pass Rate"] = (
+                lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A"
+            )
+        if "Avg Agentic Turns" in merged_grouped.columns:
+            grouped_format["Avg Agentic Turns"] = (
+                lambda x: f"{x:.1f}" if pd.notna(x) else "N/A"
+            )
+        if "Avg Agentic Tool Calls" in merged_grouped.columns:
+            grouped_format["Avg Agentic Tool Calls"] = (
+                lambda x: f"{x:.1f}" if pd.notna(x) else "N/A"
+            )
+
         st.dataframe(
-            merged_grouped.style.format(
-                {
-                    "Avg Prefill (t/s)": "{:.2f}",
-                    "Avg Decode (t/s)": "{:.2f}",
-                    "Avg TTFT (s)": "{:.3f}",
-                    "Avg PPL": "{:.4f}",
-                    "Avg KLD": "{:.6f}",
-                    "Needle Pass Rate": "{:.0%}",
-                    "RULER Pass Rate": "{:.0%}",
-                    "LongBench Pass Rate": "{:.0%}",
-                    "SWE-bench Pass Rate": "{:.0%}",
-                }
-            ),
+            merged_grouped.style.format(grouped_format),
         )
 
         st.markdown("### 🗂️ Detailed Flat Logs")
@@ -1132,19 +1219,36 @@ with tab_history:
             "RULER",
             "LongBench",
             "SWE-bench",
+            "Agentic Suite",
+            "Agentic Pass Rate",
+            "Agentic Turns",
+            "Agentic Tool Calls",
             "PPL",
             "KLD",
         ]
+        active_display_cols = [c for c in display_cols if c in unified_df.columns]
+        flat_format = {
+            "Prefill (t/s)": "{:.2f}",
+            "Decode (t/s)": "{:.2f}",
+            "TTFT (s)": "{:.3f}",
+            "PPL": "{:.4f}",
+            "KLD": "{:.6f}",
+        }
+        if "Agentic Pass Rate" in unified_df.columns:
+            flat_format["Agentic Pass Rate"] = (
+                lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A"
+            )
+        if "Agentic Turns" in unified_df.columns:
+            flat_format["Agentic Turns"] = (
+                lambda x: f"{x:.1f}" if pd.notna(x) else "N/A"
+            )
+        if "Agentic Tool Calls" in unified_df.columns:
+            flat_format["Agentic Tool Calls"] = (
+                lambda x: f"{int(x)}" if pd.notna(x) else "N/A"
+            )
+
         st.dataframe(
-            unified_df[display_cols].style.format(
-                {
-                    "Prefill (t/s)": "{:.2f}",
-                    "Decode (t/s)": "{:.2f}",
-                    "TTFT (s)": "{:.3f}",
-                    "PPL": "{:.4f}",
-                    "KLD": "{:.6f}",
-                }
-            ),
+            unified_df[active_display_cols].style.format(flat_format),
         )
     else:
         st.info("No runs match the filter criteria.")
@@ -1281,6 +1385,204 @@ def build_throughput_figure(tp_df, model_colors=None):
     return fig1
 
 
+def build_context_scaling_figure(df, model_colors=None):
+    """Build Plotly figure for context scaling (Prefill, Decode, TTFT vs. Context Length up to 240k)."""
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if (
+        df is None
+        or getattr(df, "empty", True)
+        or not hasattr(df, "columns")
+        or not set(REQUIRED_CONTEXT_SCALING_COLS).issubset(df.columns)
+    ):
+        return fig
+
+    clean_df = df.copy()
+    for col in REQUIRED_CONTEXT_SCALING_COLS:
+        clean_df[col] = pd.to_numeric(clean_df[col], errors="coerce")
+    clean_df = clean_df.dropna(subset=REQUIRED_CONTEXT_SCALING_COLS)
+    clean_df = clean_df[clean_df["Context Length"] > 0].sort_values(by="Context Length")
+
+    if clean_df.empty:
+        return fig
+
+    if model_colors is None:
+        model_colors = {
+            "Qwen3.6-27B": "#3b82f6",
+            "Qwen3.6-27B-spec3": "#10b981",
+            "Qwen3.6-27B-spec4": "#8b5cf6",
+            "Qwen3.6-35B-A3B-spec": "#f97316",
+            "Qwen3.6-35B-A3B": "#ef4444",
+        }
+
+    models = clean_df["Model"].unique() if "Model" in clean_df.columns else ["Default"]
+    seen_models = set()
+
+    for model in sorted(models):
+        m_df = (
+            clean_df[clean_df["Model"] == model]
+            if "Model" in clean_df.columns
+            else clean_df
+        )
+        if m_df.empty:  # pragma: no cover
+            continue
+
+        color = model_colors.get(model, "#94a3b8")
+        show_legend = model not in seen_models
+        seen_models.add(model)
+
+        grouped = (
+            m_df.groupby("Context Length", as_index=False)[
+                ["Prefill (t/s)", "Decode (t/s)", "TTFT (s)"]
+            ]
+            .mean()
+            .sort_values(by="Context Length")
+        )
+
+        prefix = f"{model} " if len(models) > 1 else ""
+
+        # Prefill Speed (t/s) - Left Y-axis (secondary_y=False)
+        fig.add_trace(
+            go.Scatter(
+                x=grouped["Context Length"],
+                y=grouped["Prefill (t/s)"],
+                mode="lines+markers",
+                name=f"{prefix}Prefill (t/s)",
+                legendgroup=f"{model}_prefill",
+                showlegend=show_legend,
+                marker=dict(symbol="square", size=8, color=color),
+                line=dict(color=color, width=2),
+                hovertemplate=f"<b>{model} Prefill</b><br>Context: %{{x}} tokens<br>Speed: %{{y:.2f}} t/s<extra></extra>",
+            ),
+            secondary_y=False,
+        )
+
+        # Decode Speed (t/s) - Left Y-axis (secondary_y=False)
+        fig.add_trace(
+            go.Scatter(
+                x=grouped["Context Length"],
+                y=grouped["Decode (t/s)"],
+                mode="lines+markers",
+                name=f"{prefix}Decode (t/s)",
+                legendgroup=f"{model}_decode",
+                showlegend=show_legend,
+                marker=dict(symbol="circle", size=8, color=color),
+                line=dict(color=color, width=2, dash="dash"),
+                hovertemplate=f"<b>{model} Decode</b><br>Context: %{{x}} tokens<br>Speed: %{{y:.2f}} t/s<extra></extra>",
+            ),
+            secondary_y=False,
+        )
+
+        # TTFT (s) - Right Y-axis (secondary_y=True)
+        fig.add_trace(
+            go.Scatter(
+                x=grouped["Context Length"],
+                y=grouped["TTFT (s)"],
+                mode="lines+markers",
+                name=f"{prefix}TTFT (s)",
+                legendgroup=f"{model}_ttft",
+                showlegend=show_legend,
+                marker=dict(symbol="triangle-up", size=8),
+                line=dict(width=1.5, dash="dot"),
+                hovertemplate=f"<b>{model} TTFT</b><br>Context: %{{x}} tokens<br>TTFT: %{{y:.3f}} s<extra></extra>",
+            ),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        template="plotly_dark",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        title="Context Scaling Curves: Throughput & Latency vs. Context Length (up to 240k tokens)",
+        xaxis_title="Context Length (tokens, log scale)",
+        xaxis_type="log",
+    )
+    fig.update_yaxes(title_text="Generation Speed (tokens/sec)", secondary_y=False)
+    fig.update_yaxes(title_text="Time to First Token (seconds)", secondary_y=True)
+
+    return fig
+
+
+def build_reasoning_ratio_figure(df):
+    """Build Plotly figure for reasoning tokens vs completion tokens across models."""
+    fig = go.Figure()
+
+    if (
+        df is None
+        or getattr(df, "empty", True)
+        or not hasattr(df, "columns")
+        or not set(REQUIRED_REASONING_RATIO_COLS).issubset(df.columns)
+    ):
+        fig.update_layout(template="plotly_dark")
+        return fig
+
+    clean_df = df.copy()
+    for col in ["Reasoning Tokens", "Completion Tokens"]:
+        clean_df[col] = pd.to_numeric(clean_df[col], errors="coerce")
+
+    clean_df = clean_df.dropna(
+        subset=["Reasoning Tokens", "Completion Tokens"], how="all"
+    )
+    if clean_df.empty:
+        fig.update_layout(template="plotly_dark")
+        return fig
+
+    clean_df["Reasoning Tokens"] = clean_df["Reasoning Tokens"].fillna(0)
+    clean_df["Completion Tokens"] = clean_df["Completion Tokens"].fillna(0)
+
+    clean_df = clean_df[
+        (clean_df["Reasoning Tokens"] > 0) | (clean_df["Completion Tokens"] > 0)
+    ]
+    if clean_df.empty:
+        fig.update_layout(template="plotly_dark")
+        return fig
+
+    if "Model" not in clean_df.columns:
+        clean_df["Model"] = "Default"
+
+    grouped = (
+        clean_df.groupby("Model", as_index=False)[
+            ["Reasoning Tokens", "Completion Tokens"]
+        ]
+        .mean()
+        .sort_values(by="Model")
+    )
+
+    fig.add_trace(
+        go.Bar(
+            name="Reasoning Tokens",
+            x=grouped["Model"],
+            y=grouped["Reasoning Tokens"],
+            marker_color="#8b5cf6",
+            hovertemplate="<b>%{x}</b><br>Reasoning: %{y:.0f} tokens<extra></extra>",
+        )
+    )
+
+    fig.add_trace(
+        go.Bar(
+            name="Completion Tokens",
+            x=grouped["Model"],
+            y=grouped["Completion Tokens"],
+            marker_color="#3b82f6",
+            hovertemplate="<b>%{x}</b><br>Completion: %{y:.0f} tokens<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        barmode="group",
+        template="plotly_dark",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        title="Reasoning vs. Completion Token Breakdown Across Models",
+        xaxis_title="Model",
+        yaxis_title="Average Tokens",
+    )
+
+    return fig
+
+
 def enqueue_output(out, q):
     """Read lines from stream into queue until EOF and close the stream."""
     try:
@@ -1390,6 +1692,32 @@ with tab_plots:
                 st.plotly_chart(fig4)
             else:
                 st.info("No Perplexity metrics available for plots.")
+
+        st.divider()
+
+        col_plot5, col_plot6 = st.columns(2)
+        with col_plot5:
+            st.markdown("#### Context Scaling Curves (1k - 240k tokens)")
+            ctx_df = filtered_df.dropna(
+                subset=["Context Length", "Prefill (t/s)", "Decode (t/s)", "TTFT (s)"]
+            )
+            if not ctx_df.empty:
+                fig_ctx = build_context_scaling_figure(ctx_df)
+                st.plotly_chart(fig_ctx)
+            else:  # pragma: no cover
+                st.info("No context scaling data available for plots.")
+
+        with col_plot6:
+            st.markdown("#### Reasoning vs. Completion Token Breakdown")
+            has_tokens = (
+                "Reasoning Tokens" in filtered_df.columns
+                and filtered_df["Reasoning Tokens"].notna().any()
+            )
+            if has_tokens:
+                fig_ratio = build_reasoning_ratio_figure(filtered_df)
+                st.plotly_chart(fig_ratio)
+            else:  # pragma: no cover
+                st.info("No token breakdown data available for plots.")
     else:
         st.info("No runs logged to plot.")
 
@@ -1503,6 +1831,68 @@ with tab_compare:
                 runB = None
 
         if runA is not None and runB is not None:
+            # Check for agentic metrics in runA or runB
+            has_agentic_comp = (
+                pd.notna(runA.get("Agentic Total")) or pd.notna(runB.get("Agentic Total"))
+            )
+            if has_agentic_comp:
+                st.markdown("#### 🤖 Agentic Benchmark Summary")
+                col_ag_a, col_ag_b = st.columns(2)
+                with col_ag_a:
+                    st.markdown(f"**{runA['Model']} Agentic Performance**")
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric(
+                        "Agentic Tasks Run",
+                        runA.get("Agentic Total")
+                        if pd.notna(runA.get("Agentic Total"))
+                        else "N/A",
+                    )
+                    c2.metric(
+                        "Pass Rate %",
+                        f"{runA.get('Agentic Pass Rate')}%"
+                        if pd.notna(runA.get("Agentic Pass Rate"))
+                        else "N/A",
+                    )
+                    c3.metric(
+                        "Average Turns",
+                        runA.get("Agentic Turns")
+                        if pd.notna(runA.get("Agentic Turns"))
+                        else "N/A",
+                    )
+                    c4.metric(
+                        "Tool Calls",
+                        runA.get("Agentic Tool Calls")
+                        if pd.notna(runA.get("Agentic Tool Calls"))
+                        else "N/A",
+                    )
+                with col_ag_b:
+                    st.markdown(f"**{runB['Model']} Agentic Performance**")
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric(
+                        "Agentic Tasks Run",
+                        runB.get("Agentic Total")
+                        if pd.notna(runB.get("Agentic Total"))
+                        else "N/A",
+                    )
+                    c2.metric(
+                        "Pass Rate %",
+                        f"{runB.get('Agentic Pass Rate')}%"
+                        if pd.notna(runB.get("Agentic Pass Rate"))
+                        else "N/A",
+                    )
+                    c3.metric(
+                        "Average Turns",
+                        runB.get("Agentic Turns")
+                        if pd.notna(runB.get("Agentic Turns"))
+                        else "N/A",
+                    )
+                    c4.metric(
+                        "Tool Calls",
+                        runB.get("Agentic Tool Calls")
+                        if pd.notna(runB.get("Agentic Tool Calls"))
+                        else "N/A",
+                    )
+
             st.markdown("### Comparison Table")
 
             # Build comparison details
@@ -1547,6 +1937,30 @@ with tab_compare:
                     "SWE-bench Toy Debugging",
                     str(runA["SWE-bench"]),
                     str(runB["SWE-bench"]),
+                ),
+                (
+                    "Agentic Suite",
+                    str(runA.get("Agentic Suite", "N/A")),
+                    str(runB.get("Agentic Suite", "N/A")),
+                ),
+                (
+                    "Agentic Pass Rate",
+                    f"{runA.get('Agentic Pass Rate')}%"
+                    if pd.notna(runA.get("Agentic Pass Rate"))
+                    else "N/A",
+                    f"{runB.get('Agentic Pass Rate')}%"
+                    if pd.notna(runB.get("Agentic Pass Rate"))
+                    else "N/A",
+                ),
+                (
+                    "Agentic Turns",
+                    str(runA.get("Agentic Turns", "N/A")),
+                    str(runB.get("Agentic Turns", "N/A")),
+                ),
+                (
+                    "Agentic Tool Calls",
+                    str(runA.get("Agentic Tool Calls", "N/A")),
+                    str(runB.get("Agentic Tool Calls", "N/A")),
                 ),
                 (
                     "Perplexity (PPL)",
@@ -1732,8 +2146,18 @@ with tab_run:
     col_r1, col_r2 = st.columns(2)
     with col_r1:
         new_mode = st.selectbox(
-            "Benchmark Mode", ["all", "throughput", "reasoning", "kld"]
+            "Benchmark Mode",
+            ["all", "throughput", "reasoning", "agentic", "kld"],
+            key="runner_benchmark_mode",
         )
+        agentic_tasks = "all"
+        if new_mode in ["agentic", "all"]:
+            agentic_tasks = st.selectbox(
+                "Agentic Tasks Filter",
+                ["all", "fix-syntax", "log-analysis", "git-repair", "env-config"],
+                index=0,
+                key="runner_agentic_tasks",
+            )
 
         endpoint_options = [e["name"] for e in endpoints] + ["Custom Endpoint..."]
         default_idx = 0
@@ -1879,6 +2303,7 @@ with tab_run:
             gguf_path=valid_gguf,
             api_key=valid_api_key,
             max_tokens=valid_max_tokens,
+            agentic_tasks=agentic_tasks,
         )
 
         st.info(f"Running command: {' '.join(redact_cli_args(cmd))}")
