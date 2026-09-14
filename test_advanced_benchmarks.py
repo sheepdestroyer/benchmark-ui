@@ -1921,7 +1921,7 @@ class TestMainRunner(unittest.TestCase):
                 data = json.load(f)
 
             self.assertEqual(
-                data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8081"
+                data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8083"
             )
             self.assertEqual(data["run_metadata"]["cli_arguments"], cli_args)
             self.assertEqual(data["model_settings"]["model_name"], "TestModel")

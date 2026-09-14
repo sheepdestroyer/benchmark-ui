@@ -854,7 +854,7 @@ def _save_run_data(results, endpoint, model, cli_arguments, output_path=None):
 
 def main(args=None):
     parser = argparse.ArgumentParser(description="Advanced Benchmarks Runner")
-    parser.add_argument("--endpoint", default="http://127.0.0.1:8081", help="LLM server API endpoint")
+    parser.add_argument("--endpoint", default="http://127.0.0.1:8083", help="LLM server API endpoint")
     parser.add_argument("--model", default="Qwen3.6-27B", help="Model name / alias to target")
     parser.add_argument("--tokens", type=int, default=200000, help="Number of context tokens for synthetic benchmarks (Needle, RULER, LongBench)")
     parser.add_argument("--needle", action="store_true", help="Run Needle in a Haystack benchmark (Phase 1)")

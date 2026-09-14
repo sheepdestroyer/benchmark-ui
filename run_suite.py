@@ -277,7 +277,7 @@ def run_kld(model_path, corpus):
 def main():
     parser = argparse.ArgumentParser(description="Unified LLM Benchmarking Suite")
     parser.add_argument("--mode", choices=["throughput", "reasoning", "kld", "all"], default="all", help="Benchmark mode to run")
-    parser.add_argument("--endpoint", default="http://127.0.0.1:8081", help="LLM server API endpoint")
+    parser.add_argument("--endpoint", default="http://127.0.0.1:8083", help="LLM server API endpoint")
     parser.add_argument("--model", default="Qwen3.6-27B", help="Model name / alias on the server")
     parser.add_argument("--tokens", type=int, default=200000, help="Target context token length for reasoning benchmarks")
     parser.add_argument("--gguf-path", help="Local path to the GGUF model file (for KLD benchmark)")

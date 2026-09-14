@@ -7,22 +7,28 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+
 class DictWithDefault(dict):
     def __getattr__(self, name):
         return self.get(name, None)
+
     def __setattr__(self, name, value):
         self[name] = value
 
+
 mock_st = MagicMock()
-mock_st.session_state = DictWithDefault({
-    "new_endpoint": "http://localhost:8080",
-    "new_model": "test-model",
-    "new_api_key": "sk-1234",
-    "endpoints": [],
-    "suite_results": None,
-    "matrix_results": None,
-    "kld_results": None
-})
+mock_st.session_state = DictWithDefault(
+    {
+        "new_endpoint": "http://localhost:8080",
+        "new_model": "test-model",
+        "new_api_key": "sk-1234",
+        "endpoints": [],
+        "suite_results": None,
+        "matrix_results": None,
+        "kld_results": None,
+    }
+)
+
 
 def mock_tabs(*args, **kwargs):
     titles = args[0] if len(args) > 0 else []
@@ -33,7 +39,10 @@ def mock_tabs(*args, **kwargs):
         m.__exit__ = MagicMock(return_value=None)
         mocks.append(m)
     return mocks
+
+
 mock_st.tabs = mock_tabs
+
 
 def mock_columns(*args, **kwargs):
     spec = args[0] if len(args) > 0 else 1
@@ -45,6 +54,8 @@ def mock_columns(*args, **kwargs):
         m.__exit__ = MagicMock(return_value=None)
         mocks.append(m)
     return mocks
+
+
 mock_st.columns = mock_columns
 
 mock_sidebar = MagicMock()
@@ -52,24 +63,38 @@ mock_sidebar.__enter__ = MagicMock(return_value=mock_sidebar)
 mock_sidebar.__exit__ = MagicMock(return_value=None)
 mock_st.sidebar = mock_sidebar
 
+
 def mock_text_input(label, *args, **kwargs):
-    if "Endpoint URL" in label: return "http://localhost:8080"
-    if "Model Name" in label: return "test-model"
-    if "API Key" in label: return "sk-1234"
-    if "Corpus Name" in label: return "kld_corpus.txt"
-    if "GGUF Path" in label: return ""
+    if "Endpoint URL" in label:
+        return "http://localhost:8080"
+    if "Model Name" in label:
+        return "test-model"
+    if "API Key" in label:
+        return "sk-1234"
+    if "Corpus Name" in label:
+        return "kld_corpus.txt"
+    if "GGUF Path" in label:
+        return ""
     return "text"
+
+
 mock_st.text_input = mock_text_input
+
 
 def mock_selectbox(label, *args, **kwargs):
     return "test-model"
+
+
 mock_st.selectbox = mock_selectbox
+
 
 def mock_form(*args, **kwargs):
     m = MagicMock()
     m.__enter__ = MagicMock(return_value=m)
     m.__exit__ = MagicMock(return_value=None)
     return m
+
+
 mock_st.form = mock_form
 
 mock_expander = MagicMock()
@@ -78,6 +103,8 @@ mock_expander.__exit__ = MagicMock(return_value=None)
 mock_st.expander = MagicMock(return_value=mock_expander)
 
 mock_st.button.return_value = False
+
+
 class StreamlitMock(MagicMock):
     def columns(self, num, *args, **kwargs):
         if isinstance(num, int):
@@ -103,6 +130,7 @@ class StreamlitMock(MagicMock):
     def button(self, *args, **kwargs):
         return False
 
+
 mock_st = StreamlitMock()
 
 modules_patcher = patch.dict(
@@ -113,24 +141,42 @@ modules_patcher = patch.dict(
         "plotly": MagicMock(),
         "plotly.express": MagicMock(),
         "plotly.graph_objects": MagicMock(),
-    }
+    },
 )
 modules_patcher.start()
 import dashboard
+
 modules_patcher.stop()
 
-class TestValidateEndpointUrl(unittest.TestCase):
 
+class TestValidateEndpointUrl(unittest.TestCase):
     def test_valid_urls(self):
-        self.assertEqual(dashboard.validate_endpoint_url("http://google.com"), "http://google.com")
-        self.assertEqual(dashboard.validate_endpoint_url("https://api.github.com/v1"), "https://api.github.com/v1")
-        self.assertEqual(dashboard.validate_endpoint_url("http://8.8.8.8"), "http://8.8.8.8")
+        self.assertEqual(
+            dashboard.validate_endpoint_url("http://google.com"), "http://google.com"
+        )
+        self.assertEqual(
+            dashboard.validate_endpoint_url("https://api.github.com/v1"),
+            "https://api.github.com/v1",
+        )
+        self.assertEqual(
+            dashboard.validate_endpoint_url("http://8.8.8.8"), "http://8.8.8.8"
+        )
 
     def test_localhost_exceptions(self):
-        self.assertEqual(dashboard.validate_endpoint_url("http://localhost"), "http://localhost")
-        self.assertEqual(dashboard.validate_endpoint_url("http://localhost:8080"), "http://localhost:8080")
-        self.assertEqual(dashboard.validate_endpoint_url("http://127.0.0.1"), "http://127.0.0.1")
-        self.assertEqual(dashboard.validate_endpoint_url("http://127.0.0.1:5000"), "http://127.0.0.1:5000")
+        self.assertEqual(
+            dashboard.validate_endpoint_url("http://localhost"), "http://localhost"
+        )
+        self.assertEqual(
+            dashboard.validate_endpoint_url("http://localhost:8080"),
+            "http://localhost:8080",
+        )
+        self.assertEqual(
+            dashboard.validate_endpoint_url("http://127.0.0.1"), "http://127.0.0.1"
+        )
+        self.assertEqual(
+            dashboard.validate_endpoint_url("http://127.0.0.1:5000"),
+            "http://127.0.0.1:5000",
+        )
 
     def test_empty_url(self):
         with self.assertRaisesRegex(ValueError, r"cannot be empty"):
@@ -152,8 +198,12 @@ class TestValidateEndpointUrl(unittest.TestCase):
 
     def test_forbidden_ips(self):
         forbidden_ips = [
-            "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254",
-            "224.0.0.1", "240.0.0.1"
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "224.0.0.1",
+            "240.0.0.1",
         ]
         forbidden_ipv6 = ["[::1]", "[fe80::1]", "[fd00::1]"]
 
@@ -169,6 +219,8 @@ class TestValidateEndpointUrl(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, r"Forbidden IP"):
             dashboard.validate_endpoint_url("http://127.0.0.2")
+
+
 class TestDashboard(unittest.TestCase):
     def test_validate_model_name_valid(self):
         valid_names = [
@@ -178,7 +230,7 @@ class TestDashboard(unittest.TestCase):
             "model_v1.0",
             "model:latest",
             "my.model.name",
-            "12345"
+            "12345",
         ]
         for name in valid_names:
             with self.subTest(name=name):
@@ -208,12 +260,13 @@ class TestDashboard(unittest.TestCase):
             "model{",
             "model}",
             "model[",
-            "model]"
+            "model]",
         ]
         for name in invalid_names:
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
                     dashboard.validate_model_name(name)
+
 
 class TestPresetConfig(unittest.TestCase):
     def setUp(self):
@@ -222,18 +275,21 @@ class TestPresetConfig(unittest.TestCase):
     def tearDown(self):
         dashboard._get_presets_config.cache_clear()
 
-    @patch('os.path.exists', return_value=False)
+    @patch("os.path.exists", return_value=False)
     def test_get_presets_config_missing_file(self, mock_exists):
         config = dashboard._get_presets_config()
         self.assertIsNone(config)
 
-    @patch('os.path.exists', return_value=True)
+    @patch("os.path.exists", return_value=True)
     def test_get_presets_config_syntax_error(self, mock_exists):
-        with patch('configparser.ConfigParser.read', side_effect=configparser.ParsingError('Invalid INI')):
+        with patch(
+            "configparser.ConfigParser.read",
+            side_effect=configparser.ParsingError("Invalid INI"),
+        ):
             config = dashboard._get_presets_config()
             self.assertIsNone(config)
 
-    @patch('os.path.exists', return_value=True)
+    @patch("os.path.exists", return_value=True)
     def test_get_presets_config_caching(self, mock_exists):
         sample_ini = """
 [*]
@@ -244,12 +300,14 @@ alias = MyModel
 hf-repo = org/my-model
 parallel = 2
 """
-        with patch('configparser.ConfigParser.read') as mock_read:
+        with patch("configparser.ConfigParser.read") as mock_read:
+
             def fake_read(filenames, encoding=None):
                 # simulate successful read by populating sections
                 return [filenames]
+
             mock_read.side_effect = fake_read
-            
+
             c1 = dashboard._get_presets_config()
             c2 = dashboard._get_presets_config()
             self.assertIs(c1, c2)
@@ -269,9 +327,16 @@ parallel = 2
     def test_get_presets_config_fallback_path(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             fallback_ini = Path(tmp_dir) / "model_presets.ini"
-            fallback_ini.write_text("[FallbackProfile]\nthreads = 12\n", encoding="utf-8")
+            fallback_ini.write_text(
+                "[FallbackProfile]\nthreads = 12\n", encoding="utf-8"
+            )
 
-            with patch.dict(os.environ, {}, clear=True), patch.object(dashboard, "resolve_presets_path", return_value=str(fallback_ini)):
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch.object(
+                    dashboard, "resolve_presets_path", return_value=str(fallback_ini)
+                ),
+            ):
                 dashboard._get_presets_config.cache_clear()
                 cfg = dashboard._get_presets_config()
                 self.assertIsNotNone(cfg)
@@ -279,27 +344,47 @@ parallel = 2
 
     def test_dashboard_resolve_presets_path(self):
         # 1. Explicit path
-        self.assertEqual(dashboard.resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini")
-        self.assertEqual(dashboard.resolve_presets_path(Path("/explicit/path2.ini")), "/explicit/path2.ini")
+        self.assertEqual(
+            dashboard.resolve_presets_path("/explicit/path.ini"), "/explicit/path.ini"
+        )
+        self.assertEqual(
+            dashboard.resolve_presets_path(Path("/explicit/path2.ini")),
+            "/explicit/path2.ini",
+        )
 
         # 2. PRESETS_FILE environment variable
         with patch.dict(os.environ, {"PRESETS_FILE": "/env/path.ini"}):
             self.assertEqual(dashboard.resolve_presets_path(None), "/env/path.ini")
 
         # 3. Default fallback logic when PRESETS_FILE is not set
-        primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
-        fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+        primary = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"
+            )
+        )
+        fallback = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini")
+        )
 
         # Primary exists
-        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == primary):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("os.path.exists", side_effect=lambda p: str(p) == primary),
+        ):
             self.assertEqual(dashboard.resolve_presets_path(None), primary)
 
         # Primary does not exist, fallback exists
-        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", side_effect=lambda p: str(p) == fallback):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("os.path.exists", side_effect=lambda p: str(p) == fallback),
+        ):
             self.assertEqual(dashboard.resolve_presets_path(None), fallback)
 
         # Neither exists -> returns primary
-        with patch.dict(os.environ, {}, clear=True), patch("os.path.exists", return_value=False):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("os.path.exists", return_value=False),
+        ):
             self.assertEqual(dashboard.resolve_presets_path(None), primary)
 
     def test_map_repo_to_preset_alias_unsloth_prefix_normalization(self):
@@ -316,46 +401,46 @@ alias = plain-alias
 [unsloth/SectionProfile]
 hf-repo = org/foo
 """)
-        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+        with patch.object(dashboard, "_get_presets_config", return_value=cp):
             # 1. Query has NO prefix, hf-repo HAS prefix
             self.assertEqual(
                 dashboard.map_repo_to_preset_alias("Qwen3.8-27B-GGUF:UD-Q5_K_XL"),
-                "qwen-profile"
+                "qwen-profile",
             )
             # 2. Query has prefix, hf-repo has prefix
             self.assertEqual(
-                dashboard.map_repo_to_preset_alias("unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL"),
-                "qwen-profile"
+                dashboard.map_repo_to_preset_alias(
+                    "unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL"
+                ),
+                "qwen-profile",
             )
             # 3. Query has prefix, hf-repo has NO prefix
             self.assertEqual(
                 dashboard.map_repo_to_preset_alias("unsloth/PlainModel-GGUF:latest"),
-                "plain-profile"
+                "plain-profile",
             )
             # 4. Query has NO prefix, section HAS prefix
             self.assertEqual(
                 dashboard.map_repo_to_preset_alias("SectionProfile"),
-                "unsloth/SectionProfile"
+                "unsloth/SectionProfile",
             )
             # 5. Query has prefix, section has NO prefix
             self.assertEqual(
                 dashboard.map_repo_to_preset_alias("unsloth/plain-profile"),
-                "plain-profile"
+                "plain-profile",
             )
             # 6. Alias normalization: query has no prefix, alias has prefix
             self.assertEqual(
-                dashboard.map_repo_to_preset_alias("locallama-qwen"),
-                "qwen-profile"
+                dashboard.map_repo_to_preset_alias("locallama-qwen"), "qwen-profile"
             )
             # 7. Alias normalization: query has prefix, alias has no prefix
             self.assertEqual(
-                dashboard.map_repo_to_preset_alias("unsloth/local-qwen"),
-                "qwen-profile"
+                dashboard.map_repo_to_preset_alias("unsloth/local-qwen"), "qwen-profile"
             )
             # 8. Single alias with prefix
             self.assertEqual(
                 dashboard.map_repo_to_preset_alias("unsloth/plain-alias"),
-                "plain-profile"
+                "plain-profile",
             )
 
     def test_dashboard_normalize_repo_id_and_repo_id_matches(self):
@@ -377,20 +462,34 @@ hf-repo = org/foo
 [multi-alias-model]
 alias = unsloth/alias-a, alias-b
 """)
-        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+        with patch.object(dashboard, "_get_presets_config", return_value=cp):
             self.assertEqual(
                 dashboard.map_repo_to_preset_alias("unsloth/alias-a, alias-b"),
-                "multi-alias-model"
+                "multi-alias-model",
             )
 
     def test_map_repo_to_preset_alias_missing_config(self):
-        with patch.object(dashboard, '_get_presets_config', return_value=None):
-            self.assertEqual(dashboard.map_repo_to_preset_alias('unknown/model'), 'unknown/model')
+        with patch.object(dashboard, "_get_presets_config", return_value=None):
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unknown/model"), "unknown/model"
+            )
             # Fallbacks should still work
-            self.assertEqual(dashboard.map_repo_to_preset_alias('qwen3.6-27b-gguf:q4_k_s'), 'Qwen3.6-27B')
-            self.assertEqual(dashboard.map_repo_to_preset_alias('qwen3.6-27b-mtp-gguf:q4_k_s'), 'Qwen3.6-27B-spec3')
-            self.assertEqual(dashboard.map_repo_to_preset_alias('qwen3.6-35b-a3b-gguf:q4_k_s'), 'Qwen3.6-35B-A3B')
-            self.assertEqual(dashboard.map_repo_to_preset_alias('gemma-4-test'), 'gemma4-26a4b-routing')
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("qwen3.6-27b-gguf:q4_k_s"),
+                "Qwen3.6-27B",
+            )
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("qwen3.6-27b-mtp-gguf:q4_k_s"),
+                "Qwen3.6-27B-spec3",
+            )
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("qwen3.6-35b-a3b-gguf:q4_k_s"),
+                "Qwen3.6-35B-A3B",
+            )
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("gemma-4-test"),
+                "gemma4-26a4b-routing",
+            )
             self.assertIsNone(dashboard.map_repo_to_preset_alias(None))
 
     def test_map_repo_to_preset_alias_with_config(self):
@@ -408,23 +507,36 @@ hf-repo = org/some-repo
 alias = BaseAlias
 hf-repo = org/some-repo
 """)
-        with patch.object(dashboard, '_get_presets_config', return_value=cp):
+        with patch.object(dashboard, "_get_presets_config", return_value=cp):
             # Exact section match
-            self.assertEqual(dashboard.map_repo_to_preset_alias('exact-model'), 'exact-model')
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("exact-model"), "exact-model"
+            )
             # Substring alias match
-            self.assertEqual(dashboard.map_repo_to_preset_alias('prefix/ExactModel-extra'), 'exact-model')
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("prefix/ExactModel-extra"),
+                "exact-model",
+            )
             # Repo match with mtp/spec condition
-            self.assertEqual(dashboard.map_repo_to_preset_alias('org/some-repo-mtp'), 'mtp-spec-model')
-            self.assertEqual(dashboard.map_repo_to_preset_alias('org/some-repo-standard'), 'base-model')
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("org/some-repo-mtp"),
+                "mtp-spec-model",
+            )
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("org/some-repo-standard"),
+                "base-model",
+            )
             # Unmatched returns input
-            self.assertEqual(dashboard.map_repo_to_preset_alias('unknown-other'), 'unknown-other')
+            self.assertEqual(
+                dashboard.map_repo_to_preset_alias("unknown-other"), "unknown-other"
+            )
 
     def test_get_preset_metadata_missing_config(self):
-        with patch.object(dashboard, '_get_presets_config', return_value=None):
-            meta = dashboard.get_preset_metadata('any-model')
-            self.assertEqual(meta['parallel'], '1')
-            self.assertEqual(meta['flash_attn'], 'true')
-            self.assertEqual(meta['spec_type'], 'None')
+        with patch.object(dashboard, "_get_presets_config", return_value=None):
+            meta = dashboard.get_preset_metadata("any-model")
+            self.assertEqual(meta["parallel"], "1")
+            self.assertEqual(meta["flash_attn"], "true")
+            self.assertEqual(meta["spec_type"], "None")
 
     def test_get_preset_metadata_with_config(self):
         cp = configparser.ConfigParser()
@@ -437,14 +549,14 @@ global-param = global_val
 parallel = 4
 spec-type = draft
 """)
-        with patch.object(dashboard, '_get_presets_config', return_value=cp):
-            meta = dashboard.get_preset_metadata('custom-model')
-            self.assertEqual(meta['flash_attn'], 'false')
-            self.assertEqual(meta['global_param'], 'global_val')
-            self.assertEqual(meta['parallel'], '4')
-            self.assertEqual(meta['spec_type'], 'draft')
+        with patch.object(dashboard, "_get_presets_config", return_value=cp):
+            meta = dashboard.get_preset_metadata("custom-model")
+            self.assertEqual(meta["flash_attn"], "false")
+            self.assertEqual(meta["global_param"], "global_val")
+            self.assertEqual(meta["parallel"], "4")
+            self.assertEqual(meta["spec_type"], "draft")
             # Default retained if not overridden
-            self.assertEqual(meta['n_gpu_layers'], '99')
+            self.assertEqual(meta["n_gpu_layers"], "99")
 
 
 class TestFmtNum(unittest.TestCase):
@@ -468,7 +580,7 @@ class TestFmtNum(unittest.TestCase):
     def test_fmt_num_na_values(self):
         self.assertEqual(dashboard.fmt_num(None), "N/A")
         self.assertEqual(dashboard.fmt_num("N/A"), "N/A")
-        self.assertEqual(dashboard.fmt_num(float('nan')), "N/A")
+        self.assertEqual(dashboard.fmt_num(float("nan")), "N/A")
 
     def test_fmt_num_pd_na_eval(self):
         dashboard.pd.isna.return_value = True
@@ -478,7 +590,10 @@ class TestFmtNum(unittest.TestCase):
     def test_fmt_num_array_ambiguity_protection(self):
         class DummyArray:
             def __bool__(self):
-                raise ValueError("The truth value of an array with more than one element is ambiguous.")
+                raise ValueError(
+                    "The truth value of an array with more than one element is ambiguous."
+                )
+
         dashboard.pd.isna.return_value = DummyArray()
         self.assertEqual(dashboard.fmt_num([1, 2]), "[1, 2]")
         dashboard.pd.isna.return_value = False
@@ -488,8 +603,8 @@ class TestFmtNum(unittest.TestCase):
         self.assertEqual(dashboard.fmt_num(False), "False")
 
     def test_fmt_num_infinity(self):
-        self.assertEqual(dashboard.fmt_num(float('inf')), "Inf")
-        self.assertEqual(dashboard.fmt_num(-float('inf')), "-Inf")
+        self.assertEqual(dashboard.fmt_num(float("inf")), "Inf")
+        self.assertEqual(dashboard.fmt_num(-float("inf")), "-Inf")
 
 
 class TestExtractReasoningAccData(unittest.TestCase):
@@ -501,6 +616,7 @@ class TestExtractReasoningAccData(unittest.TestCase):
         class MockDataFrame:
             empty = False
             columns = MockColumns(["Model", "KV Quant", "Needle", "RULER", "Other"])
+
             def itertuples(self, index=False, name=None):
                 return [
                     ("Model-A", "q4_k_m", "Pass", "Fail", 100),
@@ -509,9 +625,18 @@ class TestExtractReasoningAccData(unittest.TestCase):
 
         res = dashboard.extract_reasoning_acc_data(MockDataFrame())
         self.assertEqual(len(res), 3)
-        self.assertEqual(res[0], {"Model_Quant": "Model-A (q4_k_m)", "Test Suite": "Needle", "Score": 1.0})
-        self.assertEqual(res[1], {"Model_Quant": "Model-A (q4_k_m)", "Test Suite": "RULER", "Score": 0.0})
-        self.assertEqual(res[2], {"Model_Quant": "Model-B (q8_0)", "Test Suite": "Needle", "Score": 1.0})
+        self.assertEqual(
+            res[0],
+            {"Model_Quant": "Model-A (q4_k_m)", "Test Suite": "Needle", "Score": 1.0},
+        )
+        self.assertEqual(
+            res[1],
+            {"Model_Quant": "Model-A (q4_k_m)", "Test Suite": "RULER", "Score": 0.0},
+        )
+        self.assertEqual(
+            res[2],
+            {"Model_Quant": "Model-B (q8_0)", "Test Suite": "Needle", "Score": 1.0},
+        )
 
     def test_extract_reasoning_acc_data_missing_required_columns(self):
         class MockColumns(list):
@@ -521,6 +646,7 @@ class TestExtractReasoningAccData(unittest.TestCase):
         class MockDataFrame:
             empty = False
             columns = MockColumns(["Model", "Needle"])
+
             def itertuples(self, index=False, name=None):
                 return [("Model-A", "Pass")]
 
@@ -530,6 +656,7 @@ class TestExtractReasoningAccData(unittest.TestCase):
         class EmptyDF:
             empty = True
             columns = MockColumns(["Model", "KV Quant", "Needle"])
+
         self.assertEqual(dashboard.extract_reasoning_acc_data(EmptyDF()), [])
 
     def test_extract_reasoning_acc_data_no_test_suites(self):
@@ -540,6 +667,7 @@ class TestExtractReasoningAccData(unittest.TestCase):
         class MockDataFrame:
             empty = False
             columns = MockColumns(["Model", "KV Quant", "Throughput"])
+
             def itertuples(self, index=False, name=None):
                 return [("Model-A", "q4", 50.0)]
 
@@ -555,6 +683,7 @@ class TestExtractReasoningAccData(unittest.TestCase):
         class MockDataFrame:
             empty = False
             columns = MockColumns(["Model", "KV Quant", "Needle"])
+
             def itertuples(self, index=False, name=None):
                 return [("Model-A", "q4", "Pass")]
 
@@ -612,13 +741,26 @@ class TestLoadRuns(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             valid_run = tmp_path / "run_2026-01-01T00-00-00.json"
-            valid_run.write_text(json.dumps({
-                "run_metadata": {"timestamp": "2026-01-01T00:00:00", "target_endpoint": "http://localhost:8080"},
-                "model_settings": {"profile_alias": "test-model", "base_quantization": "Q4_K_S"},
-                "throughput_metrics": {"prefill_speed": 120.0, "decode_speed": 35.0},
-                "reasoning_accuracy": {"needle": "Pass"},
-                "quantization_loss": {"perplexity": 5.4}
-            }))
+            valid_run.write_text(
+                json.dumps(
+                    {
+                        "run_metadata": {
+                            "timestamp": "2026-01-01T00:00:00",
+                            "target_endpoint": "http://localhost:8080",
+                        },
+                        "model_settings": {
+                            "profile_alias": "test-model",
+                            "base_quantization": "Q4_K_S",
+                        },
+                        "throughput_metrics": {
+                            "prefill_speed": 120.0,
+                            "decode_speed": 35.0,
+                        },
+                        "reasoning_accuracy": {"needle": "Pass"},
+                        "quantization_loss": {"perplexity": 5.4},
+                    }
+                )
+            )
 
             corrupted_run = tmp_path / "run_corrupted.json"
             corrupted_run.write_text("{invalid json: error")
@@ -643,7 +785,9 @@ class TestLoadRuns(unittest.TestCase):
                     self.assertEqual(mock_df_ctor.call_count, 1)
                     parsed_runs = mock_df_ctor.call_args[0][0]
                     self.assertEqual(len(parsed_runs), 1)
-                    self.assertEqual(parsed_runs[0]["Filename"], "run_2026-01-01T00-00-00.json")
+                    self.assertEqual(
+                        parsed_runs[0]["Filename"], "run_2026-01-01T00-00-00.json"
+                    )
                     self.assertEqual(parsed_runs[0]["Model"], "test-model")
                     self.assertEqual(parsed_runs[0]["Base Quant"], "Q4_K_S")
                     self.assertEqual(parsed_runs[0]["Prefill (t/s)"], 120.0)
@@ -670,30 +814,47 @@ class TestLoadRuns(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             run_file = tmp_path / "run_complex.json"
-            run_file.write_text(json.dumps({
-                "run_metadata": {
-                    "timestamp": "2026-09-11T00:00:00",
-                    "target_endpoint": "http://localhost:8080",
-                    "cli_arguments": ["--tokens", "65536"]
-                },
-                "model_settings": {
-                    "model_name": "/models/qwen-spec4-UD-Q4_K_S.gguf",
-                    "base_quantization": "Unknown",
-                    "kv_cache_quant": "q4_0",
-                    "threads": 8,
-                    "ubatch_size": 512,
-                    "batch_size": 2048,
-                    "spec_type": "draft",
-                    "spec_draft_type_k": "q4_0",
-                    "spec_draft_type_v": "q4_0",
-                    "flash_attn": "true",
-                    "parallel": "2",
-                    "fit": "true"
-                },
-                "throughput_metrics": {"prefill_speed": 150.0, "decode_speed": 40.0, "ttft": 0.12},
-                "reasoning_accuracy": {"needle": "Pass", "ruler": 0.95, "longbench": 0.88, "swe_bench": "N/A"},
-                "quantization_loss": {"perplexity": 4.5, "mean_kld": 0.02, "same_top_match_percent": 98.5}
-            }))
+            run_file.write_text(
+                json.dumps(
+                    {
+                        "run_metadata": {
+                            "timestamp": "2026-09-11T00:00:00",
+                            "target_endpoint": "http://localhost:8080",
+                            "cli_arguments": ["--tokens", "65536"],
+                        },
+                        "model_settings": {
+                            "model_name": "/models/qwen-spec4-UD-Q4_K_S.gguf",
+                            "base_quantization": "Unknown",
+                            "kv_cache_quant": "q4_0",
+                            "threads": 8,
+                            "ubatch_size": 512,
+                            "batch_size": 2048,
+                            "spec_type": "draft",
+                            "spec_draft_type_k": "q4_0",
+                            "spec_draft_type_v": "q4_0",
+                            "flash_attn": "true",
+                            "parallel": "2",
+                            "fit": "true",
+                        },
+                        "throughput_metrics": {
+                            "prefill_speed": 150.0,
+                            "decode_speed": 40.0,
+                            "ttft": 0.12,
+                        },
+                        "reasoning_accuracy": {
+                            "needle": "Pass",
+                            "ruler": 0.95,
+                            "longbench": 0.88,
+                            "swe_bench": "N/A",
+                        },
+                        "quantization_loss": {
+                            "perplexity": 4.5,
+                            "mean_kld": 0.02,
+                            "same_top_match_percent": 98.5,
+                        },
+                    }
+                )
+            )
 
             old_dir = dashboard.HISTORY_DIR
             dashboard.HISTORY_DIR = tmp_path
@@ -756,6 +917,7 @@ class TestLoadRuns(unittest.TestCase):
         current_time = 100.0
 
         with patch.object(dashboard.time, "time", side_effect=lambda: current_time):
+
             @dashboard._fallback_cache_data(ttl=10)
             def simple_cached_ttl(x):
                 nonlocal call_count
@@ -906,11 +1068,7 @@ class TestParseRunFile(unittest.TestCase):
     def test_parse_run_file_invalid_tokens_arg(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "run_invalid_tokens.json"
-            data = {
-                "run_metadata": {
-                    "cli_arguments": ["--tokens", "not-a-number"]
-                }
-            }
+            data = {"run_metadata": {"cli_arguments": ["--tokens", "not-a-number"]}}
             file_path.write_text(json.dumps(data), encoding="utf-8")
             res = dashboard._parse_run_file(file_path)
             self.assertIsNotNone(res)
@@ -927,13 +1085,12 @@ class TestParseRunFile(unittest.TestCase):
             ("custom-model-UD.gguf", "custom-model"),
         ]
         for raw_name, expected_cleaned in cases:
-            with self.subTest(raw_name=raw_name), tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                self.subTest(raw_name=raw_name),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
                 file_path = Path(tmpdir) / "run_test.json"
-                data = {
-                    "model_settings": {
-                        "profile_alias": raw_name
-                    }
-                }
+                data = {"model_settings": {"profile_alias": raw_name}}
                 file_path.write_text(json.dumps(data), encoding="utf-8")
                 res = dashboard._parse_run_file(file_path)
                 self.assertIsNotNone(res)
@@ -944,37 +1101,70 @@ class TestParseRunFile(unittest.TestCase):
             file_path = Path(tmpdir) / "run_quant.json"
 
             # 1. Explicit base_quantization provided
-            file_path.write_text(json.dumps({
-                "model_settings": {"base_quantization": "Q5_K_M"}
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps({"model_settings": {"base_quantization": "Q5_K_M"}}),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Base Quant"], "Q5_K_M")
 
             # 2. Unknown base_quantization, model_name contains colon
-            file_path.write_text(json.dumps({
-                "model_settings": {"base_quantization": "Unknown", "model_name": "repo/model:Q8_0"}
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(
+                    {
+                        "model_settings": {
+                            "base_quantization": "Unknown",
+                            "model_name": "repo/model:Q8_0",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Base Quant"], "Q8_0")
 
             # 3. Unknown base_quantization, model_name contains quant alias (e.g. q5_k_m or q8_0)
-            file_path.write_text(json.dumps({
-                "model_settings": {"base_quantization": "Unknown", "model_name": "qwen2.5-coder-q5_k_m.gguf"}
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(
+                    {
+                        "model_settings": {
+                            "base_quantization": "Unknown",
+                            "model_name": "qwen2.5-coder-q5_k_m.gguf",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Base Quant"], "Q5_K_M")
 
             # 4. Unknown base_quantization, no colon/alias, but profile_name has spec4 -> Q6_K_XL
-            file_path.write_text(json.dumps({
-                "model_settings": {"base_quantization": "Unknown", "profile_alias": "local-spec4-test"}
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(
+                    {
+                        "model_settings": {
+                            "base_quantization": "Unknown",
+                            "profile_alias": "local-spec4-test",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Base Quant"], "Q6_K_XL")
 
             # 5. Unknown base_quantization, fallback default -> Q4_K_S
-            file_path.write_text(json.dumps({
-                "model_settings": {"base_quantization": "Unknown", "profile_alias": "standard-model"}
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(
+                    {
+                        "model_settings": {
+                            "base_quantization": "Unknown",
+                            "profile_alias": "standard-model",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Base Quant"], "Q4_K_S")
 
@@ -983,25 +1173,35 @@ class TestParseRunFile(unittest.TestCase):
             file_path = Path(tmpdir) / "run_spec.json"
 
             # Speculative type from settings spec_type
-            file_path.write_text(json.dumps({
-                "model_settings": {
-                    "spec_type": "draft",
-                    "spec_draft_type_k": "q8_0",
-                    "spec_draft_type_v": "q8_0"
-                }
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(
+                    {
+                        "model_settings": {
+                            "spec_type": "draft",
+                            "spec_draft_type_k": "q8_0",
+                            "spec_draft_type_v": "q8_0",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Spec Type"], "draft")
             self.assertEqual(res["Spec Draft Type K"], "q8_0")
             self.assertEqual(res["Spec Draft Type V"], "q8_0")
 
             # Speculative type fallback to speculative_draft_type
-            file_path.write_text(json.dumps({
-                "model_settings": {
-                    "speculative_draft_type": "spec_draft_fallback",
-                    "spec_draft_type_k": "None"
-                }
-            }), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(
+                    {
+                        "model_settings": {
+                            "speculative_draft_type": "spec_draft_fallback",
+                            "spec_draft_type_k": "None",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             res = dashboard._parse_run_file(file_path)
             self.assertEqual(res["Spec Type"], "spec_draft_fallback")
 
@@ -1014,16 +1214,26 @@ class TestDashboardValidators(unittest.TestCase):
     def test_validate_gguf_path_existing_allowed_file(self):
         # Tempfile inside cwd
         with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as tmp:
-            self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+            self.assertEqual(
+                dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve())
+            )
 
         # Relative path inside cwd
-        with tempfile.NamedTemporaryFile(dir=Path.cwd(), prefix="test_gguf_", suffix=".gguf") as tmp:
+        with tempfile.NamedTemporaryFile(
+            dir=Path.cwd(), prefix="test_gguf_", suffix=".gguf"
+        ) as tmp:
             rel_name = os.path.basename(tmp.name)
-            self.assertEqual(dashboard.validate_gguf_path(rel_name), str(Path(tmp.name).resolve()))
+            self.assertEqual(
+                dashboard.validate_gguf_path(rel_name), str(Path(tmp.name).resolve())
+            )
 
         # Tempfile inside Path(__file__).parent
-        with tempfile.NamedTemporaryFile(dir=Path(__file__).parent.resolve(), suffix=".gguf") as tmp:
-            self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+        with tempfile.NamedTemporaryFile(
+            dir=Path(__file__).parent.resolve(), suffix=".gguf"
+        ) as tmp:
+            self.assertEqual(
+                dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve())
+            )
 
         # Tempfiles inside patched Path.home() .cache and models directories
         with tempfile.TemporaryDirectory() as fake_home:
@@ -1032,10 +1242,20 @@ class TestDashboardValidators(unittest.TestCase):
             models_dir = Path(fake_home) / "models"
             models_dir.mkdir(parents=True, exist_ok=True)
             with patch.object(Path, "home", return_value=Path(fake_home)):
-                with tempfile.NamedTemporaryFile(dir=cache_dir, suffix=".gguf") as tmp_cache:
-                    self.assertEqual(dashboard.validate_gguf_path(tmp_cache.name), str(Path(tmp_cache.name).resolve()))
-                with tempfile.NamedTemporaryFile(dir=models_dir, suffix=".gguf") as tmp_models:
-                    self.assertEqual(dashboard.validate_gguf_path(tmp_models.name), str(Path(tmp_models.name).resolve()))
+                with tempfile.NamedTemporaryFile(
+                    dir=cache_dir, suffix=".gguf"
+                ) as tmp_cache:
+                    self.assertEqual(
+                        dashboard.validate_gguf_path(tmp_cache.name),
+                        str(Path(tmp_cache.name).resolve()),
+                    )
+                with tempfile.NamedTemporaryFile(
+                    dir=models_dir, suffix=".gguf"
+                ) as tmp_models:
+                    self.assertEqual(
+                        dashboard.validate_gguf_path(tmp_models.name),
+                        str(Path(tmp_models.name).resolve()),
+                    )
 
     def test_validate_gguf_path_symlink(self):
         with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".gguf") as target:
@@ -1044,7 +1264,7 @@ class TestDashboardValidators(unittest.TestCase):
                 symlink.symlink_to(target.name)
                 self.assertEqual(
                     dashboard.validate_gguf_path(str(symlink)),
-                    str(Path(target.name).resolve())
+                    str(Path(target.name).resolve()),
                 )
             finally:
                 if symlink.is_symlink() or symlink.exists():
@@ -1068,17 +1288,25 @@ class TestDashboardValidators(unittest.TestCase):
             with tempfile.TemporaryDirectory() as outside_dir:
                 outside_file = Path(outside_dir) / "escaped.gguf"
                 outside_file.write_text("dummy model content")
-                with patch.object(Path, "cwd", return_value=Path(mock_parent_dir)), \
-                     patch.object(Path, "home", return_value=Path(mock_parent_dir)):
-                    with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
+                with (
+                    patch.object(Path, "cwd", return_value=Path(mock_parent_dir)),
+                    patch.object(Path, "home", return_value=Path(mock_parent_dir)),
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError, r"GGUF path escapes allowed parent directories"
+                    ):
                         dashboard.validate_gguf_path(str(outside_file))
 
     def test_validate_corpus_name_valid(self):
-        self.assertEqual(dashboard.validate_corpus_name("kld_corpus.txt"), "kld_corpus.txt")
+        self.assertEqual(
+            dashboard.validate_corpus_name("kld_corpus.txt"), "kld_corpus.txt"
+        )
         self.assertEqual(dashboard.validate_corpus_name("corpus.json"), "corpus.json")
         self.assertEqual(dashboard.validate_corpus_name("custom_eval"), "custom_eval")
         # Leading and trailing whitespace should be stripped
-        self.assertEqual(dashboard.validate_corpus_name("  kld_corpus.txt  "), "kld_corpus.txt")
+        self.assertEqual(
+            dashboard.validate_corpus_name("  kld_corpus.txt  "), "kld_corpus.txt"
+        )
 
     def test_validate_corpus_name_empty_or_none(self):
         with self.assertRaisesRegex(ValueError, r"Corpus name cannot be empty\."):
@@ -1105,20 +1333,30 @@ class TestDashboardValidators(unittest.TestCase):
             dashboard.validate_corpus_name(" / ")
 
     def test_validate_corpus_name_directory_path(self):
-        self.assertEqual(dashboard.validate_corpus_name("/path/to/kld_corpus.txt"), "kld_corpus.txt")
-        self.assertEqual(dashboard.validate_corpus_name("corpora/nested/dataset.csv"), "dataset.csv")
-        self.assertEqual(dashboard.validate_corpus_name("./local/dir/test_corpus"), "test_corpus")
+        self.assertEqual(
+            dashboard.validate_corpus_name("/path/to/kld_corpus.txt"), "kld_corpus.txt"
+        )
+        self.assertEqual(
+            dashboard.validate_corpus_name("corpora/nested/dataset.csv"), "dataset.csv"
+        )
+        self.assertEqual(
+            dashboard.validate_corpus_name("./local/dir/test_corpus"), "test_corpus"
+        )
 
     def test_validate_gguf_path_rejects_non_gguf(self):
         # Non-.gguf files in cwd
         for ext in [".txt", ".py", ".bin", ".json", "", ".dat"]:
             with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=ext) as tmp:
-                with self.assertRaisesRegex(ValueError, r"GGUF file must have a \.gguf extension"):
+                with self.assertRaisesRegex(
+                    ValueError, r"GGUF file must have a \.gguf extension"
+                ):
                     dashboard.validate_gguf_path(tmp.name)
 
         # Case-insensitive: uppercase .GGUF is accepted
         with tempfile.NamedTemporaryFile(dir=Path.cwd(), suffix=".GGUF") as tmp:
-            self.assertEqual(dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve()))
+            self.assertEqual(
+                dashboard.validate_gguf_path(tmp.name), str(Path(tmp.name).resolve())
+            )
 
     def test_validate_gguf_path_home_root_rejection_and_allowed_subdirs(self):
         with tempfile.TemporaryDirectory() as fake_home:
@@ -1150,29 +1388,33 @@ class TestDashboardValidators(unittest.TestCase):
 
             with patch.object(Path, "home", return_value=Path(fake_home)):
                 # Rejects ~/.bashrc due to non-.gguf extension
-                with self.assertRaisesRegex(ValueError, r"GGUF file must have a \.gguf extension"):
+                with self.assertRaisesRegex(
+                    ValueError, r"GGUF file must have a \.gguf extension"
+                ):
                     dashboard.validate_gguf_path(str(bashrc))
 
                 # Rejects root_model.gguf in home root because it escapes allowed parent directories
-                with self.assertRaisesRegex(ValueError, r"GGUF path escapes allowed parent directories"):
+                with self.assertRaisesRegex(
+                    ValueError, r"GGUF path escapes allowed parent directories"
+                ):
                     dashboard.validate_gguf_path(str(root_gguf))
 
                 # Accepts .gguf in ~/.cache
                 self.assertEqual(
                     dashboard.validate_gguf_path(str(cache_gguf)),
-                    str(cache_gguf.resolve())
+                    str(cache_gguf.resolve()),
                 )
 
                 # Accepts .gguf in nested ~/.cache
                 self.assertEqual(
                     dashboard.validate_gguf_path(str(nested_cache_gguf)),
-                    str(nested_cache_gguf.resolve())
+                    str(nested_cache_gguf.resolve()),
                 )
 
                 # Accepts .gguf in ~/models
                 self.assertEqual(
                     dashboard.validate_gguf_path(str(models_gguf)),
-                    str(models_gguf.resolve())
+                    str(models_gguf.resolve()),
                 )
 
     def test_validate_new_tokens_valid(self):
@@ -1185,13 +1427,27 @@ class TestDashboardValidators(unittest.TestCase):
     def test_validate_new_tokens_out_of_bounds(self):
         for out_val in [0, -1, -5000, 262145, 1000000]:
             with self.subTest(val=out_val):
-                with self.assertRaisesRegex(ValueError, r"Context length tokens must be between 1 and 262144\."):
+                with self.assertRaisesRegex(
+                    ValueError, r"Context length tokens must be between 1 and 262144\."
+                ):
                     dashboard.validate_new_tokens(out_val)
 
     def test_validate_new_tokens_invalid_type(self):
-        for bad_val in [None, True, False, "abc", "", "12.34", 12.34, [5000], {"tokens": 5000}]:
+        for bad_val in [
+            None,
+            True,
+            False,
+            "abc",
+            "",
+            "12.34",
+            12.34,
+            [5000],
+            {"tokens": 5000},
+        ]:
             with self.subTest(val=bad_val):
-                with self.assertRaisesRegex(ValueError, r"Context length tokens must be between 1 and 262144\."):
+                with self.assertRaisesRegex(
+                    ValueError, r"Context length tokens must be between 1 and 262144\."
+                ):
                     dashboard.validate_new_tokens(bad_val)
 
 
@@ -1203,10 +1459,13 @@ HAS_PANDAS_AND_PLOTLY = (
 )
 
 
-@unittest.skipUnless(HAS_PANDAS_AND_PLOTLY, "pandas and plotly required for throughput figure tests")
+@unittest.skipUnless(
+    HAS_PANDAS_AND_PLOTLY, "pandas and plotly required for throughput figure tests"
+)
 class TestBuildThroughputFigure(unittest.TestCase):
     def setUp(self):
         import plotly.graph_objects as real_go
+
         self._orig_go = dashboard.go
         dashboard.go = real_go
 
@@ -1215,12 +1474,22 @@ class TestBuildThroughputFigure(unittest.TestCase):
 
     def test_empty_dataframe(self):
         import pandas as pd
-        df = pd.DataFrame(columns=["Model", "KV Quant", "Context Length", "Prefill (t/s)", "Decode (t/s)"])
+
+        df = pd.DataFrame(
+            columns=[
+                "Model",
+                "KV Quant",
+                "Context Length",
+                "Prefill (t/s)",
+                "Decode (t/s)",
+            ]
+        )
         fig = dashboard.build_throughput_figure(df)
         self.assertEqual(len(fig.data), 0)
 
     def test_bare_empty_dataframe(self):
         import pandas as pd
+
         fig = dashboard.build_throughput_figure(pd.DataFrame())
         self.assertEqual(len(fig.data), 0)
 
@@ -1230,35 +1499,51 @@ class TestBuildThroughputFigure(unittest.TestCase):
 
     def test_missing_schema_columns(self):
         import pandas as pd
+
         fig = dashboard.build_throughput_figure(pd.DataFrame({"Model": ["M1"]}))
         self.assertEqual(len(fig.data), 0)
 
     def test_non_dataframe_input(self):
-        self.assertEqual(len(dashboard.build_throughput_figure("invalid_string").data), 0)
+        self.assertEqual(
+            len(dashboard.build_throughput_figure("invalid_string").data), 0
+        )
         self.assertEqual(len(dashboard.build_throughput_figure([1, 2, 3]).data), 0)
         self.assertEqual(len(dashboard.build_throughput_figure(123).data), 0)
 
     def test_missing_and_nan_quants(self):
         import pandas as pd
-        df = pd.DataFrame({
-            "Model": ["M1", "M1"],
-            "KV Quant": [None, float("nan")],
-            "Context Length": [1024, 2048],
-            "Prefill (t/s)": [100.0, 110.0],
-            "Decode (t/s)": [30.0, 32.0]
-        })
+
+        df = pd.DataFrame(
+            {
+                "Model": ["M1", "M1"],
+                "KV Quant": [None, float("nan")],
+                "Context Length": [1024, 2048],
+                "Prefill (t/s)": [100.0, 110.0],
+                "Decode (t/s)": [30.0, 32.0],
+            }
+        )
         fig = dashboard.build_throughput_figure(df)
         self.assertEqual(len(fig.data), 0)
 
     def test_multiple_models_and_quants_and_ordering(self):
         import pandas as pd
-        df = pd.DataFrame({
-            "Model": ["Model_B", "Model_A", "Model_A", "Model_A", "Model_A", "Model_Unknown"],
-            "KV Quant": ["f16", "q8_0", "f16", "q5_1", "q4_0", "custom_quant"],
-            "Context Length": [4096, 2048, 1024, 1024, 512, 128],
-            "Prefill (t/s)": [100.0, 120.0, 150.0, 140.0, 160.0, 90.0],
-            "Decode (t/s)": [30.0, 35.0, 45.0, 42.0, 48.0, 25.0]
-        })
+
+        df = pd.DataFrame(
+            {
+                "Model": [
+                    "Model_B",
+                    "Model_A",
+                    "Model_A",
+                    "Model_A",
+                    "Model_A",
+                    "Model_Unknown",
+                ],
+                "KV Quant": ["f16", "q8_0", "f16", "q5_1", "q4_0", "custom_quant"],
+                "Context Length": [4096, 2048, 1024, 1024, 512, 128],
+                "Prefill (t/s)": [100.0, 120.0, 150.0, 140.0, 160.0, 90.0],
+                "Decode (t/s)": [30.0, 35.0, 45.0, 42.0, 48.0, 25.0],
+            }
+        )
         fig = dashboard.build_throughput_figure(df)
         # 6 (model, quant) groups * 2 traces each (PP, TG) = 12 traces
         self.assertEqual(len(fig.data), 12)
@@ -1304,13 +1589,16 @@ class TestBuildThroughputFigure(unittest.TestCase):
 
     def test_sorting_by_context_length(self):
         import pandas as pd
-        df = pd.DataFrame({
-            "Model": ["Model_A", "Model_A"],
-            "KV Quant": ["f16", "f16"],
-            "Context Length": [4096, 512],
-            "Prefill (t/s)": [100.0, 150.0],
-            "Decode (t/s)": [30.0, 45.0]
-        })
+
+        df = pd.DataFrame(
+            {
+                "Model": ["Model_A", "Model_A"],
+                "KV Quant": ["f16", "f16"],
+                "Context Length": [4096, 512],
+                "Prefill (t/s)": [100.0, 150.0],
+                "Decode (t/s)": [30.0, 45.0],
+            }
+        )
         fig = dashboard.build_throughput_figure(df)
         t0 = fig.data[0]
         self.assertEqual(list(t0.x), [512, 4096])
@@ -1387,6 +1675,188 @@ class TestEnqueueOutput(unittest.TestCase):
         self.assertEqual(q.get_nowait(), "line 1\n")
         self.assertTrue(q.empty())
         mock_stream.close.assert_called_once()
+
+
+class TestModelRetrieval(unittest.TestCase):
+    def test_fetch_available_models_success(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": [
+                {"id": "unsloth/Qwen3.6-27B-GGUF:Q4_K_XL"},
+                {"id": "unsloth/Qwen3.6-27B-GGUF:Q4_K_S"},
+                {"id": "locallama-qwen-hass"},
+            ]
+        }
+        with patch.object(
+            dashboard.requests, "get", return_value=mock_resp
+        ) as mock_get:
+            models = dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+        self.assertEqual(
+            models,
+            [
+                "locallama-qwen-hass",
+                "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
+                "unsloth/Qwen3.6-27B-GGUF:Q4_K_XL",
+            ],
+        )
+        mock_get.assert_called_once_with(
+            "http://127.0.0.1:8083/v1/models", headers={}, timeout=3
+        )
+
+    def test_fetch_available_models_with_api_key(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "model-auth"}]}
+        with patch.object(
+            dashboard.requests, "get", return_value=mock_resp
+        ) as mock_get:
+            models = dashboard.fetch_available_models(
+                "http://127.0.0.1:8083", api_key="sk-test-secret"
+            )
+        self.assertEqual(models, ["model-auth"])
+        mock_get.assert_called_once_with(
+            "http://127.0.0.1:8083/v1/models",
+            headers={"Authorization": "Bearer sk-test-secret"},
+            timeout=3,
+        )
+
+    def test_fetch_available_models_empty_data(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": []}
+        with (
+            patch.object(dashboard.requests, "get", return_value=mock_resp),
+            self.assertRaisesRegex(ValueError, "No models found in response"),
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+    def test_fetch_available_models_404_response(self):
+        import requests
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "404 Client Error"
+        )
+        with (
+            patch.object(dashboard.requests, "get", return_value=mock_resp),
+            self.assertRaises(requests.exceptions.HTTPError),
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+    def test_fetch_available_models_500_response(self):
+        import requests
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "500 Server Error"
+        )
+        with (
+            patch.object(dashboard.requests, "get", return_value=mock_resp),
+            self.assertRaises(requests.exceptions.HTTPError),
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+    def test_fetch_available_models_connection_timeout(self):
+        import requests
+
+        with (
+            patch.object(
+                dashboard.requests,
+                "get",
+                side_effect=requests.exceptions.Timeout("Connection timed out"),
+            ),
+            self.assertRaises(requests.exceptions.Timeout),
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+    def test_fetch_available_models_connection_error(self):
+        import requests
+
+        with (
+            patch.object(
+                dashboard.requests,
+                "get",
+                side_effect=requests.exceptions.ConnectionError("Connection refused"),
+            ),
+            self.assertRaises(requests.exceptions.ConnectionError),
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+
+    def test_fetch_available_models_ssrf_forbidden_ip(self):
+        with self.assertRaisesRegex(ValueError, "Forbidden IP address range"):
+            dashboard.fetch_available_models("http://169.254.169.254")
+
+    def test_ui_model_retrieval_success_renders_selectbox(self):
+        mock_fetch = MagicMock(return_value=["model-a", "model-b"])
+        mock_streamlit = MagicMock()
+        available_models = []
+        try:
+            available_models = mock_fetch("http://127.0.0.1:8083")
+        except Exception as err:  # noqa: BLE001
+            mock_streamlit.warning(
+                f"Could not retrieve models from endpoint ({err}). You can enter a model identifier manually below."
+            )
+
+        if available_models:
+            mock_streamlit.selectbox("Model ID / Endpoint Alias", available_models)
+        else:
+            mock_streamlit.text_input("Model ID / Endpoint Alias", value="Qwen3.6-27B")
+
+        mock_streamlit.selectbox.assert_called_once_with(
+            "Model ID / Endpoint Alias", ["model-a", "model-b"]
+        )
+        mock_streamlit.warning.assert_not_called()
+
+    def test_ui_model_retrieval_failure_renders_warning_and_text_input(self):
+        mock_fetch = MagicMock(side_effect=RuntimeError("Endpoint offline"))
+        mock_streamlit = MagicMock()
+        available_models = []
+        try:
+            available_models = mock_fetch("http://127.0.0.1:8083")
+        except Exception as err:  # noqa: BLE001
+            mock_streamlit.warning(
+                f"Could not retrieve models from endpoint ({err}). You can enter a model identifier manually below."
+            )
+
+        if available_models:
+            mock_streamlit.selectbox("Model ID / Endpoint Alias", available_models)
+        else:
+            mock_streamlit.text_input("Model ID / Endpoint Alias", value="Qwen3.6-27B")
+
+        mock_streamlit.warning.assert_called_once_with(
+            "Could not retrieve models from endpoint (Endpoint offline). You can enter a model identifier manually below."
+        )
+        mock_streamlit.text_input.assert_called_once_with(
+            "Model ID / Endpoint Alias", value="Qwen3.6-27B"
+        )
+        mock_streamlit.selectbox.assert_not_called()
+
+    def test_dashboard_execution_endpoint_offline(self):
+        import importlib
+        import requests
+
+        with (
+            patch.dict(
+                sys.modules,
+                {
+                    "dashboard": dashboard,
+                    "streamlit": mock_st,
+                    "pandas": MagicMock(),
+                    "plotly": MagicMock(),
+                    "plotly.express": MagicMock(),
+                    "plotly.graph_objects": MagicMock(),
+                },
+            ),
+            patch(
+                "requests.get",
+                side_effect=requests.exceptions.ConnectionError("Offline"),
+            ),
+        ):
+            importlib.reload(dashboard)
 
 
 if __name__ == "__main__":

@@ -726,6 +726,26 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                         self.assertEqual(mock_reas_fn.called, expect_reas)
                         self.assertEqual(mock_kld_fn.called, expect_kld)
 
+    def test_main_default_endpoint_8083(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_script_file = os.path.join(tmp_dir, "run_suite.py")
+            mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
+            test_args = ["run_suite.py", "--mode", "kld"]
+
+            with patch("sys.argv", test_args), \
+                 patch.object(run_suite, "__file__", fake_script_file), \
+                 patch("run_suite.run_kld", return_value={}), \
+                 patch("run_suite.get_model_settings", return_value=mock_settings) as mock_get_settings:
+
+                run_suite.main()
+                mock_get_settings.assert_called_once_with("http://127.0.0.1:8083", "Qwen3.6-27B")
+
+                history_dir = os.path.join(tmp_dir, "history")
+                files = os.listdir(history_dir)
+                with open(os.path.join(history_dir, files[0])) as f:
+                    data = json.load(f)
+                self.assertEqual(data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8083")
+
 
 if __name__ == "__main__":
     unittest.main()
