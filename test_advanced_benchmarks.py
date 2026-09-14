@@ -1819,6 +1819,75 @@ class TestRunSweTest(unittest.TestCase):
         self.assertIsNotNone(res_custom)
         self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 8192)
 
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_recovers_from_preexisting_backup_file(self, mock_call, mock_run):
+        # Simulate an interrupted previous run:
+        # calculator.py has broken/corrupted code
+        corrupted_code = "# CORRUPTED LEFTOVER CODE\ndef parse_and_eval(expr):\n    return -999\n"
+        with open(self.code_path, "w", encoding="utf-8") as f:
+            f.write(corrupted_code)
+
+        # calculator.py.bak has the original pristine code
+        pristine_backup_code = "# PRISTINE CLEAN CODE\ndef parse_and_eval(expr):\n    return 42\n"
+        backup_path = self.code_path + ".bak"
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(pristine_backup_code)
+
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+            "decode_time": 0.1,
+            "decode_speed": 50.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+
+        # Verify calculator.py was restored to pristine_backup_code, not corrupted_code
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), pristine_backup_code)
+
+    @patch("advanced_benchmarks.os.replace")
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_os_replace_oserror_fallback_in_pre_recovery_and_finally(
+        self, mock_call, mock_run, mock_replace
+    ):
+        mock_replace.side_effect = OSError("Cross-device link error")
+
+        # Simulate pre-existing backup
+        backup_path = self.code_path + ".bak"
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(self.orig_code)
+
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+            "decode_time": 0.1,
+            "decode_speed": 50.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+
+        res = run_swe_test("http://127.0.0.1:8081", "test-model")
+        self.assertIsNotNone(res)
+        self.assertTrue(res["passed"])
+
+        self.assertFalse(os.path.exists(backup_path))
+        with open(self.code_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.orig_code)
+
 
 class TestMainRunner(unittest.TestCase):
     @patch("advanced_benchmarks._save_run_data")

@@ -451,6 +451,15 @@ def run_swe_test(endpoint, model, max_tokens=16384, api_key=None):
         return None
 
     backup_path = code_path + ".bak"
+
+    # Recover cleanly from a previously interrupted run if backup exists
+    if os.path.exists(backup_path):
+        try:
+            os.replace(backup_path, code_path)
+        except OSError:
+            shutil.copy2(backup_path, code_path)
+            os.remove(backup_path)
+
     has_backup = False
 
     try:
@@ -525,9 +534,12 @@ Be extremely concise. Keep your internal thought trace minimal. Please output th
                     is_correct = False
     finally:
         # Restore backup
-        if has_backup and os.path.exists(backup_path):
-            shutil.copy2(backup_path, code_path)
-            os.remove(backup_path)
+        if os.path.exists(backup_path):
+            try:
+                os.replace(backup_path, code_path)
+            except OSError:
+                shutil.copy2(backup_path, code_path)
+                os.remove(backup_path)
 
     print("\n---------------------------------------------------------")
     print(f"SWE-bench Result   : {'PASSED' if is_correct else 'FAILED'}")
