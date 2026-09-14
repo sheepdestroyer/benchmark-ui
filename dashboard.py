@@ -809,6 +809,18 @@ def build_throughput_figure(tp_df, model_colors=None):
     return fig1
 
 
+def enqueue_output(out, q):
+    """Read lines from stream into queue until EOF and close the stream."""
+    try:
+        for line in iter(out.readline, ''):
+            q.put(line)
+    finally:
+        try:
+            out.close()
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+
 with tab_plots:
     st.subheader("Performance & Quantization Trade-off Analysis")
     if not filtered_df.empty:
@@ -1044,17 +1056,6 @@ with tab_run:
         
         output_lines = []
         line_queue = queue.Queue()
-
-        def enqueue_output(out, q):
-            try:
-                for line in iter(out.readline, ''):
-                    q.put(line)
-            finally:
-                if out and not out.closed:
-                    try:
-                        out.close()
-                    except Exception:
-                        pass
 
         reader_thread = threading.Thread(target=enqueue_output, args=(proc.stdout, line_queue), daemon=True)
         reader_thread.start()

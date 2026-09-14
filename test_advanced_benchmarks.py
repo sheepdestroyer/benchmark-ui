@@ -81,6 +81,19 @@ class TestGenerateFillerText(unittest.TestCase):
             res[0], "A sentence. A sentence. A sentence. A sentence. A sentence."
         )
 
+    def test_invalid_types(self):
+        invalid_types = [None, "invalid", [100], {"tokens": 100}, True, False]
+        for val in invalid_types:
+            with self.subTest(val=val), self.assertRaises(TypeError) as ctx:
+                generate_filler_text(val)
+            self.assertEqual(str(ctx.exception), "target_tokens must be an integer or float")
+
+    def test_float_targets(self):
+        self.assertEqual(generate_filler_text(0.0), [])
+        self.assertEqual(generate_filler_text(-5.5), [])
+        res = generate_filler_text(10.5)
+        self.assertTrue(len(res) > 0)
+
 
 class TestPresetsConfigAndAlias(unittest.TestCase):
     def setUp(self):
