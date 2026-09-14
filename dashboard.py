@@ -16,10 +16,24 @@ import threading
 from pathlib import Path
 from utils import validate_endpoint_url, validate_model_name
 
-BASE_QUANT_TYPES = ("Q4_K_XL", "Q6_K_XL", "Q4_K_S", "Q8_0", "Q5_1", "Q4_0", "F16", "Q5_K_M")
+BASE_QUANT_TYPES = (
+    "Q4_K_XL",
+    "Q6_K_XL",
+    "Q4_K_S",
+    "Q8_0",
+    "Q5_1",
+    "Q4_0",
+    "F16",
+    "Q5_K_M",
+)
 BASE_QUANT_ALIASES = tuple((q.lower(), q) for q in BASE_QUANT_TYPES)
-REQUIRED_THROUGHPUT_COLS = ("Model", "KV Quant", "Context Length", "Prefill (t/s)", "Decode (t/s)")
-
+REQUIRED_THROUGHPUT_COLS = (
+    "Model",
+    "KV Quant",
+    "Context Length",
+    "Prefill (t/s)",
+    "Decode (t/s)",
+)
 
 
 def validate_gguf_path(gguf_path_str):
@@ -32,7 +46,7 @@ def validate_gguf_path(gguf_path_str):
         raise ValueError(f"GGUF path is not a file: {gguf_path_str}")
     if resolved.suffix.lower() != ".gguf":
         raise ValueError(f"GGUF file must have a .gguf extension: {gguf_path_str}")
-    
+
     allowed_parents = [
         Path.cwd().resolve(),
         Path(__file__).parent.resolve(),
@@ -50,16 +64,20 @@ def validate_gguf_path(gguf_path_str):
         except ValueError:
             continue
     if not is_allowed:
-        raise ValueError(f"GGUF path escapes allowed parent directories: {gguf_path_str}")
+        raise ValueError(
+            f"GGUF path escapes allowed parent directories: {gguf_path_str}"
+        )
     return str(resolved)
+
 
 def validate_corpus_name(corpus_str):
     if not corpus_str or not str(corpus_str).strip():
         raise ValueError("Corpus name cannot be empty.")
     safe_name = os.path.basename(str(corpus_str).strip()).strip()
-    if not safe_name or safe_name in ('.', '..'):
+    if not safe_name or safe_name in (".", ".."):
         raise ValueError(f"Invalid corpus name: {corpus_str}")
     return safe_name
+
 
 def validate_new_tokens(new_tokens):
     if new_tokens is None or isinstance(new_tokens, bool):
@@ -75,8 +93,8 @@ def validate_new_tokens(new_tokens):
         raise ValueError("Context length tokens must be between 1 and 262144.")
     return tokens_int
 
-validate_tokens = validate_new_tokens
 
+validate_tokens = validate_new_tokens
 
 
 # Page config
@@ -84,7 +102,7 @@ st.set_page_config(
     page_title="LLM Benchmarking Registry & Optimizer",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # Paths
@@ -96,17 +114,28 @@ PASS_FAIL_STATUSES = frozenset({"Pass", "Fail"})
 
 # VRAM savings helper
 VRAM_SAVINGS = {
-    "f16": 0.0, "F16": 0.0,
-    "q8_0": 50.0, "Q8_0": 50.0,
-    "q5_1": 68.0, "Q5_1": 68.0,
-    "q4_0": 75.0, "Q4_0": 75.0,
-    "q4_k_m": 75.0, "Q4_K_M": 75.0,
-    "q5_k_m": 68.0, "Q5_K_M": 68.0,
-    "q4_k_s": 75.0, "Q4_K_S": 75.0,
-    "q5_k_s": 68.0, "Q5_K_S": 68.0,
-    "q8_k_m": 50.0, "Q8_K_M": 50.0,
-    "Unknown": 0.0, "UNKNOWN": 0.0
+    "f16": 0.0,
+    "F16": 0.0,
+    "q8_0": 50.0,
+    "Q8_0": 50.0,
+    "q5_1": 68.0,
+    "Q5_1": 68.0,
+    "q4_0": 75.0,
+    "Q4_0": 75.0,
+    "q4_k_m": 75.0,
+    "Q4_K_M": 75.0,
+    "q5_k_m": 68.0,
+    "Q5_K_M": 68.0,
+    "q4_k_s": 75.0,
+    "Q4_K_S": 75.0,
+    "q5_k_s": 68.0,
+    "Q5_K_S": 68.0,
+    "q8_k_m": 50.0,
+    "Q8_K_M": 50.0,
+    "Unknown": 0.0,
+    "UNKNOWN": 0.0,
 }
+
 
 def fmt_num(val, fmt="{:.2f}"):
     if val is None or val is pd.NA:
@@ -175,15 +204,19 @@ def extract_reasoning_acc_data(df):
         for test, t_idx in test_indices.items():
             val = row[t_idx]
             if val in PASS_FAIL_STATUSES:
-                acc_data.append({
-                    "Model_Quant": f"{row[model_idx]} ({row[kv_idx]})",
-                    "Test Suite": test,
-                    "Score": 1.0 if val == "Pass" else 0.0
-                })
+                acc_data.append(
+                    {
+                        "Model_Quant": f"{row[model_idx]} ({row[kv_idx]})",
+                        "Test Suite": test,
+                        "Score": 1.0 if val == "Pass" else 0.0,
+                    }
+                )
     return acc_data
 
+
 # Inject premium CSS
-st.markdown("""
+st.markdown(
+    """
     <style>
         .main {
             background-color: #0f111a;
@@ -215,8 +248,9 @@ st.markdown("""
             margin-bottom: 20px;
         }
     </style>
-""", unsafe_allow_html=True)
-
+""",
+    unsafe_allow_html=True,
+)
 
 
 def _normalize_repo_id(val):
@@ -224,12 +258,17 @@ def _normalize_repo_id(val):
         return ""
     val = val.strip()
     if val.lower().startswith("unsloth/"):
-        return val[len("unsloth/"):].strip()
+        return val[len("unsloth/") :].strip()
     return val
 
 
 def _repo_id_matches(target, candidate):
-    if not target or not candidate or not isinstance(target, str) or not isinstance(candidate, str):
+    if (
+        not target
+        or not candidate
+        or not isinstance(target, str)
+        or not isinstance(candidate, str)
+    ):
         return False
     target_clean = target.strip()
     candidate_clean = candidate.strip()
@@ -249,10 +288,16 @@ def resolve_presets_path(presets_file=None):
     env_file = os.environ.get("PRESETS_FILE")
     if env_file:
         return env_file
-    primary = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"))
+    primary = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "../llama.cpp/profiles/model_presets.ini"
+        )
+    )
     if os.path.exists(primary):
         return primary
-    fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini"))
+    fallback = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../llama.cpp/model_presets.ini")
+    )
     if os.path.exists(fallback):
         return fallback
     return primary
@@ -263,13 +308,14 @@ def _get_presets_config(presets_file=None):
     presets_path = resolve_presets_path(presets_file)
     if not os.path.exists(presets_path):
         return None
-        
+
     try:
         config = configparser.ConfigParser(strict=False)
         config.read(presets_path, encoding="utf-8")
         return config
     except Exception:
         return None
+
 
 def map_repo_to_preset_alias(repo_or_id, presets_file=None):
     if not repo_or_id or not isinstance(repo_or_id, str):
@@ -282,7 +328,7 @@ def map_repo_to_preset_alias(repo_or_id, presets_file=None):
             for section in config.sections():
                 if _repo_id_matches(section, repo_or_id):
                     return section
-                    
+
             # Exact or normalized hf-repo and alias check
             for section in config.sections():
                 if section == "*":
@@ -294,7 +340,9 @@ def map_repo_to_preset_alias(repo_or_id, presets_file=None):
                     return section
 
                 if section_alias:
-                    alias_parts = [a.strip() for a in section_alias.split(",") if a.strip()]
+                    alias_parts = [
+                        a.strip() for a in section_alias.split(",") if a.strip()
+                    ]
                     for a in alias_parts:
                         if _repo_id_matches(a, repo_or_id):
                             return section
@@ -307,24 +355,31 @@ def map_repo_to_preset_alias(repo_or_id, presets_file=None):
                     continue
                 section_repo = config.get(section, "hf-repo", fallback="")
                 section_alias = config.get(section, "alias", fallback="")
-                
+
                 if section_repo:
                     sec_repo_norm = _normalize_repo_id(section_repo).lower()
                     query_norm = _normalize_repo_id(repo_or_id).lower()
-                    if (section_repo.lower() in repo_or_id.lower()) or (sec_repo_norm and sec_repo_norm in query_norm):
+                    if (section_repo.lower() in repo_or_id.lower()) or (
+                        sec_repo_norm and sec_repo_norm in query_norm
+                    ):
                         if "mtp" in repo_or_id.lower() and "spec" in section.lower():
                             return section
-                        if "mtp" not in repo_or_id.lower() and "spec" not in section.lower():
+                        if (
+                            "mtp" not in repo_or_id.lower()
+                            and "spec" not in section.lower()
+                        ):
                             return section
-                        
+
                 if section_alias:
                     sec_alias_norm = _normalize_repo_id(section_alias).lower()
                     query_norm = _normalize_repo_id(repo_or_id).lower()
-                    if (section_alias.lower() in repo_or_id.lower()) or (sec_alias_norm and sec_alias_norm in query_norm):
+                    if (section_alias.lower() in repo_or_id.lower()) or (
+                        sec_alias_norm and sec_alias_norm in query_norm
+                    ):
                         return section
         except (configparser.Error, OSError):
             pass
-            
+
     # Fallback overrides
     lower_id = repo_or_id.lower()
     if "qwen3.6-27b-gguf:q4_k_s" in lower_id:
@@ -335,8 +390,9 @@ def map_repo_to_preset_alias(repo_or_id, presets_file=None):
         return "Qwen3.6-35B-A3B"
     elif "gemma-4" in lower_id:
         return "gemma4-26a4b-routing"
-        
+
     return repo_or_id
+
 
 def get_preset_metadata(profile_name, presets_file=None):
     metadata = {
@@ -346,19 +402,18 @@ def get_preset_metadata(profile_name, presets_file=None):
         "flash_attn": "true",
         "parallel": "1",
         "n_gpu_layers": "99",
-        "fit": "true"
+        "fit": "true",
     }
-    
+
     config = _get_presets_config(presets_file)
     if config:
         try:
-            
             # Load globals if they exist
             if "*" in config.sections():
                 for key in config["*"]:
                     clean_key = key.replace("-", "_")
                     metadata[clean_key] = config["*"][key]
-                    
+
             # Load specific section
             if profile_name in config.sections():
                 for key in config[profile_name]:
@@ -366,7 +421,7 @@ def get_preset_metadata(profile_name, presets_file=None):
                     metadata[clean_key] = config[profile_name][key]
         except (configparser.Error, OSError):
             pass
-            
+
     return metadata
 
 
@@ -374,7 +429,8 @@ def _is_mock(obj):
     return (
         hasattr(obj, "_mock_return_value")
         or hasattr(obj, "_mock_self")
-        or getattr(type(obj), "__name__", "") in ("MagicMock", "Mock", "NonCallableMagicMock", "AsyncMock")
+        or getattr(type(obj), "__name__", "")
+        in ("MagicMock", "Mock", "NonCallableMagicMock", "AsyncMock")
     )
 
 
@@ -446,7 +502,9 @@ def _parse_run_file(filepath):
         # Prefer explicit profile_alias from log first, fallback to model_name resolution
         profile_name = settings.get("profile_alias")
         if not profile_name:
-            profile_name = map_repo_to_preset_alias(settings.get("model_name", "Unknown"))
+            profile_name = map_repo_to_preset_alias(
+                settings.get("model_name", "Unknown")
+            )
         elif "/" in str(profile_name) or str(profile_name).endswith(".gguf"):
             mapped = map_repo_to_preset_alias(settings.get("model_name", ""))
             if mapped and mapped != "Unknown":
@@ -457,7 +515,14 @@ def _parse_run_file(filepath):
             name = str(profile_name).split("/")[-1]
             if name.endswith(".gguf"):
                 name = name[:-5]
-            for q in ["-Q4_K_S", "-UD-Q4_K_XL", "-UD-Q4_K_S", "-Q6_K_XL", "-Q8_0", "-F16"]:
+            for q in [
+                "-Q4_K_S",
+                "-UD-Q4_K_XL",
+                "-UD-Q4_K_S",
+                "-Q6_K_XL",
+                "-Q8_0",
+                "-F16",
+            ]:
                 name = name.replace(q, "")
             if name.endswith("-UD"):
                 name = name[:-3]
@@ -551,48 +616,56 @@ def load_runs():
         df = df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
     return df
 
+
 df = load_runs()
 
 # Sidebar filter implementation
 with st.sidebar:
     st.markdown("## 📊")
-    st.markdown("### <span class='header-gradient'>Dashboard Filters</span>", unsafe_allow_html=True)
-    
+    st.markdown(
+        "### <span class='header-gradient'>Dashboard Filters</span>",
+        unsafe_allow_html=True,
+    )
+
     if not df.empty:
         # Endpoint filter
         endpoints = sorted(list(df["Endpoint"].dropna().unique()))
         selected_endpoints = st.multiselect("Endpoints", endpoints, default=endpoints)
-        
+
         # Model filter
         models = sorted(list(df["Model"].dropna().unique()))
         selected_models = st.multiselect("Models", models, default=models)
-        
+
         # KV cache quant filter
         quants = sorted(list(df["KV Quant"].dropna().unique()))
         selected_quants = st.multiselect("KV Cache Quants", quants, default=quants)
-        
+
         # Spec Type filter
         spec_types = sorted(list(df["Spec Type"].dropna().unique()))
-        selected_spec_types = st.multiselect("Spec Type", spec_types, default=spec_types)
-        
+        selected_spec_types = st.multiselect(
+            "Spec Type", spec_types, default=spec_types
+        )
+
         # Spec Draft Type K filter
         spec_drafts = sorted(list(df["Spec Draft Type K"].dropna().unique()))
-        selected_spec_drafts = st.multiselect("Spec Draft Type K", spec_drafts, default=spec_drafts)
-        
+        selected_spec_drafts = st.multiselect(
+            "Spec Draft Type K", spec_drafts, default=spec_drafts
+        )
+
         # Context length filter
         ctx_lens = sorted([int(x) for x in df["Context Length"].dropna().unique()])
         if ctx_lens:
             selected_ctx = st.multiselect("Context Lengths", ctx_lens, default=ctx_lens)
         else:
             selected_ctx = []
-            
+
         # Filter dataframe
         filtered_df = df[
-            df["Endpoint"].isin(selected_endpoints) &
-            df["Model"].isin(selected_models) &
-            df["KV Quant"].isin(selected_quants) &
-            df["Spec Type"].isin(selected_spec_types) &
-            df["Spec Draft Type K"].isin(selected_spec_drafts)
+            df["Endpoint"].isin(selected_endpoints)
+            & df["Model"].isin(selected_models)
+            & df["KV Quant"].isin(selected_quants)
+            & df["Spec Type"].isin(selected_spec_types)
+            & df["Spec Draft Type K"].isin(selected_spec_drafts)
         ]
         if selected_ctx:
             filtered_df = filtered_df[filtered_df["Context Length"].isin(selected_ctx)]
@@ -600,55 +673,142 @@ with st.sidebar:
         st.warning("No runs found in the registry database.")
         filtered_df = df
 
-st.markdown("# 🚀 <span class='header-gradient'>llama.cpp Benchmark Registry & Optimizer</span>", unsafe_allow_html=True)
-st.markdown("Phase 5 visualizer dashboard for multi-GPU performance, quantization loss trade-offs, and reasoning capabilities.")
+st.markdown(
+    "# 🚀 <span class='header-gradient'>llama.cpp Benchmark Registry & Optimizer</span>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "Phase 5 visualizer dashboard for multi-GPU performance, quantization loss trade-offs, and reasoning capabilities."
+)
 
 # KPI metrics
 if not filtered_df.empty:
-    is_kld_file = filtered_df["Filename"].str.contains(r"_(?:f16|q8_0|q5_1|q4_0)\.json$")
+    is_kld_file = filtered_df["Filename"].str.contains(
+        r"_(?:f16|q8_0|q5_1|q4_0)\.json$"
+    )
     unified_kpi_df = filtered_df[~is_kld_file]
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Registry Runs", len(unified_kpi_df))
     with col2:
         best_prefill = filtered_df["Prefill (t/s)"].dropna().max()
-        st.metric("Max Prefill Speed", f"{fmt_num(best_prefill, '{:.1f}')} t/s" if fmt_num(best_prefill, '{:.1f}') != "N/A" else "N/A")
+        st.metric(
+            "Max Prefill Speed",
+            f"{fmt_num(best_prefill, '{:.1f}')} t/s"
+            if fmt_num(best_prefill, "{:.1f}") != "N/A"
+            else "N/A",
+        )
     with col3:
         best_decode = filtered_df["Decode (t/s)"].dropna().max()
-        st.metric("Max Decode Speed", f"{fmt_num(best_decode, '{:.1f}')} t/s" if fmt_num(best_decode, '{:.1f}') != "N/A" else "N/A")
+        st.metric(
+            "Max Decode Speed",
+            f"{fmt_num(best_decode, '{:.1f}')} t/s"
+            if fmt_num(best_decode, "{:.1f}") != "N/A"
+            else "N/A",
+        )
     with col4:
-        kld_numeric = pd.to_numeric(filtered_df["KLD"], errors='coerce')
+        kld_numeric = pd.to_numeric(filtered_df["KLD"], errors="coerce")
         min_kld = kld_numeric[kld_numeric > 0].min()
-        st.metric("Best non-zero KLD", fmt_num(min_kld, "{:.6f}") if fmt_num(min_kld, "{:.6f}") != "N/A" else "0.000000")
+        st.metric(
+            "Best non-zero KLD",
+            fmt_num(min_kld, "{:.6f}")
+            if fmt_num(min_kld, "{:.6f}") != "N/A"
+            else "0.000000",
+        )
 
 # Tabs
-tab_history, tab_plots, tab_compare, tab_run = st.tabs([
-    "🗂️ Run History Browser", 
-    "📈 Comparative Plots", 
-    "⚖️ Side-by-Side Model Comparison",
-    "⚙️ Run New Benchmark"
-])
+tab_history, tab_plots, tab_compare, tab_run = st.tabs(
+    [
+        "🗂️ Run History Browser",
+        "📈 Comparative Plots",
+        "⚖️ Side-by-Side Model Comparison",
+        "⚙️ Run New Benchmark",
+    ]
+)
 
 with tab_history:
     st.subheader("Historical Benchmark Runs")
     if not filtered_df.empty:
         # Filter out the raw KLD individual files from history tables (keep only unified complete runs)
-        is_kld_file = filtered_df["Filename"].str.contains(r"_(?:f16|q8_0|q5_1|q4_0)\.json$")
+        is_kld_file = filtered_df["Filename"].str.contains(
+            r"_(?:f16|q8_0|q5_1|q4_0)\.json$"
+        )
         unified_df = filtered_df[~is_kld_file]
-        
+
         # Grouped Summary table
         st.markdown("### 📊 Profile & Quantization Summary (Grouped Averages)")
-        summary_cols = ["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length", "Prefill (t/s)", "Decode (t/s)", "TTFT (s)", "PPL", "KLD"]
-        grouped_df = unified_df[summary_cols].groupby(["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length"]).mean().reset_index()
-        
+        summary_cols = [
+            "Model",
+            "Base Quant",
+            "KV Quant",
+            "Spec Type",
+            "Spec Draft Type K",
+            "Context Length",
+            "Prefill (t/s)",
+            "Decode (t/s)",
+            "TTFT (s)",
+            "PPL",
+            "KLD",
+        ]
+        grouped_df = (
+            unified_df[summary_cols]
+            .groupby(
+                [
+                    "Model",
+                    "Base Quant",
+                    "KV Quant",
+                    "Spec Type",
+                    "Spec Draft Type K",
+                    "Context Length",
+                ]
+            )
+            .mean()
+            .reset_index()
+        )
+
         # Calculate reasoning pass rates for the group
-        acc_cols = ["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length", "Needle", "RULER", "LongBench", "SWE-bench"]
+        acc_cols = [
+            "Model",
+            "Base Quant",
+            "KV Quant",
+            "Spec Type",
+            "Spec Draft Type K",
+            "Context Length",
+            "Needle",
+            "RULER",
+            "LongBench",
+            "SWE-bench",
+        ]
         acc_group = unified_df[acc_cols].copy()
         for col in ["Needle", "RULER", "LongBench", "SWE-bench"]:
             acc_group[col] = acc_group[col].map({"Pass": 1.0, "Fail": 0.0})
-        acc_grouped = acc_group.groupby(["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length"]).mean().reset_index()
-        
-        merged_grouped = pd.merge(grouped_df, acc_grouped, on=["Model", "Base Quant", "KV Quant", "Spec Type", "Spec Draft Type K", "Context Length"])
+        acc_grouped = (
+            acc_group.groupby(
+                [
+                    "Model",
+                    "Base Quant",
+                    "KV Quant",
+                    "Spec Type",
+                    "Spec Draft Type K",
+                    "Context Length",
+                ]
+            )
+            .mean()
+            .reset_index()
+        )
+
+        merged_grouped = pd.merge(
+            grouped_df,
+            acc_grouped,
+            on=[
+                "Model",
+                "Base Quant",
+                "KV Quant",
+                "Spec Type",
+                "Spec Draft Type K",
+                "Context Length",
+            ],
+        )
         rename_dict = {
             "Prefill (t/s)": "Avg Prefill (t/s)",
             "Decode (t/s)": "Avg Decode (t/s)",
@@ -658,42 +818,58 @@ with tab_history:
             "Needle": "Needle Pass Rate",
             "RULER": "RULER Pass Rate",
             "LongBench": "LongBench Pass Rate",
-            "SWE-bench": "SWE-bench Pass Rate"
+            "SWE-bench": "SWE-bench Pass Rate",
         }
         merged_grouped = merged_grouped.rename(columns=rename_dict)
-        
+
         st.dataframe(
-            merged_grouped.style.format({
-                "Avg Prefill (t/s)": "{:.2f}",
-                "Avg Decode (t/s)": "{:.2f}",
-                "Avg TTFT (s)": "{:.3f}",
-                "Avg PPL": "{:.4f}",
-                "Avg KLD": "{:.6f}",
-                "Needle Pass Rate": "{:.0%}",
-                "RULER Pass Rate": "{:.0%}",
-                "LongBench Pass Rate": "{:.0%}",
-                "SWE-bench Pass Rate": "{:.0%}"
-            }),
+            merged_grouped.style.format(
+                {
+                    "Avg Prefill (t/s)": "{:.2f}",
+                    "Avg Decode (t/s)": "{:.2f}",
+                    "Avg TTFT (s)": "{:.3f}",
+                    "Avg PPL": "{:.4f}",
+                    "Avg KLD": "{:.6f}",
+                    "Needle Pass Rate": "{:.0%}",
+                    "RULER Pass Rate": "{:.0%}",
+                    "LongBench Pass Rate": "{:.0%}",
+                    "SWE-bench Pass Rate": "{:.0%}",
+                }
+            ),
         )
-        
+
         st.markdown("### 🗂️ Detailed Flat Logs")
-        
+
         # Display clean browser dataframe
         display_cols = [
-            "Timestamp", "Model", "Base Quant", "KV Quant", "Prefill (t/s)", "Decode (t/s)", 
-            "TTFT (s)", "Needle", "RULER", "LongBench", "SWE-bench", "PPL", "KLD"
+            "Timestamp",
+            "Model",
+            "Base Quant",
+            "KV Quant",
+            "Prefill (t/s)",
+            "Decode (t/s)",
+            "TTFT (s)",
+            "Needle",
+            "RULER",
+            "LongBench",
+            "SWE-bench",
+            "PPL",
+            "KLD",
         ]
         st.dataframe(
-            unified_df[display_cols].style.format({
-                "Prefill (t/s)": "{:.2f}",
-                "Decode (t/s)": "{:.2f}",
-                "TTFT (s)": "{:.3f}",
-                "PPL": "{:.4f}",
-                "KLD": "{:.6f}"
-            }),
+            unified_df[display_cols].style.format(
+                {
+                    "Prefill (t/s)": "{:.2f}",
+                    "Decode (t/s)": "{:.2f}",
+                    "TTFT (s)": "{:.3f}",
+                    "PPL": "{:.4f}",
+                    "KLD": "{:.6f}",
+                }
+            ),
         )
     else:
         st.info("No runs match the filter criteria.")
+
 
 def build_throughput_figure(tp_df, model_colors=None):
     """Build Plotly figure for throughput (PP vs TG) across models and quantization formats."""
@@ -712,13 +888,13 @@ def build_throughput_figure(tp_df, model_colors=None):
 
     if model_colors is None:
         model_colors = {
-            "Qwen3.6-27B": "#3b82f6",          # Blue
-            "Qwen3.6-27B-spec3": "#10b981",    # Green
-            "Qwen3.6-27B-spec4": "#8b5cf6",    # Purple
-            "Qwen3.6-35B-A3B-spec": "#f97316", # Orange
-            "Qwen3.6-35B-A3B": "#ef4444"       # Red
+            "Qwen3.6-27B": "#3b82f6",  # Blue
+            "Qwen3.6-27B-spec3": "#10b981",  # Green
+            "Qwen3.6-27B-spec4": "#8b5cf6",  # Purple
+            "Qwen3.6-35B-A3B-spec": "#f97316",  # Orange
+            "Qwen3.6-35B-A3B": "#ef4444",  # Red
         }
-    
+
     # Custom hover template
     hover_template_pp = (
         "<b>%{customdata[0]}</b> (PP)<br>"
@@ -734,24 +910,30 @@ def build_throughput_figure(tp_df, model_colors=None):
         "KV Cache: %{customdata[1]}<br>"
         "<extra></extra>"
     )
-    
+
     # Pre-sort and group by ("Model", "KV Quant") to eliminate redundant O(N) filtering in nested loops
     tp_sorted = tp_df.dropna(subset=["KV Quant"]).sort_values(by="Context Length")
     seen_models = set()
-    
+
     for (model, quant), q_df in tp_sorted.groupby(["Model", "KV Quant"], sort=True):
         if q_df.empty:  # pragma: no cover
             continue
-            
+
         color = model_colors.get(model, "#94a3b8")
-        show_legend = model not in seen_models # Show in legend only once per model
+        show_legend = model not in seen_models  # Show in legend only once per model
         seen_models.add(model)
-        
+
         customdata = tuple(zip(q_df["Model"], q_df["KV Quant"]))
-        
+
         # Select dash style based on quant format
-        dash_style = "solid" if quant == "f16" else ("dash" if quant == "q8_0" else ("dot" if quant == "q5_1" else "dashdot"))
-        
+        dash_style = (
+            "solid"
+            if quant == "f16"
+            else (
+                "dash" if quant == "q8_0" else ("dot" if quant == "q5_1" else "dashdot")
+            )
+        )
+
         # Add PP (Prefill) trace - Left Y-axis (secondary_y=False)
         fig1.add_trace(
             go.Scatter(
@@ -766,19 +948,15 @@ def build_throughput_figure(tp_df, model_colors=None):
                     size=10,
                     color=color,
                     opacity=0.8,
-                    line=dict(width=1, color="#1e293b")
+                    line=dict(width=1, color="#1e293b"),
                 ),
-                line=dict(
-                    color=color,
-                    width=1.5,
-                    dash=dash_style
-                ),
+                line=dict(color=color, width=1.5, dash=dash_style),
                 customdata=customdata,
-                hovertemplate=hover_template_pp
+                hovertemplate=hover_template_pp,
             ),
-            secondary_y=False
+            secondary_y=False,
         )
-        
+
         # Add TG (Decode) trace - Right Y-axis (secondary_y=True)
         fig1.add_trace(
             go.Scatter(
@@ -793,19 +971,15 @@ def build_throughput_figure(tp_df, model_colors=None):
                     size=10,
                     color=color,
                     opacity=0.8,
-                    line=dict(width=1, color="#1e293b")
+                    line=dict(width=1, color="#1e293b"),
                 ),
-                line=dict(
-                    color=color,
-                    width=1.5,
-                    dash=dash_style
-                ),
+                line=dict(color=color, width=1.5, dash=dash_style),
                 customdata=customdata,
-                hovertemplate=hover_template_tg
+                hovertemplate=hover_template_tg,
             ),
-            secondary_y=True
+            secondary_y=True,
         )
-    
+
     # Update layout, axes titles, log scale, and dark template
     fig1.update_layout(
         template="plotly_dark",
@@ -813,21 +987,25 @@ def build_throughput_figure(tp_df, model_colors=None):
         paper_bgcolor="rgba(0,0,0,0)",
         title="Read/Write (PP vs TG) Generation Speeds across Cache Formats",
         xaxis_title="Context Length (tokens, log scale)",
-        xaxis_type="log"
+        xaxis_type="log",
     )
-    
+
     # Left Y-axis (PP)
-    fig1.update_yaxes(title_text="Prompt Processing (PP) Speed (tokens/sec)", secondary_y=False)
+    fig1.update_yaxes(
+        title_text="Prompt Processing (PP) Speed (tokens/sec)", secondary_y=False
+    )
     # Right Y-axis (TG)
-    fig1.update_yaxes(title_text="Token Generation (TG) Speed (tokens/sec)", secondary_y=True)
-    
+    fig1.update_yaxes(
+        title_text="Token Generation (TG) Speed (tokens/sec)", secondary_y=True
+    )
+
     return fig1
 
 
 def enqueue_output(out, q):
     """Read lines from stream into queue until EOF and close the stream."""
     try:
-        for line in iter(out.readline, ''):
+        for line in iter(out.readline, ""):
             q.put(line)
     finally:
         try:
@@ -840,7 +1018,7 @@ with tab_plots:
     st.subheader("Performance & Quantization Trade-off Analysis")
     if not filtered_df.empty:
         col_plot1, col_plot2 = st.columns(2)
-        
+
         with col_plot1:
             st.markdown("#### Throughput (t/s) vs. KV Cache Quantization")
             # Filter rows with throughput values
@@ -850,7 +1028,7 @@ with tab_plots:
                 st.plotly_chart(fig1)
             else:
                 st.info("No throughput metrics available for plots.")
-                
+
         with col_plot2:
             st.markdown("#### Reasoning Benchmarks Pass Rates")
             # Map Pass/Fail/NA to numeric values for bar charting
@@ -865,26 +1043,34 @@ with tab_plots:
                     color="Model_Quant",
                     barmode="group",
                     title="Needle, RULER, LongBench, SWE-bench Scores",
-                    labels={"Score": "Pass Rate (0 or 1)"}
+                    labels={"Score": "Pass Rate (0 or 1)"},
                 )
-                fig2.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                fig2.update_layout(
+                    template="plotly_dark",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
                 st.plotly_chart(fig2)
             else:
                 st.info("No reasoning accuracy data available for plots.")
-                
+
         st.divider()
-        
+
         col_plot3, col_plot4 = st.columns(2)
         with col_plot3:
             st.markdown("#### Quantization Loss: KL Divergence vs. VRAM Savings")
             # Filter rows with KLD values
             loss_df = filtered_df.copy()
-            loss_df["KLD"] = pd.to_numeric(loss_df["KLD"], errors='coerce')
-            loss_df["PPL"] = pd.to_numeric(loss_df["PPL"], errors='coerce')
-            loss_df = loss_df[(loss_df["KLD"] > 0) & (loss_df["PPL"].notna()) & (loss_df["PPL"] > 0)].copy()
+            loss_df["KLD"] = pd.to_numeric(loss_df["KLD"], errors="coerce")
+            loss_df["PPL"] = pd.to_numeric(loss_df["PPL"], errors="coerce")
+            loss_df = loss_df[
+                (loss_df["KLD"] > 0) & (loss_df["PPL"].notna()) & (loss_df["PPL"] > 0)
+            ].copy()
             if not loss_df.empty:
                 # Add VRAM saving percentage
-                loss_df["VRAM Savings (%)"] = loss_df["KV Quant"].map(VRAM_SAVINGS).fillna(0.0)
+                loss_df["VRAM Savings (%)"] = (
+                    loss_df["KV Quant"].map(VRAM_SAVINGS).fillna(0.0)
+                )
                 fig3 = px.scatter(
                     loss_df,
                     x="VRAM Savings (%)",
@@ -893,14 +1079,18 @@ with tab_plots:
                     size="PPL",
                     text="KV Quant",
                     title="KL Divergence Distance vs. Estimated VRAM Cache Compression",
-                    labels={"KLD": "Kullback-Leibler Divergence (Lower is better)"}
+                    labels={"KLD": "Kullback-Leibler Divergence (Lower is better)"},
                 )
-                fig3.update_traces(textposition='top center')
-                fig3.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                fig3.update_traces(textposition="top center")
+                fig3.update_layout(
+                    template="plotly_dark",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
                 st.plotly_chart(fig3)
             else:
                 st.info("No KL Divergence data available for plots.")
-                
+
         with col_plot4:
             st.markdown("#### Perplexity (PPL) vs. KV Cache Quantization")
             ppl_df = filtered_df.dropna(subset=["PPL"])
@@ -911,9 +1101,13 @@ with tab_plots:
                     y="PPL",
                     color="Model",
                     markers=True,
-                    title="Perplexity Shift (Lower is better)"
+                    title="Perplexity Shift (Lower is better)",
                 )
-                fig4.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                fig4.update_layout(
+                    template="plotly_dark",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
                 st.plotly_chart(fig4)
             else:
                 st.info("No Perplexity metrics available for plots.")
@@ -924,114 +1118,259 @@ with tab_compare:
     st.subheader("Side-by-Side Model Comparison")
     if len(filtered_df) >= 2:
         # Group runs by Model and KV Cache Quant to get valid options
-        unique_combinations = filtered_df.groupby(["Model", "KV Quant"]).size().reset_index()[["Model", "KV Quant"]]
-        
+        unique_combinations = (
+            filtered_df.groupby(["Model", "KV Quant"])
+            .size()
+            .reset_index()[["Model", "KV Quant"]]
+        )
+
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             st.markdown("#### Configuration A")
-            models_a = sorted(list(unique_combinations["Model"].unique())) if not unique_combinations.empty else []
-            selected_model_a = st.selectbox("Select Profile A", models_a, index=0 if models_a else None, key="model_a") if models_a else None
-            
-            quants_a = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_a]["KV Quant"].unique())) if selected_model_a else []
-            selected_quant_a = st.selectbox("Select Quant A", quants_a, index=0 if quants_a else None, key="quant_a") if quants_a else None
-            
+            models_a = (
+                sorted(list(unique_combinations["Model"].unique()))
+                if not unique_combinations.empty
+                else []
+            )
+            selected_model_a = (
+                st.selectbox(
+                    "Select Profile A",
+                    models_a,
+                    index=0 if models_a else None,
+                    key="model_a",
+                )
+                if models_a
+                else None
+            )
+
+            quants_a = (
+                sorted(
+                    list(
+                        unique_combinations[
+                            unique_combinations["Model"] == selected_model_a
+                        ]["KV Quant"].unique()
+                    )
+                )
+                if selected_model_a
+                else []
+            )
+            selected_quant_a = (
+                st.selectbox(
+                    "Select Quant A",
+                    quants_a,
+                    index=0 if quants_a else None,
+                    key="quant_a",
+                )
+                if quants_a
+                else None
+            )
+
             if selected_model_a and selected_quant_a:
-                runA_candidates = filtered_df[(filtered_df["Model"] == selected_model_a) & (filtered_df["KV Quant"] == selected_quant_a)]
+                runA_candidates = filtered_df[
+                    (filtered_df["Model"] == selected_model_a)
+                    & (filtered_df["KV Quant"] == selected_quant_a)
+                ]
                 runA = runA_candidates.iloc[0] if not runA_candidates.empty else None
             else:
                 runA = None
-            
+
         with col_c2:
             st.markdown("#### Configuration B")
-            models_b = sorted(list(unique_combinations["Model"].unique())) if not unique_combinations.empty else []
-            selected_model_b = st.selectbox("Select Profile B", models_b, index=0 if models_b else None, key="model_b") if models_b else None
-            
-            quants_b = sorted(list(unique_combinations[unique_combinations["Model"] == selected_model_b]["KV Quant"].unique())) if selected_model_b else []
-            selected_quant_b = st.selectbox("Select Quant B", quants_b, index=0 if quants_b else None, key="quant_b") if quants_b else None
-            
+            models_b = (
+                sorted(list(unique_combinations["Model"].unique()))
+                if not unique_combinations.empty
+                else []
+            )
+            selected_model_b = (
+                st.selectbox(
+                    "Select Profile B",
+                    models_b,
+                    index=0 if models_b else None,
+                    key="model_b",
+                )
+                if models_b
+                else None
+            )
+
+            quants_b = (
+                sorted(
+                    list(
+                        unique_combinations[
+                            unique_combinations["Model"] == selected_model_b
+                        ]["KV Quant"].unique()
+                    )
+                )
+                if selected_model_b
+                else []
+            )
+            selected_quant_b = (
+                st.selectbox(
+                    "Select Quant B",
+                    quants_b,
+                    index=0 if quants_b else None,
+                    key="quant_b",
+                )
+                if quants_b
+                else None
+            )
+
             if selected_model_b and selected_quant_b:
-                runB_candidates = filtered_df[(filtered_df["Model"] == selected_model_b) & (filtered_df["KV Quant"] == selected_quant_b)]
+                runB_candidates = filtered_df[
+                    (filtered_df["Model"] == selected_model_b)
+                    & (filtered_df["KV Quant"] == selected_quant_b)
+                ]
                 runB = runB_candidates.iloc[0] if not runB_candidates.empty else None
             else:
                 runB = None
-            
+
         if runA is not None and runB is not None:
             st.markdown("### Comparison Table")
-            
+
             # Build comparison details
             compare_rows = [
                 ("Model Name", str(runA["Model"]), str(runB["Model"])),
                 ("Endpoint", str(runA["Endpoint"]), str(runB["Endpoint"])),
                 ("Base Quant", str(runA["Base Quant"]), str(runB["Base Quant"])),
                 ("KV Cache Quant", str(runA["KV Quant"]), str(runB["KV Quant"])),
-                ("Context Length (tks)", str(runA["Context Length"]), str(runB["Context Length"])),
-                ("Threads", str(runA["Threads"]) if pd.notna(runA["Threads"]) else "N/A", str(runB["Threads"]) if pd.notna(runB["Threads"]) else "N/A"),
-                ("Prefill Speed (t/s)", fmt_num(runA['Prefill (t/s)'], "{:.2f}"), fmt_num(runB['Prefill (t/s)'], "{:.2f}")),
-                ("Decode Speed (t/s)", fmt_num(runA['Decode (t/s)'], "{:.2f}"), fmt_num(runB['Decode (t/s)'], "{:.2f}")),
-                ("TTFT (s)", fmt_num(runA['TTFT (s)'], "{:.3f}"), fmt_num(runB['TTFT (s)'], "{:.3f}")),
+                (
+                    "Context Length (tks)",
+                    str(runA["Context Length"]),
+                    str(runB["Context Length"]),
+                ),
+                (
+                    "Threads",
+                    str(runA["Threads"]) if pd.notna(runA["Threads"]) else "N/A",
+                    str(runB["Threads"]) if pd.notna(runB["Threads"]) else "N/A",
+                ),
+                (
+                    "Prefill Speed (t/s)",
+                    fmt_num(runA["Prefill (t/s)"], "{:.2f}"),
+                    fmt_num(runB["Prefill (t/s)"], "{:.2f}"),
+                ),
+                (
+                    "Decode Speed (t/s)",
+                    fmt_num(runA["Decode (t/s)"], "{:.2f}"),
+                    fmt_num(runB["Decode (t/s)"], "{:.2f}"),
+                ),
+                (
+                    "TTFT (s)",
+                    fmt_num(runA["TTFT (s)"], "{:.3f}"),
+                    fmt_num(runB["TTFT (s)"], "{:.3f}"),
+                ),
                 ("Needle Retrieval", str(runA["Needle"]), str(runB["Needle"])),
                 ("RULER Var Tracking", str(runA["RULER"]), str(runB["RULER"])),
-                ("LongBench Document QA", str(runA["LongBench"]), str(runB["LongBench"])),
-                ("SWE-bench Toy Debugging", str(runA["SWE-bench"]), str(runB["SWE-bench"])),
-                ("Perplexity (PPL)", fmt_num(runA['PPL'], "{:.4f}"), fmt_num(runB['PPL'], "{:.4f}")),
-                ("KL Divergence (KLD)", fmt_num(runA['KLD'], "{:.6f}"), fmt_num(runB['KLD'], "{:.6f}")),
-                ("Same Top Token %", f"{fmt_num(runA['Same Top %'], '{:.2f}')}%" if fmt_num(runA['Same Top %'], '{:.2f}') != "N/A" else "N/A", f"{fmt_num(runB['Same Top %'], '{:.2f}')}%" if fmt_num(runB['Same Top %'], '{:.2f}') != "N/A" else "N/A")
+                (
+                    "LongBench Document QA",
+                    str(runA["LongBench"]),
+                    str(runB["LongBench"]),
+                ),
+                (
+                    "SWE-bench Toy Debugging",
+                    str(runA["SWE-bench"]),
+                    str(runB["SWE-bench"]),
+                ),
+                (
+                    "Perplexity (PPL)",
+                    fmt_num(runA["PPL"], "{:.4f}"),
+                    fmt_num(runB["PPL"], "{:.4f}"),
+                ),
+                (
+                    "KL Divergence (KLD)",
+                    fmt_num(runA["KLD"], "{:.6f}"),
+                    fmt_num(runB["KLD"], "{:.6f}"),
+                ),
+                (
+                    "Same Top Token %",
+                    f"{fmt_num(runA['Same Top %'], '{:.2f}')}%"
+                    if fmt_num(runA["Same Top %"], "{:.2f}") != "N/A"
+                    else "N/A",
+                    f"{fmt_num(runB['Same Top %'], '{:.2f}')}%"
+                    if fmt_num(runB["Same Top %"], "{:.2f}") != "N/A"
+                    else "N/A",
+                ),
             ]
-            
-            comp_df = pd.DataFrame(compare_rows, columns=["Metric", "Configuration A", "Configuration B"])
+
+            comp_df = pd.DataFrame(
+                compare_rows, columns=["Metric", "Configuration A", "Configuration B"]
+            )
             st.table(comp_df)
         else:
             st.info("No matching runs found for comparisons.")
     else:
-        st.info("Need at least 2 historical runs in the database to perform side-by-side comparison.")
+        st.info(
+            "Need at least 2 historical runs in the database to perform side-by-side comparison."
+        )
+
+
+def fetch_available_models(endpoint: str, api_key: str | None = None) -> list[str]:
+    """Fetch and return sorted list of model IDs from an OpenAI-compatible endpoint."""
+    validate_endpoint_url(endpoint, allow_private=True)
+    url = f"{endpoint}/v1/models"
+    headers = {}
+    key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
+    if key and key.strip():
+        headers["Authorization"] = f"Bearer {key.strip()}"
+    resp = requests.get(url, headers=headers, timeout=3)
+    resp.raise_for_status()
+    data = resp.json()
+    models_raw = data.get("data", []) if isinstance(data, dict) else []
+    models = [
+        item.get("id")
+        for item in models_raw
+        if isinstance(item, dict) and item.get("id")
+    ]
+    if not models:
+        raise ValueError("No models found in response")
+    return sorted(models)
+
 
 with tab_run:
     st.subheader("Execute New Benchmarks")
-    st.markdown("Select your configuration and execute the unified runner script (`run_suite.py`) in the background.")
-    
+    st.markdown(
+        "Select your configuration and execute the unified runner script (`run_suite.py`) in the background."
+    )
+
     col_r1, col_r2 = st.columns(2)
     with col_r1:
-        new_mode = st.selectbox("Benchmark Mode", ["all", "throughput", "reasoning", "kld"])
-        new_endpoint = st.text_input("Server Endpoint URL", value="http://127.0.0.1:8081")
-        
+        new_mode = st.selectbox(
+            "Benchmark Mode", ["all", "throughput", "reasoning", "kld"]
+        )
+        new_endpoint = st.text_input(
+            "Server Endpoint URL", value="http://127.0.0.1:8083"
+        )
+
         # Load available models from the endpoint dynamically
-        available_models = [
-            "unsloth/Qwen3.6-27B-GGUF:Q4_K_S",
-            "unsloth/Qwen3.6-27B-GGUF:Q4_K_XL",
-            "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_S",
-            "unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_S",
-            "unsloth/gemma-4-E2B-it-GGUF:Q4_K_XL"
-        ]
+        available_models = []
         try:
-            validate_endpoint_url(new_endpoint)
-            url = f"{new_endpoint}/v1/models"
-            resp = requests.get(url, timeout=2)
-            if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                    models = [item.get("id") for item in data.get("data", [])]
-                    if models:
-                        available_models = sorted(models)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-        except Exception:
-            pass
-            
-        new_model = st.selectbox("Model ID / Endpoint Alias", available_models)
+            available_models = fetch_available_models(new_endpoint)
+        except Exception as err:  # noqa: BLE001
+            st.warning(
+                f"Could not retrieve models from endpoint ({err}). You can enter a model identifier manually below."
+            )
+
+        if available_models:
+            new_model = st.selectbox("Model ID / Endpoint Alias", available_models)
+        else:
+            new_model = st.text_input("Model ID / Endpoint Alias", value="Qwen3.6-27B")
+        st.button("🔄 Refresh Models")
     with col_r2:
         new_tokens = st.number_input(
             "Context Length Tokens (for reasoning)",
             min_value=1,
             max_value=262144,
             value=5000,
-            step=1000
+            step=1000,
         )
-        new_gguf = st.text_input("Local GGUF Path (for KLD mode, auto-detects if blank)", value="")
-        new_corpus = st.text_input("Corpus Text File (for KLD mode)", value="kld_corpus.txt")
-        
+        new_gguf = st.text_input(
+            "Local GGUF Path (for KLD mode, auto-detects if blank)", value=""
+        )
+        new_corpus = st.text_input(
+            "Corpus Text File (for KLD mode)", value="kld_corpus.txt"
+        )
+
     if st.button("▶️ Launch Benchmark Process", type="primary", width="stretch"):
         try:
-            valid_endpoint = validate_endpoint_url(new_endpoint)
+            valid_endpoint = validate_endpoint_url(new_endpoint, allow_private=True)
             valid_model = validate_model_name(new_model)
             valid_corpus = validate_corpus_name(new_corpus)
             valid_gguf = validate_gguf_path(new_gguf) if new_gguf else ""
@@ -1042,37 +1381,45 @@ with tab_run:
 
         st.session_state.bench_running = True
         st.session_state.bench_output = []
-        
+
         # Build arguments list
         args = [
-            "python3", "run_suite.py",
-            "--mode", new_mode,
-            "--endpoint", valid_endpoint,
-            "--model", valid_model,
-            "--tokens", str(valid_tokens),
-            "--corpus", valid_corpus
+            "python3",
+            "run_suite.py",
+            "--mode",
+            new_mode,
+            "--endpoint",
+            valid_endpoint,
+            "--model",
+            valid_model,
+            "--tokens",
+            str(valid_tokens),
+            "--corpus",
+            valid_corpus,
         ]
         if valid_gguf:
             args.extend(["--gguf-path", valid_gguf])
-            
+
         st.info(f"Running command: {' '.join(args)}")
-        
+
         # Execute with real-time feedback
         log_placeholder = st.empty()
-        
+
         proc = subprocess.Popen(
             args,
             cwd=str(Path(__file__).parent),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
         )
-        
+
         output_lines = []
         line_queue = queue.Queue()
 
-        reader_thread = threading.Thread(target=enqueue_output, args=(proc.stdout, line_queue), daemon=True)
+        reader_thread = threading.Thread(
+            target=enqueue_output, args=(proc.stdout, line_queue), daemon=True
+        )
         reader_thread.start()
 
         timeout_sec = 3600
@@ -1131,9 +1478,11 @@ with tab_run:
                     proc.kill()
                     proc.wait(timeout=1)
             reader_thread.join(timeout=1)
-        
+
         if proc.returncode == 0:
-            st.success("Benchmark completed successfully! Refreshing historical registry runs...")
+            st.success(
+                "Benchmark completed successfully! Refreshing historical registry runs..."
+            )
             # Re-read historical runs
             time.sleep(1)
             st.rerun()
