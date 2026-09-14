@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-import streamlit as st
+import configparser
 import functools
+import json
 import math
 import os
-import configparser
-import json
+import queue
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import subprocess
-import time
 import requests
-import queue
-import threading
-import sys
-from pathlib import Path
+import streamlit as st
+
 from utils import redact_cli_args, validate_endpoint_url, validate_model_name
 
 BASE_QUANT_TYPES = (
@@ -96,6 +98,79 @@ def validate_new_tokens(new_tokens):
 
 
 validate_tokens = validate_new_tokens
+
+CONTEXT_TIERS = {
+    "8k": 8192,
+    "32k": 32768,
+    "64k": 65536,
+    "128k": 131072,
+    "240k": 240000,
+}
+
+CONTEXT_TIER_OPTIONS = [
+    "8k (Smoke)",
+    "32k (Standard Agentic)",
+    "64k (Large Agentic)",
+    "128k (Deep Window)",
+    "240k (Full Window)",
+    "Custom",
+]
+
+TIER_TO_TOKENS = {
+    "8k (Smoke)": 8192,
+    "32k (Standard Agentic)": 32768,
+    "64k (Large Agentic)": 65536,
+    "128k (Deep Window)": 131072,
+    "240k (Full Window)": 240000,
+}
+
+
+def validate_max_tokens(max_tokens):
+    if max_tokens is None or isinstance(max_tokens, bool):
+        raise ValueError("Max output tokens must be between 256 and 32768.")
+    try:
+        if isinstance(max_tokens, float) and not max_tokens.is_integer():
+            raise ValueError("Max output tokens must be between 256 and 32768.")
+        tokens_int = int(max_tokens)
+    except (TypeError, ValueError):
+        raise ValueError("Max output tokens must be between 256 and 32768.")
+
+    if not (256 <= tokens_int <= 32768):
+        raise ValueError("Max output tokens must be between 256 and 32768.")
+    return tokens_int
+
+
+def build_runner_cmd(
+    mode,
+    endpoint,
+    model,
+    tokens,
+    corpus,
+    gguf_path=None,
+    api_key=None,
+    max_tokens=16384,
+):
+    cmd = [
+        sys.executable,
+        "run_suite.py",
+        "--mode",
+        str(mode),
+        "--endpoint",
+        str(endpoint),
+        "--model",
+        str(model),
+        "--tokens",
+        str(tokens),
+        "--corpus",
+        str(corpus),
+        "--max-tokens",
+        str(max_tokens),
+    ]
+    if gguf_path:
+        cmd.extend(["--gguf-path", str(gguf_path)])
+    if api_key:
+        cmd.extend(["--api-key", str(api_key)])
+    return cmd
 
 
 # Page config
@@ -316,6 +391,7 @@ def delete_endpoint(
 
     save_endpoints(endpoints, file_path)
     return endpoints
+
 
 TEST_SUITES = ("Needle", "RULER", "LongBench", "SWE-bench")
 PASS_FAIL_STATUSES = frozenset({"Pass", "Fail"})
@@ -721,8 +797,7 @@ def _parse_run_file(filepath):
         # If profile_name is still a path or has a raw gguf filename, clean it
         if "/" in str(profile_name) or str(profile_name).endswith(".gguf"):
             name = str(profile_name).split("/")[-1]
-            if name.endswith(".gguf"):
-                name = name[:-5]
+            name = name.removesuffix(".gguf")
             for q in [
                 "-Q4_K_S",
                 "-UD-Q4_K_XL",
@@ -732,8 +807,7 @@ def _parse_run_file(filepath):
                 "-F16",
             ]:
                 name = name.replace(q, "")
-            if name.endswith("-UD"):
-                name = name[:-3]
+            name = name.removesuffix("-UD")
             profile_name = name
 
         presets_meta = get_preset_metadata(profile_name)
@@ -1516,7 +1590,11 @@ def fetch_available_models(endpoint: str, api_key: str | None = None) -> list[st
     validate_endpoint_url(cleaned_endpoint, allow_private=True)
     url = f"{cleaned_endpoint}/v1/models"
     headers = {}
-    key = api_key if api_key is not None else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+    key = (
+        api_key
+        if api_key is not None
+        else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+    )
     if key and key.strip():
         headers["Authorization"] = f"Bearer {key.strip()}"
     resp = requests.get(url, headers=headers, timeout=3)
@@ -1564,9 +1642,7 @@ with tab_run:
         init_url = (
             "http://127.0.0.1:8083" if is_new else (curr_ep["url"] if curr_ep else "")
         )
-        init_key = (
-            "" if is_new else (curr_ep.get("api_key", "") if curr_ep else "")
-        )
+        init_key = "" if is_new else (curr_ep.get("api_key", "") if curr_ep else "")
         init_def = (
             False
             if is_new
@@ -1574,7 +1650,9 @@ with tab_run:
         )
 
         ep_name = st.text_input(
-            "Endpoint Label / Name", value=init_name, key=f"ep_mgmt_name_{selected_manage}"
+            "Endpoint Label / Name",
+            value=init_name,
+            key=f"ep_mgmt_name_{selected_manage}",
         )
         ep_url = st.text_input(
             "Endpoint URL", value=init_url, key=f"ep_mgmt_url_{selected_manage}"
@@ -1586,7 +1664,9 @@ with tab_run:
             key=f"ep_mgmt_key_{selected_manage}",
         )
         ep_default = st.checkbox(
-            "Set as default endpoint", value=init_def, key=f"ep_mgmt_default_{selected_manage}"
+            "Set as default endpoint",
+            value=init_def,
+            key=f"ep_mgmt_default_{selected_manage}",
         )
 
         col_m1, col_m2, col_m3 = st.columns(3)
@@ -1627,9 +1707,7 @@ with tab_run:
         with col_m2:
             if st.button("🔌 Test Connection", key="btn_test_ep"):
                 try:
-                    test_u = validate_endpoint_url(
-                        ep_url.strip(), allow_private=True
-                    )
+                    test_u = validate_endpoint_url(ep_url.strip(), allow_private=True)
                     tested_models = fetch_available_models(
                         test_u, ep_key.strip() or None
                     )
@@ -1640,7 +1718,11 @@ with tab_run:
                     st.error(f"Connection failed: {err}")
 
         with col_m3:
-            if not is_new and len(endpoints) > 1 and st.button("🗑️ Delete Endpoint", key="btn_delete_ep"):
+            if (
+                not is_new
+                and len(endpoints) > 1
+                and st.button("🗑️ Delete Endpoint", key="btn_delete_ep")
+            ):
                 try:
                     delete_endpoint(selected_manage)
                     st.session_state["endpoint_notice"] = (
@@ -1685,7 +1767,9 @@ with tab_run:
         else:
             matched_ep = next(
                 (e for e in endpoints if e["name"] == selected_endpoint),
-                endpoints[0] if endpoints else {"url": "http://127.0.0.1:8083", "api_key": ""},
+                endpoints[0]
+                if endpoints
+                else {"url": "http://127.0.0.1:8083", "api_key": ""},
             )
             new_endpoint = matched_ep.get("url", "http://127.0.0.1:8083")
             runner_api_key = matched_ep.get("api_key", "")
@@ -1721,12 +1805,44 @@ with tab_run:
             new_model = st.text_input("Model ID / Endpoint Alias", value="Qwen3.6-27B")
         st.button("🔄 Refresh Models")
     with col_r2:
+        selected_tier = st.selectbox(
+            "Context Tier",
+            CONTEXT_TIER_OPTIONS,
+            index=1,
+            key="runner_context_tier",
+        )
+
+        tier_token_val = TIER_TO_TOKENS.get(selected_tier)
+        if (
+            "prev_context_tier" not in st.session_state
+            or st.session_state["prev_context_tier"] != selected_tier
+        ):
+            st.session_state["prev_context_tier"] = selected_tier
+            if tier_token_val is not None:
+                st.session_state["runner_context_tokens_val"] = tier_token_val
+
+        current_tokens_default = st.session_state.get(
+            "runner_context_tokens_val",
+            tier_token_val if tier_token_val is not None else 32768,
+        )
+
         new_tokens = st.number_input(
             "Context Length Tokens (for reasoning)",
             min_value=1,
             max_value=262144,
-            value=5000,
+            value=current_tokens_default,
             step=1000,
+            key="runner_context_tokens_input",
+        )
+        st.session_state["runner_context_tokens_val"] = new_tokens
+
+        new_max_tokens = st.number_input(
+            "Max Output Tokens (completion limit)",
+            min_value=256,
+            max_value=32768,
+            value=16384,
+            step=512,
+            key="runner_max_tokens",
         )
         new_gguf = st.text_input(
             "Local GGUF Path (for KLD mode, auto-detects if blank)", value=""
@@ -1742,7 +1858,12 @@ with tab_run:
             valid_corpus = validate_corpus_name(new_corpus)
             valid_gguf = validate_gguf_path(new_gguf) if new_gguf else ""
             valid_tokens = validate_new_tokens(new_tokens)
-            valid_api_key = runner_api_key.strip() if runner_api_key else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+            valid_max_tokens = validate_max_tokens(new_max_tokens)
+            valid_api_key = (
+                runner_api_key.strip()
+                if runner_api_key
+                else (os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+            )
         except ValueError as e:
             st.error(f"Input validation error: {e}")
             st.stop()
@@ -1751,24 +1872,16 @@ with tab_run:
         st.session_state.bench_output = []
 
         # Build arguments list
-        cmd = [
-            sys.executable,
-            "run_suite.py",
-            "--mode",
-            new_mode,
-            "--endpoint",
-            valid_endpoint,
-            "--model",
-            valid_model,
-            "--tokens",
-            str(valid_tokens),
-            "--corpus",
-            valid_corpus,
-        ]
-        if valid_gguf:
-            cmd.extend(["--gguf-path", valid_gguf])
-        if valid_api_key:
-            cmd.extend(["--api-key", valid_api_key])
+        cmd = build_runner_cmd(
+            mode=new_mode,
+            endpoint=valid_endpoint,
+            model=valid_model,
+            tokens=valid_tokens,
+            corpus=valid_corpus,
+            gguf_path=valid_gguf,
+            api_key=valid_api_key,
+            max_tokens=valid_max_tokens,
+        )
 
         st.info(f"Running command: {' '.join(redact_cli_args(cmd))}")
 
