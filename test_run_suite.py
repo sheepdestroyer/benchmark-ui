@@ -1,6 +1,6 @@
+import json
 import os
 import sys
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,7 +25,16 @@ class TestRunSuiteConstants(unittest.TestCase):
             self.assertIsInstance(q_orig, str)
             self.assertEqual(q_lower, q_orig.lower())
 
-        expected_quants = ["q4_k_s", "q4_k_m", "q4_k_l", "q4_k_xl", "q5_k_s", "q5_k_m", "q8_0", "f16"]
+        expected_quants = [
+            "q4_k_s",
+            "q4_k_m",
+            "q4_k_l",
+            "q4_k_xl",
+            "q5_k_s",
+            "q5_k_m",
+            "q8_0",
+            "f16",
+        ]
         defined_quants = [q[0] for q in run_suite.QUANT_TYPES]
         for eq in expected_quants:
             self.assertIn(eq, defined_quants)
@@ -49,8 +58,12 @@ class TestGetModelSettings(unittest.TestCase):
         for model_name, expected_quant in test_cases:
             with self.subTest(model=model_name):
                 with patch("run_suite.requests.get") as mock_get:
-                    mock_get.side_effect = requests.exceptions.ConnectionError("Offline")
-                    settings = run_suite.get_model_settings("http://127.0.0.1:8081", model_name)
+                    mock_get.side_effect = requests.exceptions.ConnectionError(
+                        "Offline"
+                    )
+                    settings = run_suite.get_model_settings(
+                        "http://127.0.0.1:8081", model_name
+                    )
                     self.assertEqual(settings["base_quantization"], expected_quant)
                     self.assertEqual(settings["model_name"], model_name)
 
@@ -63,21 +76,29 @@ class TestGetModelSettings(unittest.TestCase):
                     "id": "qwen3.6-27b-q4_k_m",
                     "status": {
                         "args": [
-                            "--threads", "8",
-                            "--batch-size", "512",
-                            "--ubatch-size", "128",
-                            "--cache-type-k", "q8_0",
-                            "--cache-type-v", "q4_0",
-                            "--spec-draft", "true"
+                            "--threads",
+                            "8",
+                            "--batch-size",
+                            "512",
+                            "--ubatch-size",
+                            "128",
+                            "--cache-type-k",
+                            "q8_0",
+                            "--cache-type-v",
+                            "q4_0",
+                            "--spec-draft",
+                            "true",
                         ],
-                        "preset": ""
-                    }
+                        "preset": "",
+                    },
                 }
             ]
         }
 
         with patch("run_suite.requests.get", return_value=mock_response):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "qwen3.6-27b-q4_k_m")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "qwen3.6-27b-q4_k_m"
+            )
 
         self.assertEqual(settings["model_name"], "qwen3.6-27b-q4_k_m")
         self.assertEqual(settings["threads"], 8)
@@ -102,18 +123,14 @@ class TestGetModelSettings(unittest.TestCase):
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "data": [
-                {
-                    "id": "qwen3.6-27b",
-                    "status": {
-                        "args": [],
-                        "preset": preset_content
-                    }
-                }
+                {"id": "qwen3.6-27b", "status": {"args": [], "preset": preset_content}}
             ]
         }
 
         with patch("run_suite.requests.get", return_value=mock_response):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "qwen3.6-27b")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "qwen3.6-27b"
+            )
 
         self.assertEqual(settings["threads"], 16)
         self.assertEqual(settings["batch_size"], 1024)
@@ -131,16 +148,15 @@ class TestGetModelSettings(unittest.TestCase):
             "data": [
                 {
                     "id": "custom-model",
-                    "status": {
-                        "args": ["--cache-type-v", "q4_0"],
-                        "preset": ""
-                    }
+                    "status": {"args": ["--cache-type-v", "q4_0"], "preset": ""},
                 }
             ]
         }
 
         with patch("run_suite.requests.get", return_value=mock_response_args):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "custom-model")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "custom-model"
+            )
             self.assertEqual(settings["kv_cache_quant_v"], "q4_0")
             self.assertEqual(settings["kv_cache_quant_k"], "Unknown")
             self.assertEqual(settings["kv_cache_quant"], "q4_0")
@@ -152,16 +168,15 @@ class TestGetModelSettings(unittest.TestCase):
             "data": [
                 {
                     "id": "custom-model",
-                    "status": {
-                        "args": [],
-                        "preset": "cache-type-v = q8_0"
-                    }
+                    "status": {"args": [], "preset": "cache-type-v = q8_0"},
                 }
             ]
         }
 
         with patch("run_suite.requests.get", return_value=mock_response_preset):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "custom-model")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "custom-model"
+            )
             self.assertEqual(settings["kv_cache_quant_v"], "q8_0")
             self.assertEqual(settings["kv_cache_quant_k"], "Unknown")
             self.assertEqual(settings["kv_cache_quant"], "q8_0")
@@ -180,14 +195,13 @@ class TestGetModelSettings(unittest.TestCase):
                 mock_resp.status_code = 200
                 mock_resp.json.return_value = {
                     "data": [
-                        {
-                            "id": model_id,
-                            "status": {"args": args, "preset": preset}
-                        }
+                        {"id": model_id, "status": {"args": args, "preset": preset}}
                     ]
                 }
                 with patch("run_suite.requests.get", return_value=mock_resp):
-                    settings = run_suite.get_model_settings("http://127.0.0.1:8081", model_id)
+                    settings = run_suite.get_model_settings(
+                        "http://127.0.0.1:8081", model_id
+                    )
                     self.assertEqual(settings["speculative_draft_type"], expected_spec)
 
     def test_int_parsing_fails_on_malformed_args_safe_fallback(self):
@@ -199,18 +213,23 @@ class TestGetModelSettings(unittest.TestCase):
                     "id": "model-malformed-args",
                     "status": {
                         "args": [
-                            "--threads", "not_an_int",
-                            "--batch-size", "invalid_batch",
-                            "--ubatch-size", "bad_ubatch",
+                            "--threads",
+                            "not_an_int",
+                            "--batch-size",
+                            "invalid_batch",
+                            "--ubatch-size",
+                            "bad_ubatch",
                         ],
-                        "preset": ""
-                    }
+                        "preset": "",
+                    },
                 }
             ]
         }
 
         with patch("run_suite.requests.get", return_value=mock_response):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "model-malformed-args")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "model-malformed-args"
+            )
 
         self.assertIsNone(settings["threads"])
         self.assertIsNone(settings["batch_size"])
@@ -228,16 +247,15 @@ class TestGetModelSettings(unittest.TestCase):
             "data": [
                 {
                     "id": "model-malformed-preset",
-                    "status": {
-                        "args": [],
-                        "preset": preset_content
-                    }
+                    "status": {"args": [], "preset": preset_content},
                 }
             ]
         }
 
         with patch("run_suite.requests.get", return_value=mock_response):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "model-malformed-preset")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "model-malformed-preset"
+            )
 
         self.assertIsNone(settings["threads"])
         self.assertIsNone(settings["batch_size"])
@@ -260,16 +278,15 @@ class TestGetModelSettings(unittest.TestCase):
                     "data": [
                         {
                             "id": "model-trailing-flag",
-                            "status": {
-                                "args": [flag],
-                                "preset": "no_equals_line"
-                            }
+                            "status": {"args": [flag], "preset": "no_equals_line"},
                         }
                     ]
                 }
 
                 with patch("run_suite.requests.get", return_value=mock_response):
-                    settings = run_suite.get_model_settings("http://127.0.0.1:8081", "model-trailing-flag")
+                    settings = run_suite.get_model_settings(
+                        "http://127.0.0.1:8081", "model-trailing-flag"
+                    )
 
                 self.assertEqual(settings[key], default_val)
                 self.assertEqual(settings["kv_cache_quant"], "Unknown")
@@ -293,7 +310,9 @@ class TestGetModelSettings(unittest.TestCase):
                     else:
                         mock_get.side_effect = exc
 
-                    settings = run_suite.get_model_settings("http://127.0.0.1:8081", "test-model-q4_k_s")
+                    settings = run_suite.get_model_settings(
+                        "http://127.0.0.1:8081", "test-model-q4_k_s"
+                    )
 
                     self.assertEqual(settings["model_name"], "test-model-q4_k_s")
                     self.assertEqual(settings["base_quantization"], "Q4_K_S")
@@ -309,7 +328,9 @@ class TestGetModelSettings(unittest.TestCase):
         mock_response.json.return_value = {"data": [{"id": "other-model"}]}
 
         with patch("run_suite.requests.get", return_value=mock_response):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "desired-model")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "desired-model"
+            )
 
         self.assertEqual(settings["model_name"], "desired-model")
         self.assertIsNone(settings["threads"])
@@ -320,7 +341,9 @@ class TestGetModelSettings(unittest.TestCase):
         mock_response.status_code = 500
 
         with patch("run_suite.requests.get", return_value=mock_response):
-            settings = run_suite.get_model_settings("http://127.0.0.1:8081", "any-model")
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8081", "any-model"
+            )
 
         self.assertIsNone(settings["threads"])
         self.assertEqual(settings["kv_cache_quant"], "Unknown")
@@ -330,7 +353,7 @@ class TestGetModelSettings(unittest.TestCase):
         mock_adv.map_repo_to_preset_alias.return_value = "custom-alias"
         mock_adv.get_preset_metadata.return_value = {
             "flash_attn": "true",
-            "parallel": "4"
+            "parallel": "4",
         }
 
         with patch("run_suite.advanced_benchmarks", mock_adv):
@@ -343,7 +366,9 @@ class TestGetModelSettings(unittest.TestCase):
         with patch("run_suite.advanced_benchmarks", None):
             with patch("run_suite.requests.get") as mock_get:
                 mock_get.side_effect = requests.exceptions.ConnectionError()
-                settings = run_suite.get_model_settings("http://127.0.0.1:8081", "my-model")
+                settings = run_suite.get_model_settings(
+                    "http://127.0.0.1:8081", "my-model"
+                )
                 self.assertNotIn("profile_alias", settings)
 
 
@@ -359,7 +384,9 @@ class TestRunThroughput(unittest.TestCase):
         Prompt Eval (p/s) : 140.0 tokens/sec (TTFT: 0.25s)
         Generation (t/s) : 60.0 tokens/sec
         """
-        mock_run.return_value = MagicMock(returncode=0, stdout=stdout_content, stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=stdout_content, stderr=""
+        )
 
         result = run_suite.run_throughput("http://127.0.0.1:8081", "test-model")
 
@@ -379,7 +406,9 @@ class TestRunThroughput(unittest.TestCase):
 
     @patch("run_suite.subprocess.run")
     def test_run_throughput_no_matches_in_stdout(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="No benchmarks here", stderr="")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="No benchmarks here", stderr=""
+        )
 
         result = run_suite.run_throughput("http://127.0.0.1:8081", "test-model")
 
@@ -391,7 +420,9 @@ class TestRunThroughput(unittest.TestCase):
     @patch("run_suite.os.access")
     @patch("run_suite.os.path.exists")
     @patch("run_suite.subprocess.run")
-    def test_run_throughput_chmod_script_if_not_executable(self, mock_run, mock_exists, mock_access, mock_chmod):
+    def test_run_throughput_chmod_script_if_not_executable(
+        self, mock_run, mock_exists, mock_access, mock_chmod
+    ):
         mock_exists.return_value = True
         mock_access.return_value = False
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -413,7 +444,9 @@ class TestRunReasoning(unittest.TestCase):
         mock_adv.run_swe_test.return_value = {"passed": True}
 
         with patch("run_suite.advanced_benchmarks", mock_adv):
-            results = run_suite.run_reasoning("http://127.0.0.1:8081", "test-model", tokens=1000)
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081", "test-model", tokens=1000
+            )
 
         self.assertEqual(results["needle"], "Pass")
         self.assertEqual(results["ruler"], "Pass")
@@ -428,7 +461,9 @@ class TestRunReasoning(unittest.TestCase):
         mock_adv.run_swe_test.return_value = {}
 
         with patch("run_suite.advanced_benchmarks", mock_adv):
-            results = run_suite.run_reasoning("http://127.0.0.1:8081", "test-model", tokens=1000)
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081", "test-model", tokens=1000
+            )
 
         self.assertEqual(results["needle"], "Fail")
         self.assertEqual(results["ruler"], "Fail")
@@ -443,7 +478,9 @@ class TestRunReasoning(unittest.TestCase):
         mock_adv.run_swe_test.side_effect = KeyError("SWE key error")
 
         with patch("run_suite.advanced_benchmarks", mock_adv):
-            results = run_suite.run_reasoning("http://127.0.0.1:8081", "test-model", tokens=1000)
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081", "test-model", tokens=1000
+            )
 
         self.assertEqual(results["needle"], "Fail")
         self.assertEqual(results["ruler"], "Fail")
@@ -452,9 +489,19 @@ class TestRunReasoning(unittest.TestCase):
 
     def test_run_reasoning_no_advanced_benchmarks(self):
         with patch("run_suite.advanced_benchmarks", None):
-            results = run_suite.run_reasoning("http://127.0.0.1:8081", "test-model", tokens=1000)
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081", "test-model", tokens=1000
+            )
 
-        self.assertEqual(results, {"needle": "Fail", "ruler": "Fail", "longbench": "Fail", "swe_bench": "Fail"})
+        self.assertEqual(
+            results,
+            {
+                "needle": "Fail",
+                "ruler": "Fail",
+                "longbench": "Fail",
+                "swe_bench": "Fail",
+            },
+        )
 
 
 class TestRunKld(unittest.TestCase):
@@ -467,10 +514,17 @@ class TestRunKld(unittest.TestCase):
         # Both model and corpus
         run_suite.run_kld("path/to/model.gguf", "corpus.txt")
         mock_run.assert_called_with(
-            [sys.executable, "kld_benchmark.py", "--model", "path/to/model.gguf", "--corpus", "corpus.txt"],
+            [
+                sys.executable,
+                "kld_benchmark.py",
+                "--model",
+                "path/to/model.gguf",
+                "--corpus",
+                "corpus.txt",
+            ],
             capture_output=True,
             text=True,
-            cwd=os.path.dirname(os.path.abspath(run_suite.__file__))
+            cwd=os.path.dirname(os.path.abspath(run_suite.__file__)),
         )
 
         # Neither model nor corpus
@@ -480,7 +534,7 @@ class TestRunKld(unittest.TestCase):
             [sys.executable, "kld_benchmark.py"],
             capture_output=True,
             text=True,
-            cwd=os.path.dirname(os.path.abspath(run_suite.__file__))
+            cwd=os.path.dirname(os.path.abspath(run_suite.__file__)),
         )
 
     @patch("run_suite.subprocess.run")
@@ -495,7 +549,9 @@ class TestRunKld(unittest.TestCase):
         | malformed | invalid_float | 0.05 | 95.0% |
         =========================================================
         """
-        mock_run.return_value = MagicMock(returncode=0, stdout=stdout_content, stderr="Some stderr info")
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=stdout_content, stderr="Some stderr info"
+        )
 
         kld_results = run_suite.run_kld("model.gguf", "corpus.txt")
 
@@ -523,10 +579,22 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
     def test_quantization_priority_resolution_exact_match(self):
         model_settings = {"kv_cache_quant": "q4_0"}
         kld_results = {
-            "q5_1": {"perplexity": 5.2, "mean_kld": 0.01, "same_top_match_percent": 99.0},
-            "q4_0": {"perplexity": 5.5, "mean_kld": 0.03, "same_top_match_percent": 95.0}
+            "q5_1": {
+                "perplexity": 5.2,
+                "mean_kld": 0.01,
+                "same_top_match_percent": 99.0,
+            },
+            "q4_0": {
+                "perplexity": 5.5,
+                "mean_kld": 0.03,
+                "same_top_match_percent": 95.0,
+            },
         }
-        quantization_loss = {"perplexity": None, "mean_kld": None, "same_top_match_percent": None}
+        quantization_loss = {
+            "perplexity": None,
+            "mean_kld": None,
+            "same_top_match_percent": None,
+        }
 
         # Simulate resolution logic from main()
         kv_quant = model_settings.get("kv_cache_quant", "q5_1")
@@ -547,9 +615,21 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
     def test_quantization_priority_resolution_fallback_order(self):
         # Case 1: Unknown kv_cache_quant with both q5_1 and q8_0 available -> picks q5_1 (first priority)
         kld_results_all = {
-            "q8_0": {"perplexity": 5.1, "mean_kld": 0.0, "same_top_match_percent": 100.0},
-            "q5_1": {"perplexity": 5.2, "mean_kld": 0.01, "same_top_match_percent": 99.0},
-            "f16": {"perplexity": 5.0, "mean_kld": 0.0, "same_top_match_percent": 100.0}
+            "q8_0": {
+                "perplexity": 5.1,
+                "mean_kld": 0.0,
+                "same_top_match_percent": 100.0,
+            },
+            "q5_1": {
+                "perplexity": 5.2,
+                "mean_kld": 0.01,
+                "same_top_match_percent": 99.0,
+            },
+            "f16": {
+                "perplexity": 5.0,
+                "mean_kld": 0.0,
+                "same_top_match_percent": 100.0,
+            },
         }
         model_settings = {"kv_cache_quant": "Unknown"}
 
@@ -567,8 +647,16 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
 
         # Case 2: Unknown kv_cache_quant with q5_1 missing -> falls back to q8_0
         kld_results_no_q5 = {
-            "q8_0": {"perplexity": 5.1, "mean_kld": 0.0, "same_top_match_percent": 100.0},
-            "f16": {"perplexity": 5.0, "mean_kld": 0.0, "same_top_match_percent": 100.0}
+            "q8_0": {
+                "perplexity": 5.1,
+                "mean_kld": 0.0,
+                "same_top_match_percent": 100.0,
+            },
+            "f16": {
+                "perplexity": 5.0,
+                "mean_kld": 0.0,
+                "same_top_match_percent": 100.0,
+            },
         }
         kv_quant = "q5_1"
         match_quant = kv_quant
@@ -600,19 +688,19 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
             mock_throughput = {
                 "prefill_speed": 125.0,
                 "decode_speed": 45.0,
-                "ttft": 0.18
+                "ttft": 0.18,
             }
             mock_reasoning = {
                 "needle": "Pass",
                 "ruler": "Pass",
                 "longbench": "Pass",
-                "swe_bench": "Pass"
+                "swe_bench": "Pass",
             }
             mock_kld = {
                 "q5_1": {
                     "perplexity": 5.32,
                     "mean_kld": 0.015,
-                    "same_top_match_percent": 98.1
+                    "same_top_match_percent": 98.1,
                 }
             }
             mock_settings = {
@@ -624,44 +712,67 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                 "threads": 8,
                 "ubatch_size": 128,
                 "batch_size": 512,
-                "speculative_draft_type": "None"
+                "speculative_draft_type": "None",
             }
 
             test_args = [
                 "run_suite.py",
-                "--mode", "all",
-                "--endpoint", "http://127.0.0.1:8081",
-                "--model", "Qwen3.6-27B",
-                "--tokens", "1000",
-                "--gguf-path", "model.gguf",
-                "--corpus", "corpus.txt"
+                "--mode",
+                "all",
+                "--endpoint",
+                "http://127.0.0.1:8081",
+                "--model",
+                "Qwen3.6-27B",
+                "--tokens",
+                "1000",
+                "--gguf-path",
+                "model.gguf",
+                "--corpus",
+                "corpus.txt",
             ]
 
-            with patch("sys.argv", test_args), \
-                 patch.object(run_suite, "__file__", fake_script_file), \
-                 patch("run_suite.run_throughput", return_value=mock_throughput) as mock_tp_fn, \
-                 patch("run_suite.run_reasoning", return_value=mock_reasoning) as mock_reas_fn, \
-                 patch("run_suite.run_kld", return_value=mock_kld) as mock_kld_fn, \
-                 patch("run_suite.get_model_settings", return_value=mock_settings) as mock_settings_fn:
-
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch(
+                    "run_suite.run_throughput", return_value=mock_throughput
+                ) as mock_tp_fn,
+                patch(
+                    "run_suite.run_reasoning", return_value=mock_reasoning
+                ) as mock_reas_fn,
+                patch("run_suite.run_kld", return_value=mock_kld) as mock_kld_fn,
+                patch(
+                    "run_suite.get_model_settings", return_value=mock_settings
+                ) as mock_settings_fn,
+            ):
                 run_suite.main()
 
-                mock_tp_fn.assert_called_once_with("http://127.0.0.1:8081", "Qwen3.6-27B")
-                mock_reas_fn.assert_called_once_with("http://127.0.0.1:8081", "Qwen3.6-27B", 1000)
+                mock_tp_fn.assert_called_once_with(
+                    "http://127.0.0.1:8081", "Qwen3.6-27B"
+                )
+                mock_reas_fn.assert_called_once_with(
+                    "http://127.0.0.1:8081", "Qwen3.6-27B", 1000, max_tokens=16384
+                )
                 mock_kld_fn.assert_called_once_with("model.gguf", "corpus.txt")
-                mock_settings_fn.assert_called_once_with("http://127.0.0.1:8081", "Qwen3.6-27B")
+                mock_settings_fn.assert_called_once_with(
+                    "http://127.0.0.1:8081", "Qwen3.6-27B"
+                )
 
                 history_dir = os.path.join(tmp_dir, "history")
                 self.assertTrue(os.path.isdir(history_dir))
                 files = os.listdir(history_dir)
                 self.assertEqual(len(files), 1)
-                self.assertTrue(files[0].startswith("run_") and files[0].endswith(".json"))
+                self.assertTrue(
+                    files[0].startswith("run_") and files[0].endswith(".json")
+                )
 
                 with open(os.path.join(history_dir, files[0])) as f:
                     data = json.load(f)
 
                 self.assertIn("run_metadata", data)
-                self.assertEqual(data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8081")
+                self.assertEqual(
+                    data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8081"
+                )
                 self.assertEqual(data["throughput_metrics"]["prefill_speed"], 125.0)
                 self.assertEqual(data["reasoning_accuracy"]["needle"], "Pass")
                 self.assertEqual(data["quantization_loss"]["perplexity"], 5.32)
@@ -677,7 +788,7 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                 "q8_0": {
                     "perplexity": 5.10,
                     "mean_kld": 0.000,
-                    "same_top_match_percent": 100.0
+                    "same_top_match_percent": 100.0,
                 }
             }
             mock_settings = {
@@ -688,11 +799,12 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
 
             test_args = ["run_suite.py", "--mode", "kld"]
 
-            with patch("sys.argv", test_args), \
-                 patch.object(run_suite, "__file__", fake_script_file), \
-                 patch("run_suite.run_kld", return_value=mock_kld), \
-                 patch("run_suite.get_model_settings", return_value=mock_settings):
-
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch("run_suite.run_kld", return_value=mock_kld),
+                patch("run_suite.get_model_settings", return_value=mock_settings),
+            ):
                 run_suite.main()
 
                 history_dir = os.path.join(tmp_dir, "history")
@@ -714,13 +826,21 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
                     fake_script_file = os.path.join(tmp_dir, "run_suite.py")
                     test_args = ["run_suite.py", "--mode", mode]
 
-                    with patch("sys.argv", test_args), \
-                         patch.object(run_suite, "__file__", fake_script_file), \
-                         patch("run_suite.run_throughput", return_value={}) as mock_tp_fn, \
-                         patch("run_suite.run_reasoning", return_value={}) as mock_reas_fn, \
-                         patch("run_suite.run_kld", return_value={}) as mock_kld_fn, \
-                         patch("run_suite.get_model_settings", return_value={"kv_cache_quant": "q5_1"}):
-
+                    with (
+                        patch("sys.argv", test_args),
+                        patch.object(run_suite, "__file__", fake_script_file),
+                        patch(
+                            "run_suite.run_throughput", return_value={}
+                        ) as mock_tp_fn,
+                        patch(
+                            "run_suite.run_reasoning", return_value={}
+                        ) as mock_reas_fn,
+                        patch("run_suite.run_kld", return_value={}) as mock_kld_fn,
+                        patch(
+                            "run_suite.get_model_settings",
+                            return_value={"kv_cache_quant": "q5_1"},
+                        ),
+                    ):
                         run_suite.main()
 
                         self.assertEqual(mock_tp_fn.called, expect_tp)
@@ -733,19 +853,26 @@ class TestQuantizationPriorityAndMain(unittest.TestCase):
             mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
             test_args = ["run_suite.py", "--mode", "kld"]
 
-            with patch("sys.argv", test_args), \
-                 patch.object(run_suite, "__file__", fake_script_file), \
-                 patch("run_suite.run_kld", return_value={}), \
-                 patch("run_suite.get_model_settings", return_value=mock_settings) as mock_get_settings:
-
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch("run_suite.run_kld", return_value={}),
+                patch(
+                    "run_suite.get_model_settings", return_value=mock_settings
+                ) as mock_get_settings,
+            ):
                 run_suite.main()
-                mock_get_settings.assert_called_once_with("http://127.0.0.1:8083", "Qwen3.6-27B")
+                mock_get_settings.assert_called_once_with(
+                    "http://127.0.0.1:8083", "Qwen3.6-27B"
+                )
 
                 history_dir = os.path.join(tmp_dir, "history")
                 files = os.listdir(history_dir)
                 with open(os.path.join(history_dir, files[0])) as f:
                     data = json.load(f)
-                self.assertEqual(data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8083")
+                self.assertEqual(
+                    data["run_metadata"]["target_endpoint"], "http://127.0.0.1:8083"
+                )
 
 
 class TestRunSuiteApiKeyAuth(unittest.TestCase):
@@ -764,7 +891,9 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
         self.assertEqual(settings["model_name"], "my-model")
         mock_get.assert_called_once()
         _, kwargs = mock_get.call_args
-        self.assertEqual(kwargs.get("headers"), {"Authorization": "Bearer secret-suite-key"})
+        self.assertEqual(
+            kwargs.get("headers"), {"Authorization": "Bearer secret-suite-key"}
+        )
 
     @patch("run_suite.subprocess.run")
     def test_run_throughput_passes_api_key_in_env(self, mock_run):
@@ -787,21 +916,39 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
 
         with patch("run_suite.advanced_benchmarks", mock_adv):
             results = run_suite.run_reasoning(
-                "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+                "http://127.0.0.1:8081",
+                "test-model",
+                tokens=1000,
+                api_key="reasoning-secret",
             )
 
         self.assertEqual(results["needle"], "Pass")
         mock_adv.run_needle_test.assert_called_once_with(
-            "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+            "http://127.0.0.1:8081",
+            "test-model",
+            tokens=1000,
+            max_tokens=16384,
+            api_key="reasoning-secret",
         )
         mock_adv.run_ruler_test.assert_called_once_with(
-            "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+            "http://127.0.0.1:8081",
+            "test-model",
+            tokens=1000,
+            max_tokens=16384,
+            api_key="reasoning-secret",
         )
         mock_adv.run_longbench_test.assert_called_once_with(
-            "http://127.0.0.1:8081", "test-model", tokens=1000, api_key="reasoning-secret"
+            "http://127.0.0.1:8081",
+            "test-model",
+            tokens=1000,
+            max_tokens=16384,
+            api_key="reasoning-secret",
         )
         mock_adv.run_swe_test.assert_called_once_with(
-            "http://127.0.0.1:8081", "test-model", max_tokens=16384, api_key="reasoning-secret"
+            "http://127.0.0.1:8081",
+            "test-model",
+            max_tokens=16384,
+            api_key="reasoning-secret",
         )
 
     def test_run_reasoning_forwards_custom_max_tokens(self):
@@ -821,6 +968,27 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
             )
 
         self.assertEqual(results["swe_bench"], "Pass")
+        mock_adv.run_needle_test.assert_called_once_with(
+            "http://127.0.0.1:8081",
+            "test-model",
+            tokens=1000,
+            max_tokens=32768,
+            api_key="reasoning-secret",
+        )
+        mock_adv.run_ruler_test.assert_called_once_with(
+            "http://127.0.0.1:8081",
+            "test-model",
+            tokens=1000,
+            max_tokens=32768,
+            api_key="reasoning-secret",
+        )
+        mock_adv.run_longbench_test.assert_called_once_with(
+            "http://127.0.0.1:8081",
+            "test-model",
+            tokens=1000,
+            max_tokens=32768,
+            api_key="reasoning-secret",
+        )
         mock_adv.run_swe_test.assert_called_once_with(
             "http://127.0.0.1:8081",
             "test-model",
@@ -834,25 +1002,37 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
             mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
             test_args = [
                 "run_suite.py",
-                "--mode", "all",
-                "--api-key", "cli-test-bearer-key",
+                "--mode",
+                "all",
+                "--api-key",
+                "cli-test-bearer-key",
             ]
 
-            with patch("sys.argv", test_args), \
-                 patch.object(run_suite, "__file__", fake_script_file), \
-                 patch("run_suite.run_throughput", return_value={}) as mock_tp, \
-                 patch("run_suite.run_reasoning", return_value={}) as mock_reas, \
-                 patch("run_suite.run_kld", return_value={}), \
-                 patch("run_suite.get_model_settings", return_value=mock_settings) as mock_settings_fn:
-
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch("run_suite.run_throughput", return_value={}) as mock_tp,
+                patch("run_suite.run_reasoning", return_value={}) as mock_reas,
+                patch("run_suite.run_kld", return_value={}),
+                patch(
+                    "run_suite.get_model_settings", return_value=mock_settings
+                ) as mock_settings_fn,
+            ):
                 run_suite.main()
 
                 mock_tp.assert_called_once()
-                self.assertEqual(mock_tp.call_args.kwargs.get("api_key"), "cli-test-bearer-key")
+                self.assertEqual(
+                    mock_tp.call_args.kwargs.get("api_key"), "cli-test-bearer-key"
+                )
                 mock_reas.assert_called_once()
-                self.assertEqual(mock_reas.call_args.kwargs.get("api_key"), "cli-test-bearer-key")
+                self.assertEqual(
+                    mock_reas.call_args.kwargs.get("api_key"), "cli-test-bearer-key"
+                )
                 mock_settings_fn.assert_called_once()
-                self.assertEqual(mock_settings_fn.call_args.kwargs.get("api_key"), "cli-test-bearer-key")
+                self.assertEqual(
+                    mock_settings_fn.call_args.kwargs.get("api_key"),
+                    "cli-test-bearer-key",
+                )
 
     @patch("run_suite.requests.get")
     def test_get_model_settings_env_fallback(self, mock_get):
@@ -862,17 +1042,23 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
         mock_get.return_value = mock_resp
 
         # API_KEY priority
-        with patch.dict(os.environ, {"API_KEY": "env-api-val", "OPENAI_API_KEY": "env-openai-val"}):
+        with patch.dict(
+            os.environ, {"API_KEY": "env-api-val", "OPENAI_API_KEY": "env-openai-val"}
+        ):
             run_suite.get_model_settings("http://127.0.0.1:8081", "m1")
             _, kwargs = mock_get.call_args
-            self.assertEqual(kwargs.get("headers"), {"Authorization": "Bearer env-api-val"})
+            self.assertEqual(
+                kwargs.get("headers"), {"Authorization": "Bearer env-api-val"}
+            )
 
         # OPENAI_API_KEY fallback
         mock_get.reset_mock()
         with patch.dict(os.environ, {"OPENAI_API_KEY": "env-openai-val"}, clear=True):
             run_suite.get_model_settings("http://127.0.0.1:8081", "m1")
             _, kwargs = mock_get.call_args
-            self.assertEqual(kwargs.get("headers"), {"Authorization": "Bearer env-openai-val"})
+            self.assertEqual(
+                kwargs.get("headers"), {"Authorization": "Bearer env-openai-val"}
+            )
 
     @patch("run_suite.subprocess.run")
     def test_run_throughput_env_fallback(self, mock_run):
@@ -894,7 +1080,11 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
             with patch.dict(os.environ, {"API_KEY": "env-reas-key"}, clear=True):
                 run_suite.run_reasoning("http://127.0.0.1:8081", "m1", tokens=1000)
                 mock_adv.run_needle_test.assert_called_once_with(
-                    "http://127.0.0.1:8081", "m1", tokens=1000, api_key="env-reas-key"
+                    "http://127.0.0.1:8081",
+                    "m1",
+                    tokens=1000,
+                    max_tokens=16384,
+                    api_key="env-reas-key",
                 )
 
     def test_main_cli_arguments_redaction_in_saved_json(self):
@@ -903,15 +1093,25 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
             mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
             test_args = [
                 "run_suite.py",
-                "--mode", "throughput",
-                "--api-key", "my-confidential-suite-key",
+                "--mode",
+                "throughput",
+                "--api-key",
+                "my-confidential-suite-key",
             ]
 
-            with patch("sys.argv", test_args), \
-                 patch.object(run_suite, "__file__", fake_script_file), \
-                 patch("run_suite.run_throughput", return_value={"prefill_speed": 10.0, "decode_speed": 5.0, "ttft": 0.1}), \
-                 patch("run_suite.get_model_settings", return_value=mock_settings):
-
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch(
+                    "run_suite.run_throughput",
+                    return_value={
+                        "prefill_speed": 10.0,
+                        "decode_speed": 5.0,
+                        "ttft": 0.1,
+                    },
+                ),
+                patch("run_suite.get_model_settings", return_value=mock_settings),
+            ):
                 run_suite.main()
 
                 # Find written history json
@@ -925,6 +1125,107 @@ class TestRunSuiteApiKeyAuth(unittest.TestCase):
                 self.assertIn("--api-key", saved_args)
                 self.assertIn("********", saved_args)
                 self.assertNotIn("my-confidential-suite-key", saved_args)
+
+
+class TestRunSuiteContextTiersAndMaxTokens(unittest.TestCase):
+    def test_run_suite_context_tiers_constant(self):
+        self.assertEqual(run_suite.CONTEXT_TIERS["8k"], 8192)
+        self.assertEqual(run_suite.CONTEXT_TIERS["32k"], 32768)
+        self.assertEqual(run_suite.CONTEXT_TIERS["64k"], 65536)
+        self.assertEqual(run_suite.CONTEXT_TIERS["128k"], 131072)
+        self.assertEqual(run_suite.CONTEXT_TIERS["240k"], 240000)
+
+    def test_run_suite_parse_context_tokens(self):
+        self.assertEqual(run_suite.parse_context_tokens("8k"), 8192)
+        self.assertEqual(run_suite.parse_context_tokens("32k"), 32768)
+        self.assertEqual(run_suite.parse_context_tokens("64k"), 65536)
+        self.assertEqual(run_suite.parse_context_tokens("128k"), 131072)
+        self.assertEqual(run_suite.parse_context_tokens("240k"), 240000)
+        self.assertEqual(run_suite.parse_context_tokens(" 32K "), 32768)
+        self.assertEqual(run_suite.parse_context_tokens(5000), 5000)
+        self.assertEqual(run_suite.parse_context_tokens("5000"), 5000)
+
+        with self.assertRaises(ValueError):
+            run_suite.parse_context_tokens("invalid")
+        with self.assertRaises(TypeError):
+            run_suite.parse_context_tokens(None)
+
+    def test_main_cli_tier_string_and_max_tokens_forwarding(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_script_file = os.path.join(tmp_dir, "run_suite.py")
+            mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
+            test_args = [
+                "run_suite.py",
+                "--mode",
+                "reasoning",
+                "--tokens",
+                "32k",
+                "--max-tokens",
+                "4096",
+            ]
+
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch("run_suite.run_reasoning", return_value={}) as mock_reas_fn,
+                patch("run_suite.get_model_settings", return_value=mock_settings),
+            ):
+                run_suite.main()
+                mock_reas_fn.assert_called_once_with(
+                    "http://127.0.0.1:8083", "Qwen3.6-27B", 32768, max_tokens=4096
+                )
+
+    def test_main_cli_240k_tier(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_script_file = os.path.join(tmp_dir, "run_suite.py")
+            mock_settings = {"model_name": "TestModel", "kv_cache_quant": "q8_0"}
+            test_args = [
+                "run_suite.py",
+                "--mode",
+                "reasoning",
+                "--tokens",
+                "240k",
+            ]
+
+            with (
+                patch("sys.argv", test_args),
+                patch.object(run_suite, "__file__", fake_script_file),
+                patch("run_suite.run_reasoning", return_value={}) as mock_reas_fn,
+                patch("run_suite.get_model_settings", return_value=mock_settings),
+            ):
+                run_suite.main()
+                mock_reas_fn.assert_called_once_with(
+                    "http://127.0.0.1:8083", "Qwen3.6-27B", 240000, max_tokens=16384
+                )
+
+    def test_run_reasoning_forwards_tokens_and_max_tokens_all(self):
+        mock_adv = MagicMock()
+        mock_adv.run_needle_test.return_value = {"passed": True}
+        mock_adv.run_ruler_test.return_value = {"passed": True}
+        mock_adv.run_longbench_test.return_value = {"passed": True}
+        mock_adv.run_swe_test.return_value = {"passed": True}
+
+        with patch("run_suite.advanced_benchmarks", mock_adv):
+            results = run_suite.run_reasoning(
+                "http://127.0.0.1:8081",
+                "m1",
+                tokens="64k",
+                max_tokens=8192,
+            )
+
+        self.assertEqual(results["needle"], "Pass")
+        mock_adv.run_needle_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "m1", tokens=65536, max_tokens=8192
+        )
+        mock_adv.run_ruler_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "m1", tokens=65536, max_tokens=8192
+        )
+        mock_adv.run_longbench_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "m1", tokens=65536, max_tokens=8192
+        )
+        mock_adv.run_swe_test.assert_called_once_with(
+            "http://127.0.0.1:8081", "m1", max_tokens=8192
+        )
 
 
 if __name__ == "__main__":

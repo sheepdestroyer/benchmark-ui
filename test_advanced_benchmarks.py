@@ -1715,7 +1715,9 @@ class TestRunSweTest(unittest.TestCase):
 
         captured_prompt = {}
 
-        def fake_call(endpoint, model, prompt, max_tokens=16384, api_key=None):
+        def fake_call(
+            endpoint, model, prompt, max_tokens=16384, api_key=None, **kwargs
+        ):
             captured_prompt["prompt"] = prompt
             return {
                 "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
@@ -1771,7 +1773,9 @@ class TestRunSweTest(unittest.TestCase):
 
     @patch("advanced_benchmarks.subprocess.run")
     @patch("advanced_benchmarks.call_endpoint")
-    def test_restores_clean_state_when_tests_fail_with_fixture(self, mock_call, mock_run):
+    def test_restores_clean_state_when_tests_fail_with_fixture(
+        self, mock_call, mock_run
+    ):
         fixtures_dir = os.path.join(self.toy_repo_dir, "fixtures")
         os.makedirs(fixtures_dir, exist_ok=True)
         buggy_path = os.path.join(fixtures_dir, "buggy_calculator.py")
@@ -1815,7 +1819,9 @@ class TestRunSweTest(unittest.TestCase):
 
         # Test custom max_tokens forwarded
         mock_call.reset_mock()
-        res_custom = run_swe_test("http://127.0.0.1:8081", "test-model", max_tokens=8192)
+        res_custom = run_swe_test(
+            "http://127.0.0.1:8081", "test-model", max_tokens=8192
+        )
         self.assertIsNotNone(res_custom)
         self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 8192)
 
@@ -1824,12 +1830,16 @@ class TestRunSweTest(unittest.TestCase):
     def test_recovers_from_preexisting_backup_file(self, mock_call, mock_run):
         # Simulate an interrupted previous run:
         # calculator.py has broken/corrupted code
-        corrupted_code = "# CORRUPTED LEFTOVER CODE\ndef parse_and_eval(expr):\n    return -999\n"
+        corrupted_code = (
+            "# CORRUPTED LEFTOVER CODE\ndef parse_and_eval(expr):\n    return -999\n"
+        )
         with open(self.code_path, "w", encoding="utf-8") as f:
             f.write(corrupted_code)
 
         # calculator.py.bak has the original pristine code
-        pristine_backup_code = "# PRISTINE CLEAN CODE\ndef parse_and_eval(expr):\n    return 42\n"
+        pristine_backup_code = (
+            "# PRISTINE CLEAN CODE\ndef parse_and_eval(expr):\n    return 42\n"
+        )
         backup_path = self.code_path + ".bak"
         with open(backup_path, "w", encoding="utf-8") as f:
             f.write(pristine_backup_code)
@@ -1920,7 +1930,7 @@ class TestMainRunner(unittest.TestCase):
         )
         self.assertEqual(len(results), 1)
         mock_needle.assert_called_once_with(
-            "http://127.0.0.1:8081", "Qwen", tokens=50000
+            "http://127.0.0.1:8081", "Qwen", tokens=50000, max_tokens=16384
         )
         mock_ruler.assert_not_called()
         mock_long.assert_not_called()
@@ -2203,7 +2213,10 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         mock_post.return_value = mock_resp
 
         call_endpoint(
-            "http://127.0.0.1:8080", "test-model", "test prompt", api_key="sk-explicit-token"
+            "http://127.0.0.1:8080",
+            "test-model",
+            "test prompt",
+            api_key="sk-explicit-token",
         )
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
@@ -2215,9 +2228,7 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         mock_post.return_value = mock_resp
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-env-token"}):
-            call_endpoint(
-                "http://127.0.0.1:8080", "test-model", "test prompt"
-            )
+            call_endpoint("http://127.0.0.1:8080", "test-model", "test prompt")
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-env-token")
@@ -2248,12 +2259,12 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         mock_get.return_value = mock_resp
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-env-settings-key"}):
-            get_model_settings_from_endpoint(
-                "http://127.0.0.1:8080", "test-model"
-            )
+            get_model_settings_from_endpoint("http://127.0.0.1:8080", "test-model")
         mock_get.assert_called_once()
         _, kwargs = mock_get.call_args
-        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer sk-env-settings-key")
+        self.assertEqual(
+            kwargs["headers"]["Authorization"], "Bearer sk-env-settings-key"
+        )
 
     @patch("advanced_benchmarks.call_endpoint")
     def test_run_needle_test_forwards_api_key(self, mock_call):
@@ -2332,8 +2343,10 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         }
         results = main(
             [
-                "--benchmark", "needle",
-                "--api-key", "sk-cli-token",
+                "--benchmark",
+                "needle",
+                "--api-key",
+                "sk-cli-token",
             ]
         )
         self.assertEqual(len(results), 1)
@@ -2348,12 +2361,14 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         mock_resp.status_code = 200
         mock_resp.iter_lines.return_value = [
             b'data: {"choices": [{"delta": {"content": "hi"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}',
-            b'data: [DONE]'
+            b"data: [DONE]",
         ]
         mock_post.return_value.__enter__.return_value = mock_resp
 
         # API_KEY priority
-        with patch.dict(os.environ, {"API_KEY": "env-call-key", "OPENAI_API_KEY": "openai-call-key"}):
+        with patch.dict(
+            os.environ, {"API_KEY": "env-call-key", "OPENAI_API_KEY": "openai-call-key"}
+        ):
             advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "prompt")
             _, kwargs = mock_post.call_args
             self.assertEqual(kwargs["headers"]["Authorization"], "Bearer env-call-key")
@@ -2363,7 +2378,9 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         with patch.dict(os.environ, {"OPENAI_API_KEY": "openai-call-key"}, clear=True):
             advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "prompt")
             _, kwargs = mock_post.call_args
-            self.assertEqual(kwargs["headers"]["Authorization"], "Bearer openai-call-key")
+            self.assertEqual(
+                kwargs["headers"]["Authorization"], "Bearer openai-call-key"
+            )
 
     @patch("advanced_benchmarks.requests.get")
     def test_get_model_settings_from_endpoint_env_fallback(self, mock_get):
@@ -2373,23 +2390,43 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
         mock_get.return_value.__enter__.return_value = mock_resp
 
         with patch.dict(os.environ, {"API_KEY": "env-model-key"}, clear=True):
-            advanced_benchmarks.get_model_settings_from_endpoint("http://127.0.0.1:8080", "m1")
+            advanced_benchmarks.get_model_settings_from_endpoint(
+                "http://127.0.0.1:8080", "m1"
+            )
             _, kwargs = mock_get.call_args
             self.assertEqual(kwargs["headers"]["Authorization"], "Bearer env-model-key")
 
     def test_save_run_data_redacts_api_key_in_cli_arguments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_file = os.path.join(tmp_dir, "run_test.json")
-            cli_args = ["--endpoint", "http://127.0.0.1:8080", "--api-key", "super-secret-pass", "--mode", "all"]
-            results = [{
-                "benchmark": "Needle",
-                "passed": True,
-                "prefill_speed": 100.0,
-                "decode_speed": 50.0,
-                "ttft": 0.1,
-            }]
-            with patch("advanced_benchmarks.get_model_settings_from_endpoint", return_value={"model_name": "m1"}):
-                advanced_benchmarks._save_run_data(results, "http://127.0.0.1:8080", "m1", cli_args, output_path=out_file)
+            cli_args = [
+                "--endpoint",
+                "http://127.0.0.1:8080",
+                "--api-key",
+                "super-secret-pass",
+                "--mode",
+                "all",
+            ]
+            results = [
+                {
+                    "benchmark": "Needle",
+                    "passed": True,
+                    "prefill_speed": 100.0,
+                    "decode_speed": 50.0,
+                    "ttft": 0.1,
+                }
+            ]
+            with patch(
+                "advanced_benchmarks.get_model_settings_from_endpoint",
+                return_value={"model_name": "m1"},
+            ):
+                advanced_benchmarks._save_run_data(
+                    results,
+                    "http://127.0.0.1:8080",
+                    "m1",
+                    cli_args,
+                    output_path=out_file,
+                )
 
             self.assertTrue(os.path.exists(out_file))
             with open(out_file, "r", encoding="utf-8") as f:
@@ -2399,6 +2436,233 @@ class TestApiKeyAndAuthSupport(unittest.TestCase):
             self.assertIn("--api-key", saved_cli)
             self.assertIn("********", saved_cli)
             self.assertNotIn("super-secret-pass", saved_cli)
+
+
+class TestContextTiersAndTimeoutScaling(unittest.TestCase):
+    def test_context_tiers_constant(self):
+        self.assertEqual(advanced_benchmarks.CONTEXT_TIERS["8k"], 8192)
+        self.assertEqual(advanced_benchmarks.CONTEXT_TIERS["32k"], 32768)
+        self.assertEqual(advanced_benchmarks.CONTEXT_TIERS["64k"], 65536)
+        self.assertEqual(advanced_benchmarks.CONTEXT_TIERS["128k"], 131072)
+        self.assertEqual(advanced_benchmarks.CONTEXT_TIERS["240k"], 240000)
+
+    def test_parse_context_tokens_tiers(self):
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("8k"), 8192)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("32k"), 32768)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("64k"), 65536)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("128k"), 131072)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("240k"), 240000)
+        # Case-insensitive and whitespace handling
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("  32K  "), 32768)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("240K"), 240000)
+
+    def test_parse_context_tokens_numeric(self):
+        self.assertEqual(advanced_benchmarks.parse_context_tokens(5000), 5000)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens(32000.0), 32000)
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("32000"), 32000)
+        # Suffix k not in standard tiers e.g. 16k
+        self.assertEqual(advanced_benchmarks.parse_context_tokens("16k"), 16384)
+
+    def test_parse_context_tokens_invalid(self):
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("invalid")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("abc_k")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(0)
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(-50)
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("-8k")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(8192.5)
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("8192.5")
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens(float("inf"))
+        with self.assertRaises(ValueError):
+            advanced_benchmarks.parse_context_tokens("inf")
+        with self.assertRaises(TypeError):
+            advanced_benchmarks.parse_context_tokens(None)
+        with self.assertRaises(TypeError):
+            advanced_benchmarks.parse_context_tokens(True)
+        with self.assertRaises(TypeError):
+            advanced_benchmarks.parse_context_tokens(False)
+
+    @patch("advanced_benchmarks.requests.post")
+    def test_call_endpoint_dynamic_timeout_calculation(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.iter_lines.return_value = [b"data: [DONE]"]
+        mock_post.return_value.__enter__.return_value = mock_resp
+
+        # 1. Short prompt -> default floor 300
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "short prompt")
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 300)
+
+        # 2. None prompt -> default floor 300
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", None)
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 300)
+
+        # 3. 300,000 char prompt -> 300000 // 600 = 500
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "x" * 300000)
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 500)
+
+        # 4. Ultra-long prompt -> capped at 7200
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", "x" * 5000000)
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 7200)
+
+        # 5. Non-len prompt (e.g. integer or object without __len__)
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint("http://127.0.0.1:8080", "m1", 12345)
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 300)
+
+        # 6. Caller-specified timeout overrides dynamic calculation
+        mock_post.reset_mock()
+        advanced_benchmarks.call_endpoint(
+            "http://127.0.0.1:8080", "m1", "x" * 300000, timeout=1200
+        )
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["timeout"], 1200)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_needle_test_dynamic_timeout_and_max_tokens(self, mock_call):
+        mock_call.return_value = {
+            "response": "BANANA_SPLIT",
+            "reasoning": "",
+            "ttft": 0.5,
+            "decode_time": 0.2,
+            "prefill_speed": 100.0,
+            "decode_speed": 50.0,
+        }
+        # 1. Default max_tokens=2048, tokens=240000 -> effective_timeout = 240000 // 150 = 1600
+        res = advanced_benchmarks.run_needle_test(
+            "http://127.0.0.1:8080", "m1", tokens=240000
+        )
+        self.assertTrue(res["passed"])
+        mock_call.assert_called_once()
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 2048)
+        self.assertEqual(mock_call.call_args.kwargs.get("timeout"), 1600)
+
+        # 2. Tier string tokens="32k" and custom max_tokens=4096 -> tokens=32768, effective_timeout = max(300, 32768//150) = 300
+        mock_call.reset_mock()
+        res = advanced_benchmarks.run_needle_test(
+            "http://127.0.0.1:8080", "m1", tokens="32k", max_tokens=4096
+        )
+        self.assertTrue(res["passed"])
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 4096)
+        self.assertEqual(mock_call.call_args.kwargs.get("timeout"), 300)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_ruler_test_dynamic_timeout_and_max_tokens(self, mock_call):
+        mock_call.return_value = {
+            "response": "93",
+            "reasoning": "",
+            "ttft": 0.5,
+            "decode_time": 0.2,
+            "prefill_speed": 100.0,
+            "decode_speed": 50.0,
+        }
+        res = advanced_benchmarks.run_ruler_test(
+            "http://127.0.0.1:8080", "m1", tokens="240k", max_tokens=2048
+        )
+        self.assertTrue(res["passed"])
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 2048)
+        self.assertEqual(mock_call.call_args.kwargs.get("timeout"), 1600)
+
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_longbench_test_dynamic_timeout_and_max_tokens(self, mock_call):
+        mock_call.return_value = {
+            "response": "1452",
+            "reasoning": "",
+            "ttft": 0.5,
+            "decode_time": 0.2,
+            "prefill_speed": 100.0,
+            "decode_speed": 50.0,
+        }
+        res = advanced_benchmarks.run_longbench_test(
+            "http://127.0.0.1:8080", "m1", tokens="128k", max_tokens=2048
+        )
+        self.assertTrue(res["passed"])
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 2048)
+        self.assertEqual(mock_call.call_args.kwargs.get("timeout"), 131072 // 150)
+
+    @patch("advanced_benchmarks.subprocess.run")
+    @patch("advanced_benchmarks.call_endpoint")
+    def test_run_swe_test_timeout_and_max_tokens(self, mock_call, mock_run):
+        mock_call.return_value = {
+            "response": "```python\ndef parse_and_eval(expr):\n    return 42\n```",
+            "reasoning": "",
+            "ttft": 0.1,
+            "prefill_speed": 100.0,
+            "decode_time": 0.1,
+            "decode_speed": 50.0,
+        }
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr=""
+        )
+        res = advanced_benchmarks.run_swe_test(
+            "http://127.0.0.1:8080", "m1", max_tokens=8192
+        )
+        self.assertIsNotNone(res)
+        self.assertEqual(mock_call.call_args.kwargs.get("max_tokens"), 8192)
+        self.assertEqual(mock_call.call_args.kwargs.get("timeout"), 600)
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_needle_test")
+    def test_cli_max_tokens_and_tier_needle(self, mock_needle, mock_save):
+        mock_needle.return_value = {"benchmark": "Needle", "passed": True}
+        results = advanced_benchmarks.main(
+            ["--benchmark", "needle", "--tokens", "32k", "--max-tokens", "4096"]
+        )
+        self.assertEqual(len(results), 1)
+        mock_needle.assert_called_once_with(
+            "http://127.0.0.1:8083", "Qwen3.6-27B", tokens=32768, max_tokens=4096
+        )
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_ruler_test")
+    def test_cli_max_tokens_and_tier_ruler(self, mock_ruler, mock_save):
+        mock_ruler.return_value = {"benchmark": "RULER", "passed": True}
+        results = advanced_benchmarks.main(
+            ["--benchmark", "ruler", "--tokens", "64k", "--max-tokens", "2048"]
+        )
+        self.assertEqual(len(results), 1)
+        mock_ruler.assert_called_once_with(
+            "http://127.0.0.1:8083", "Qwen3.6-27B", tokens=65536, max_tokens=2048
+        )
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_longbench_test")
+    def test_cli_max_tokens_and_tier_longbench(self, mock_longbench, mock_save):
+        mock_longbench.return_value = {"benchmark": "LongBench", "passed": True}
+        results = advanced_benchmarks.main(
+            ["--benchmark", "longbench", "--tokens", "128k", "--max-tokens", "2048"]
+        )
+        self.assertEqual(len(results), 1)
+        mock_longbench.assert_called_once_with(
+            "http://127.0.0.1:8083", "Qwen3.6-27B", tokens=131072, max_tokens=2048
+        )
+
+    @patch("advanced_benchmarks._save_run_data")
+    @patch("advanced_benchmarks.run_swe_test")
+    def test_cli_max_tokens_swe(self, mock_swe, mock_save):
+        mock_swe.return_value = {"benchmark": "SWE-bench", "passed": True}
+        results = advanced_benchmarks.main(
+            ["--benchmark", "swe", "--max-tokens", "8192"]
+        )
+        self.assertEqual(len(results), 1)
+        mock_swe.assert_called_once_with(
+            "http://127.0.0.1:8083", "Qwen3.6-27B", max_tokens=8192
+        )
 
 
 if __name__ == "__main__":

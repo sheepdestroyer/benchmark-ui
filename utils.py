@@ -3,6 +3,7 @@ Shared validation utilities for LLM benchmark UI and dashboard.
 """
 
 import ipaddress
+import math
 import re
 import socket
 import urllib.parse
@@ -102,3 +103,79 @@ def redact_cli_args(args: list[str] | None) -> list[str]:
         redacted.append("********")
     return redacted
 
+
+CONTEXT_TIERS = {
+    "8k": 8192,
+    "32k": 32768,
+    "64k": 65536,
+    "128k": 131072,
+    "240k": 240000,
+}
+
+
+def parse_context_tokens(tokens_val):
+    """Parse context token length from integer or tier string (e.g., '8k', '32k', '240k')."""
+    if isinstance(tokens_val, bool):
+        raise TypeError(
+            f"tokens must be an integer, float, or string, got {type(tokens_val).__name__}"
+        )
+
+    if isinstance(tokens_val, int):
+        val = tokens_val
+    elif isinstance(tokens_val, float):
+        if math.isinf(tokens_val) or math.isnan(tokens_val):
+            raise ValueError(f"Invalid context tokens: '{tokens_val}'")
+        if not tokens_val.is_integer():
+            raise ValueError(
+                f"Context tokens must be an integer value, got non-integer float: {tokens_val}"
+            )
+        val = int(tokens_val)
+    elif isinstance(tokens_val, str):
+        cleaned = tokens_val.strip().lower()
+        if not cleaned:
+            raise ValueError("Context tokens cannot be empty string")
+        if cleaned in CONTEXT_TIERS:
+            val = CONTEXT_TIERS[cleaned]
+        elif cleaned.endswith("k"):
+            prefix = cleaned[:-1]
+            try:
+                num = float(prefix)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid context tokens or tier specification: '{tokens_val}'"
+                )
+            if math.isinf(num) or math.isnan(num):
+                raise ValueError(
+                    f"Invalid context tokens or tier specification: '{tokens_val}'"
+                )
+            token_float = num * 1024
+            if not token_float.is_integer():
+                raise ValueError(
+                    f"Context tokens must resolve to an integer value, got: {token_float}"
+                )
+            val = int(token_float)
+        else:
+            try:
+                num = float(cleaned)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid context tokens or tier specification: '{tokens_val}'"
+                )
+            if math.isinf(num) or math.isnan(num):
+                raise ValueError(
+                    f"Invalid context tokens or tier specification: '{tokens_val}'"
+                )
+            if not num.is_integer():
+                raise ValueError(
+                    f"Context tokens must be an integer value, got non-integer float: {tokens_val}"
+                )
+            val = int(num)
+    else:
+        raise TypeError(
+            f"tokens must be an integer, float, or string, got {type(tokens_val).__name__}"
+        )
+
+    if val <= 0:
+        raise ValueError(f"Context tokens must be positive (> 0), got {val}")
+
+    return val

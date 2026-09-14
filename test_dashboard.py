@@ -1,10 +1,10 @@
 import configparser
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -263,9 +263,8 @@ class TestDashboard(unittest.TestCase):
             "model]",
         ]
         for name in invalid_names:
-            with self.subTest(name=name):
-                with self.assertRaises(ValueError):
-                    dashboard.validate_model_name(name)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                dashboard.validate_model_name(name)
 
 
 class TestPresetConfig(unittest.TestCase):
@@ -1426,11 +1425,13 @@ class TestDashboardValidators(unittest.TestCase):
 
     def test_validate_new_tokens_out_of_bounds(self):
         for out_val in [0, -1, -5000, 262145, 1000000]:
-            with self.subTest(val=out_val):
-                with self.assertRaisesRegex(
+            with (
+                self.subTest(val=out_val),
+                self.assertRaisesRegex(
                     ValueError, r"Context length tokens must be between 1 and 262144\."
-                ):
-                    dashboard.validate_new_tokens(out_val)
+                ),
+            ):
+                dashboard.validate_new_tokens(out_val)
 
     def test_validate_new_tokens_invalid_type(self):
         for bad_val in [
@@ -1444,11 +1445,13 @@ class TestDashboardValidators(unittest.TestCase):
             [5000],
             {"tokens": 5000},
         ]:
-            with self.subTest(val=bad_val):
-                with self.assertRaisesRegex(
+            with (
+                self.subTest(val=bad_val),
+                self.assertRaisesRegex(
                     ValueError, r"Context length tokens must be between 1 and 262144\."
-                ):
-                    dashboard.validate_new_tokens(bad_val)
+                ),
+            ):
+                dashboard.validate_new_tokens(bad_val)
 
 
 import importlib.util
@@ -1837,6 +1840,7 @@ class TestModelRetrieval(unittest.TestCase):
 
     def test_dashboard_execution_endpoint_offline(self):
         import importlib
+
         import requests
 
         with (
@@ -1930,7 +1934,10 @@ class TestEndpointsPersistence(unittest.TestCase):
                 {"url": "http://127.0.0.1:8080"},  # Missing name
                 {"name": "No URL"},  # Missing url
                 {"name": "   ", "url": "http://127.0.0.1:8080"},  # Blank name
-                {"name": "Valid", "url": "http://127.0.0.1:8080"},  # Valid, defaults api_key and is_default
+                {
+                    "name": "Valid",
+                    "url": "http://127.0.0.1:8080",
+                },  # Valid, defaults api_key and is_default
             ]
             with open(endpoints_file, "w", encoding="utf-8") as f:
                 json.dump(invalid_records, f)
@@ -1977,7 +1984,9 @@ class TestEndpointsPersistence(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must be a dict"):
                 dashboard.save_endpoints(["not-a-dict"], endpoints_file)
             with self.assertRaisesRegex(ValueError, "non-empty string 'name'"):
-                dashboard.save_endpoints([{"url": "http://127.0.0.1:8080"}], endpoints_file)
+                dashboard.save_endpoints(
+                    [{"url": "http://127.0.0.1:8080"}], endpoints_file
+                )
             with self.assertRaisesRegex(ValueError, "non-empty string 'url'"):
                 dashboard.save_endpoints([{"name": "Ep"}], endpoints_file)
 
@@ -1985,7 +1994,11 @@ class TestEndpointsPersistence(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             endpoints_file = Path(tmp_dir) / "endpoints.json"
             eps = dashboard.add_endpoint(
-                "New Endpoint", "http://127.0.0.1:8090", "key-xyz", is_default=True, file_path=endpoints_file
+                "New Endpoint",
+                "http://127.0.0.1:8090",
+                "key-xyz",
+                is_default=True,
+                file_path=endpoints_file,
             )
             self.assertEqual(len(eps), 3)
             new_ep = next(e for e in eps if e["name"] == "New Endpoint")
@@ -2022,15 +2035,24 @@ class TestEndpointsPersistence(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "not found"):
                 dashboard.update_endpoint(
-                    "NonExistent", "New", "http://127.0.0.1:8080", file_path=endpoints_file
+                    "NonExistent",
+                    "New",
+                    "http://127.0.0.1:8080",
+                    file_path=endpoints_file,
                 )
             with self.assertRaisesRegex(ValueError, "already exists"):
                 dashboard.update_endpoint(
-                    "Renamed Router", "Production LLM-Routing", "http://127.0.0.1:8080", file_path=endpoints_file
+                    "Renamed Router",
+                    "Production LLM-Routing",
+                    "http://127.0.0.1:8080",
+                    file_path=endpoints_file,
                 )
             with self.assertRaisesRegex(ValueError, "Endpoint name cannot be empty"):
                 dashboard.update_endpoint(
-                    "Renamed Router", "", "http://127.0.0.1:8080", file_path=endpoints_file
+                    "Renamed Router",
+                    "",
+                    "http://127.0.0.1:8080",
+                    file_path=endpoints_file,
                 )
 
     def test_save_and_load_endpoints_non_string_api_key(self):
@@ -2044,7 +2066,16 @@ class TestEndpointsPersistence(unittest.TestCase):
             self.assertEqual(eps[0]["api_key"], "")
 
             with open(endpoints_file, "w", encoding="utf-8") as f:
-                json.dump([{"name": "Test2", "url": "http://127.0.0.1:8080", "api_key": 1234}], f)
+                json.dump(
+                    [
+                        {
+                            "name": "Test2",
+                            "url": "http://127.0.0.1:8080",
+                            "api_key": 1234,
+                        }
+                    ],
+                    f,
+                )
             eps2 = dashboard.load_endpoints(endpoints_file)
             self.assertEqual(eps2[0]["api_key"], "")
 
@@ -2057,14 +2088,18 @@ class TestEndpointsPersistence(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not found"):
                 dashboard.delete_endpoint("NonExistent", file_path=endpoints_file)
 
-            remaining = dashboard.delete_endpoint("Local Llama Router", file_path=endpoints_file)
+            remaining = dashboard.delete_endpoint(
+                "Local Llama Router", file_path=endpoints_file
+            )
             self.assertEqual(len(remaining), 1)
             self.assertEqual(remaining[0]["name"], "Production LLM-Routing")
             # Since default was deleted, remaining becomes default
             self.assertTrue(remaining[0]["is_default"])
 
             with self.assertRaisesRegex(ValueError, "Cannot delete the only"):
-                dashboard.delete_endpoint("Production LLM-Routing", file_path=endpoints_file)
+                dashboard.delete_endpoint(
+                    "Production LLM-Routing", file_path=endpoints_file
+                )
 
 
 class TestEndpointManagementAndRunnerUI(unittest.TestCase):
@@ -2074,7 +2109,9 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"data": [{"id": "model-1"}]}
-        with patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get:
+        with patch.object(
+            dashboard.requests, "get", return_value=mock_resp
+        ) as mock_get:
             models = dashboard.fetch_available_models("http://127.0.0.1:8083/")
             self.assertEqual(models, ["model-1"])
             mock_get.assert_called_once_with(
@@ -2117,7 +2154,9 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         mock_st_local = MagicMock()
         mock_fetch = MagicMock(return_value=["model-1", "model-2", "model-3"])
         with patch.object(dashboard, "fetch_available_models", mock_fetch):
-            test_models = dashboard.fetch_available_models("http://127.0.0.1:8083", "secret")
+            test_models = dashboard.fetch_available_models(
+                "http://127.0.0.1:8083", "secret"
+            )
             mock_st_local.success(
                 f"Connection successful! {len(test_models)} models available: {', '.join(test_models[:5])}..."
             )
@@ -2129,7 +2168,9 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         mock_st_local = MagicMock()
         err_msg = "Connection refused"
         mock_st_local.error(f"Connection failed: {err_msg}")
-        mock_st_local.error.assert_called_once_with("Connection failed: Connection refused")
+        mock_st_local.error.assert_called_once_with(
+            "Connection failed: Connection refused"
+        )
 
     def test_ui_manage_endpoints_save_action_success_and_error_paths(self):
         mock_st = MagicMock()
@@ -2137,25 +2178,43 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
 
         # 1. Add new endpoint success
         with patch.object(dashboard, "add_endpoint") as mock_add:
-            valid_u = dashboard.validate_endpoint_url("http://127.0.0.1:8080", allow_private=True)
+            valid_u = dashboard.validate_endpoint_url(
+                "http://127.0.0.1:8080", allow_private=True
+            )
             mock_add("New", valid_u, "key", True)
-            mock_st.session_state["endpoint_notice"] = "Endpoint 'New' saved successfully."
+            mock_st.session_state["endpoint_notice"] = (
+                "Endpoint 'New' saved successfully."
+            )
             mock_st.rerun()
 
-            mock_add.assert_called_once_with("New", "http://127.0.0.1:8080", "key", True)
-            self.assertEqual(mock_st.session_state["endpoint_notice"], "Endpoint 'New' saved successfully.")
+            mock_add.assert_called_once_with(
+                "New", "http://127.0.0.1:8080", "key", True
+            )
+            self.assertEqual(
+                mock_st.session_state["endpoint_notice"],
+                "Endpoint 'New' saved successfully.",
+            )
             mock_st.rerun.assert_called_once()
 
         # 2. Update endpoint success
         mock_st.reset_mock()
         with patch.object(dashboard, "update_endpoint") as mock_update:
-            valid_u = dashboard.validate_endpoint_url("http://127.0.0.1:8080", allow_private=True)
+            valid_u = dashboard.validate_endpoint_url(
+                "http://127.0.0.1:8080", allow_private=True
+            )
             mock_update("Old", "New", valid_u, "key", True)
-            mock_st.session_state["endpoint_notice"] = "Endpoint 'New' updated successfully."
+            mock_st.session_state["endpoint_notice"] = (
+                "Endpoint 'New' updated successfully."
+            )
             mock_st.rerun()
 
-            mock_update.assert_called_once_with("Old", "New", "http://127.0.0.1:8080", "key", True)
-            self.assertEqual(mock_st.session_state["endpoint_notice"], "Endpoint 'New' updated successfully.")
+            mock_update.assert_called_once_with(
+                "Old", "New", "http://127.0.0.1:8080", "key", True
+            )
+            self.assertEqual(
+                mock_st.session_state["endpoint_notice"],
+                "Endpoint 'New' updated successfully.",
+            )
             mock_st.rerun.assert_called_once()
 
         # 3. Invalid URL error
@@ -2173,7 +2232,9 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         # Delete success
         with patch.object(dashboard, "delete_endpoint") as mock_delete:
             mock_delete("Target Ep")
-            mock_st.session_state["endpoint_notice"] = "Endpoint 'Target Ep' deleted successfully."
+            mock_st.session_state["endpoint_notice"] = (
+                "Endpoint 'Target Ep' deleted successfully."
+            )
             mock_st.rerun()
 
             mock_delete.assert_called_once_with("Target Ep")
@@ -2181,12 +2242,16 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
 
         # Delete error
         mock_st.reset_mock()
-        with patch.object(dashboard, "delete_endpoint", side_effect=ValueError("Cannot delete")):
+        with patch.object(
+            dashboard, "delete_endpoint", side_effect=ValueError("Cannot delete")
+        ):
             try:
                 dashboard.delete_endpoint("Target Ep")
             except ValueError as err:
                 mock_st.error(f"Failed to delete endpoint: {err}")
-            mock_st.error.assert_called_once_with("Failed to delete endpoint: Cannot delete")
+            mock_st.error.assert_called_once_with(
+                "Failed to delete endpoint: Cannot delete"
+            )
 
     def test_runner_cmd_appends_api_key_when_present(self):
         import sys
@@ -2259,7 +2324,13 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             endpoints_file = Path(tmp_dir) / "endpoints.json"
             dashboard.save_endpoints(
-                [{"name": "Local", "url": "http://127.0.0.1:8083", "api_key": "secret"}],
+                [
+                    {
+                        "name": "Local",
+                        "url": "http://127.0.0.1:8083",
+                        "api_key": "secret",
+                    }
+                ],
                 endpoints_file,
             )
             mode = endpoints_file.stat().st_mode & 0o777
@@ -2285,7 +2356,10 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
 
             # 3. update_endpoint strips trailing slashes
             updated = dashboard.update_endpoint(
-                "Test2", "Test2Renamed", "http://127.0.0.1:8085///", file_path=endpoints_file
+                "Test2",
+                "Test2Renamed",
+                "http://127.0.0.1:8085///",
+                file_path=endpoints_file,
             )
             ep2_up = next(e for e in updated if e["name"] == "Test2Renamed")
             self.assertEqual(ep2_up["url"], "http://127.0.0.1:8085")
@@ -2296,18 +2370,27 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
         mock_resp.json.return_value = {"data": [{"id": "m1"}]}
 
         # API_KEY takes priority
-        with patch.dict(os.environ, {"API_KEY": "api-key-env", "OPENAI_API_KEY": "openai-key-env"}):
-            with patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get:
-                dashboard.fetch_available_models("http://127.0.0.1:8083")
-                _, kwargs = mock_get.call_args
-                self.assertEqual(kwargs["headers"]["Authorization"], "Bearer api-key-env")
+        with (
+            patch.dict(
+                os.environ,
+                {"API_KEY": "api-key-env", "OPENAI_API_KEY": "openai-key-env"},
+            ),
+            patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get,
+        ):
+            dashboard.fetch_available_models("http://127.0.0.1:8083")
+            _, kwargs = mock_get.call_args
+            self.assertEqual(kwargs["headers"]["Authorization"], "Bearer api-key-env")
 
         # OPENAI_API_KEY used when API_KEY is absent
         with patch.dict(os.environ, {"OPENAI_API_KEY": "openai-key-env"}, clear=True):
-            with patch.object(dashboard.requests, "get", return_value=mock_resp) as mock_get:
+            with patch.object(
+                dashboard.requests, "get", return_value=mock_resp
+            ) as mock_get:
                 dashboard.fetch_available_models("http://127.0.0.1:8083")
                 _, kwargs = mock_get.call_args
-                self.assertEqual(kwargs["headers"]["Authorization"], "Bearer openai-key-env")
+                self.assertEqual(
+                    kwargs["headers"]["Authorization"], "Bearer openai-key-env"
+                )
 
     def test_runner_cmd_redaction_and_env_fallback(self):
         import sys
@@ -2338,14 +2421,174 @@ class TestEndpointManagementAndRunnerUI(unittest.TestCase):
 
     def test_dynamic_widget_keys_pattern(self):
         selected_manage = "Local Llama Router"
-        self.assertEqual(f"ep_mgmt_name_{selected_manage}", "ep_mgmt_name_Local Llama Router")
-        self.assertEqual(f"ep_mgmt_url_{selected_manage}", "ep_mgmt_url_Local Llama Router")
-        self.assertEqual(f"ep_mgmt_key_{selected_manage}", "ep_mgmt_key_Local Llama Router")
-        self.assertEqual(f"ep_mgmt_default_{selected_manage}", "ep_mgmt_default_Local Llama Router")
+        self.assertEqual(
+            f"ep_mgmt_name_{selected_manage}", "ep_mgmt_name_Local Llama Router"
+        )
+        self.assertEqual(
+            f"ep_mgmt_url_{selected_manage}", "ep_mgmt_url_Local Llama Router"
+        )
+        self.assertEqual(
+            f"ep_mgmt_key_{selected_manage}", "ep_mgmt_key_Local Llama Router"
+        )
+        self.assertEqual(
+            f"ep_mgmt_default_{selected_manage}", "ep_mgmt_default_Local Llama Router"
+        )
 
         selected_endpoint = "Local Llama Router"
-        self.assertEqual(f"runner_saved_url_{selected_endpoint}", "runner_saved_url_Local Llama Router")
-        self.assertEqual(f"runner_saved_api_key_{selected_endpoint}", "runner_saved_api_key_Local Llama Router")
+        self.assertEqual(
+            f"runner_saved_url_{selected_endpoint}",
+            "runner_saved_url_Local Llama Router",
+        )
+        self.assertEqual(
+            f"runner_saved_api_key_{selected_endpoint}",
+            "runner_saved_api_key_Local Llama Router",
+        )
+
+
+class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
+    def test_context_tiers_constants(self):
+        self.assertEqual(dashboard.CONTEXT_TIERS["8k"], 8192)
+        self.assertEqual(dashboard.CONTEXT_TIERS["32k"], 32768)
+        self.assertEqual(dashboard.CONTEXT_TIERS["64k"], 65536)
+        self.assertEqual(dashboard.CONTEXT_TIERS["128k"], 131072)
+        self.assertEqual(dashboard.CONTEXT_TIERS["240k"], 240000)
+
+        expected_options = [
+            "8k (Smoke)",
+            "32k (Standard Agentic)",
+            "64k (Large Agentic)",
+            "128k (Deep Window)",
+            "240k (Full Window)",
+            "Custom",
+        ]
+        self.assertEqual(dashboard.CONTEXT_TIER_OPTIONS, expected_options)
+
+        self.assertEqual(dashboard.TIER_TO_TOKENS["8k (Smoke)"], 8192)
+        self.assertEqual(dashboard.TIER_TO_TOKENS["32k (Standard Agentic)"], 32768)
+        self.assertEqual(dashboard.TIER_TO_TOKENS["64k (Large Agentic)"], 65536)
+        self.assertEqual(dashboard.TIER_TO_TOKENS["128k (Deep Window)"], 131072)
+        self.assertEqual(dashboard.TIER_TO_TOKENS["240k (Full Window)"], 240000)
+
+    def test_validate_max_tokens_valid(self):
+        self.assertEqual(dashboard.validate_max_tokens(256), 256)
+        self.assertEqual(dashboard.validate_max_tokens(16384), 16384)
+        self.assertEqual(dashboard.validate_max_tokens(32768), 32768)
+        self.assertEqual(dashboard.validate_max_tokens("16384"), 16384)
+        self.assertEqual(dashboard.validate_max_tokens(16384.0), 16384)
+
+    def test_validate_max_tokens_out_of_bounds(self):
+        for out_val in (255, 32769, 0, -1, 100000):
+            with self.subTest(val=out_val), self.assertRaises(ValueError):
+                dashboard.validate_max_tokens(out_val)
+
+    def test_validate_max_tokens_invalid_type(self):
+        for bad_val in (None, True, False, "invalid", 16384.5, [], {}):
+            with self.subTest(val=bad_val), self.assertRaises(ValueError):
+                dashboard.validate_max_tokens(bad_val)
+
+    def test_build_runner_cmd_defaults(self):
+        cmd = dashboard.build_runner_cmd(
+            mode="all",
+            endpoint="http://127.0.0.1:8083",
+            model="Qwen3.6-27B",
+            tokens=32768,
+            corpus="kld_corpus.txt",
+        )
+        self.assertEqual(cmd[0], sys.executable)
+        self.assertEqual(cmd[1], "run_suite.py")
+        self.assertIn("--mode", cmd)
+        self.assertEqual(cmd[cmd.index("--mode") + 1], "all")
+        self.assertIn("--endpoint", cmd)
+        self.assertEqual(cmd[cmd.index("--endpoint") + 1], "http://127.0.0.1:8083")
+        self.assertIn("--model", cmd)
+        self.assertEqual(cmd[cmd.index("--model") + 1], "Qwen3.6-27B")
+        self.assertIn("--tokens", cmd)
+        self.assertEqual(cmd[cmd.index("--tokens") + 1], "32768")
+        self.assertIn("--corpus", cmd)
+        self.assertEqual(cmd[cmd.index("--corpus") + 1], "kld_corpus.txt")
+        self.assertIn("--max-tokens", cmd)
+        self.assertEqual(cmd[cmd.index("--max-tokens") + 1], "16384")
+        self.assertNotIn("--gguf-path", cmd)
+        self.assertNotIn("--api-key", cmd)
+
+    def test_build_runner_cmd_custom_max_tokens_and_options(self):
+        cmd = dashboard.build_runner_cmd(
+            mode="reasoning",
+            endpoint="https://remote.api.lan",
+            model="DeepSeek-R1",
+            tokens=240000,
+            corpus="corpus.txt",
+            gguf_path="path/to/model.gguf",
+            api_key="secret-pat",
+            max_tokens=8192,
+        )
+        self.assertIn("--max-tokens", cmd)
+        self.assertEqual(cmd[cmd.index("--max-tokens") + 1], "8192")
+        self.assertIn("--tokens", cmd)
+        self.assertEqual(cmd[cmd.index("--tokens") + 1], "240000")
+        self.assertIn("--gguf-path", cmd)
+        self.assertEqual(cmd[cmd.index("--gguf-path") + 1], "path/to/model.gguf")
+        self.assertIn("--api-key", cmd)
+        self.assertEqual(cmd[cmd.index("--api-key") + 1], "secret-pat")
+
+    def test_app_test_context_tier_switch_updates_tokens_input(self):
+        try:
+            from streamlit.testing.v1 import AppTest
+        except ImportError:  # pragma: no cover
+            self.skipTest("streamlit.testing.v1.AppTest is not available")
+
+        at = AppTest.from_file("dashboard.py")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions on initial run: {at.exception}",
+        )
+
+        # Verify initial default tier is 32k and initial tokens input is 32768
+        tier_sb = at.selectbox(key="runner_context_tier")
+        tokens_input = at.number_input(key="runner_context_tokens_input")
+        self.assertEqual(tier_sb.value, "32k (Standard Agentic)")
+        self.assertEqual(tokens_input.value, 32768)
+
+        # Switch to 64k tier -> verify runner_context_tokens_input is updated to 65536
+        tier_sb.select("64k (Large Agentic)")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting 64k: {at.exception}",
+        )
+        self.assertEqual(
+            at.number_input(key="runner_context_tokens_input").value, 65536
+        )
+
+        # Switch to 240k tier -> verify runner_context_tokens_input is updated to 240000
+        at.selectbox(key="runner_context_tier").select("240k (Full Window)")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting 240k: {at.exception}",
+        )
+        self.assertEqual(
+            at.number_input(key="runner_context_tokens_input").value, 240000
+        )
+
+        # Switch to 8k tier -> verify runner_context_tokens_input is updated to 8192
+        at.selectbox(key="runner_context_tier").select("8k (Smoke)")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting 8k: {at.exception}",
+        )
+        self.assertEqual(at.number_input(key="runner_context_tokens_input").value, 8192)
+
+        # Switch to Custom -> verify previous value is preserved
+        at.selectbox(key="runner_context_tier").select("Custom")
+        at.run(timeout=10)
+        self.assertFalse(
+            at.exception,
+            f"AppTest raised exceptions after selecting Custom: {at.exception}",
+        )
+        self.assertEqual(at.number_input(key="runner_context_tokens_input").value, 8192)
 
 
 if __name__ == "__main__":
