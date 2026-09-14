@@ -777,6 +777,235 @@ class TestLoadRuns(unittest.TestCase):
             self.assertEqual(call_count, 2)
 
 
+class TestParseRunFile(unittest.TestCase):
+    def setUp(self):
+        dashboard.st.error.reset_mock()
+
+    def test_parse_run_file_valid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_2026-09-11T12-00-00.json"
+            data = {
+                "run_metadata": {
+                    "timestamp": "2026-09-11T12:00:00",
+                    "target_endpoint": "http://127.0.0.1:8081",
+                    "cli_arguments": ["--tokens", "131072"],
+                },
+                "model_settings": {
+                    "profile_alias": "qwen-27b",
+                    "base_quantization": "Q4_K_M",
+                    "kv_cache_quant": "q8_0",
+                    "threads": 12,
+                    "ubatch_size": 256,
+                    "batch_size": 1024,
+                    "spec_type": "eagle",
+                    "spec_draft_type_k": "q4_0",
+                    "spec_draft_type_v": "q4_0",
+                    "flash_attn": "true",
+                    "parallel": "2",
+                    "fit": "false",
+                },
+                "throughput_metrics": {
+                    "prefill_speed": 180.5,
+                    "decode_speed": 45.2,
+                    "ttft": 0.08,
+                },
+                "reasoning_accuracy": {
+                    "needle": "Pass",
+                    "ruler": 0.96,
+                    "longbench": 0.89,
+                    "swe_bench": "Pass",
+                },
+                "quantization_loss": {
+                    "perplexity": 4.12,
+                    "mean_kld": 0.015,
+                    "same_top_match_percent": 99.2,
+                },
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Filename"], "run_2026-09-11T12-00-00.json")
+            self.assertEqual(res["Timestamp"], "2026-09-11T12:00:00")
+            self.assertEqual(res["Endpoint"], "http://127.0.0.1:8081")
+            self.assertEqual(res["Model"], "qwen-27b")
+            self.assertEqual(res["Base Quant"], "Q4_K_M")
+            self.assertEqual(res["KV Quant"], "q8_0")
+            self.assertEqual(res["Threads"], 12)
+            self.assertEqual(res["Ubatch Size"], 256)
+            self.assertEqual(res["Batch Size"], 1024)
+            self.assertEqual(res["Speculative"], "eagle")
+            self.assertEqual(res["Spec Type"], "eagle")
+            self.assertEqual(res["Spec Draft Type K"], "q4_0")
+            self.assertEqual(res["Spec Draft Type V"], "q4_0")
+            self.assertEqual(res["Flash Attn"], "true")
+            self.assertEqual(res["Parallel"], "2")
+            self.assertEqual(res["Fit"], "false")
+            self.assertEqual(res["Prefill (t/s)"], 180.5)
+            self.assertEqual(res["Decode (t/s)"], 45.2)
+            self.assertEqual(res["TTFT (s)"], 0.08)
+            self.assertEqual(res["Needle"], "Pass")
+            self.assertEqual(res["RULER"], 0.96)
+            self.assertEqual(res["LongBench"], 0.89)
+            self.assertEqual(res["SWE-bench"], "Pass")
+            self.assertEqual(res["PPL"], 4.12)
+            self.assertEqual(res["KLD"], 0.015)
+            self.assertEqual(res["Same Top %"], 99.2)
+            self.assertEqual(res["Context Length"], 131072)
+
+    def test_parse_run_file_malformed_json_and_errors(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+
+            # Corrupted JSON content
+            corrupt_file = tmp / "run_corrupt.json"
+            corrupt_file.write_text("{invalid json: error", encoding="utf-8")
+            res = dashboard._parse_run_file(corrupt_file)
+            self.assertIsNone(res)
+            dashboard.st.error.assert_called()
+
+            # Non-existent file
+            dashboard.st.error.reset_mock()
+            res = dashboard._parse_run_file(tmp / "non_existent.json")
+            self.assertIsNone(res)
+            dashboard.st.error.assert_called()
+
+            # Root is a list rather than a dict
+            dashboard.st.error.reset_mock()
+            list_file = tmp / "run_list.json"
+            list_file.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+            res = dashboard._parse_run_file(list_file)
+            self.assertIsNone(res)
+            dashboard.st.error.assert_called()
+
+    def test_parse_run_file_missing_fields_and_defaults(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_empty.json"
+            file_path.write_text("{}", encoding="utf-8")
+
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Filename"], "run_empty.json")
+            self.assertEqual(res["Timestamp"], "Unknown")
+            self.assertEqual(res["Endpoint"], "Unknown")
+            self.assertEqual(res["Context Length"], 200000)
+            self.assertEqual(res["Base Quant"], "Q4_K_S")
+            self.assertEqual(res["KV Quant"], "Unknown")
+            self.assertIsNone(res["Threads"])
+            self.assertEqual(res["Needle"], "N/A")
+            self.assertEqual(res["RULER"], "N/A")
+            self.assertEqual(res["LongBench"], "N/A")
+            self.assertEqual(res["SWE-bench"], "N/A")
+            self.assertIsNone(res["Prefill (t/s)"])
+            self.assertIsNone(res["PPL"])
+            self.assertIsNone(res["KLD"])
+            self.assertEqual(res["Flash Attn"], "true")
+            self.assertEqual(res["Parallel"], "1")
+            self.assertIn(res["Fit"], ("true", "false"))
+
+    def test_parse_run_file_invalid_tokens_arg(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_invalid_tokens.json"
+            data = {
+                "run_metadata": {
+                    "cli_arguments": ["--tokens", "not-a-number"]
+                }
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertIsNotNone(res)
+            self.assertEqual(res["Context Length"], 200000)
+
+    def test_parse_run_file_raw_gguf_cleaning(self):
+        cases = [
+            ("/models/custom-model-UD-Q4_K_XL.gguf", "custom-model"),
+            ("/models/custom-model-UD-Q4_K_S.gguf", "custom-model"),
+            ("custom-model-Q4_K_S.gguf", "custom-model"),
+            ("custom-model-Q6_K_XL.gguf", "custom-model"),
+            ("custom-model-Q8_0.gguf", "custom-model"),
+            ("custom-model-F16.gguf", "custom-model"),
+            ("custom-model-UD.gguf", "custom-model"),
+        ]
+        for raw_name, expected_cleaned in cases:
+            with self.subTest(raw_name=raw_name), tempfile.TemporaryDirectory() as tmpdir:
+                file_path = Path(tmpdir) / "run_test.json"
+                data = {
+                    "model_settings": {
+                        "profile_alias": raw_name
+                    }
+                }
+                file_path.write_text(json.dumps(data), encoding="utf-8")
+                res = dashboard._parse_run_file(file_path)
+                self.assertIsNotNone(res)
+                self.assertEqual(res["Model"], expected_cleaned)
+
+    def test_parse_run_file_quantization_resolutions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_quant.json"
+
+            # 1. Explicit base_quantization provided
+            file_path.write_text(json.dumps({
+                "model_settings": {"base_quantization": "Q5_K_M"}
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Base Quant"], "Q5_K_M")
+
+            # 2. Unknown base_quantization, model_name contains colon
+            file_path.write_text(json.dumps({
+                "model_settings": {"base_quantization": "Unknown", "model_name": "repo/model:Q8_0"}
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Base Quant"], "Q8_0")
+
+            # 3. Unknown base_quantization, model_name contains quant alias (e.g. q5_k_m or q8_0)
+            file_path.write_text(json.dumps({
+                "model_settings": {"base_quantization": "Unknown", "model_name": "qwen2.5-coder-q5_k_m.gguf"}
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Base Quant"], "Q5_K_M")
+
+            # 4. Unknown base_quantization, no colon/alias, but profile_name has spec4 -> Q6_K_XL
+            file_path.write_text(json.dumps({
+                "model_settings": {"base_quantization": "Unknown", "profile_alias": "local-spec4-test"}
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Base Quant"], "Q6_K_XL")
+
+            # 5. Unknown base_quantization, fallback default -> Q4_K_S
+            file_path.write_text(json.dumps({
+                "model_settings": {"base_quantization": "Unknown", "profile_alias": "standard-model"}
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Base Quant"], "Q4_K_S")
+
+    def test_parse_run_file_speculative_resolution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_spec.json"
+
+            # Speculative type from settings spec_type
+            file_path.write_text(json.dumps({
+                "model_settings": {
+                    "spec_type": "draft",
+                    "spec_draft_type_k": "q8_0",
+                    "spec_draft_type_v": "q8_0"
+                }
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Spec Type"], "draft")
+            self.assertEqual(res["Spec Draft Type K"], "q8_0")
+            self.assertEqual(res["Spec Draft Type V"], "q8_0")
+
+            # Speculative type fallback to speculative_draft_type
+            file_path.write_text(json.dumps({
+                "model_settings": {
+                    "speculative_draft_type": "spec_draft_fallback",
+                    "spec_draft_type_k": "None"
+                }
+            }), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Spec Type"], "spec_draft_fallback")
+
+
 class TestDashboardValidators(unittest.TestCase):
     def test_validate_gguf_path_none_or_empty(self):
         self.assertIsNone(dashboard.validate_gguf_path(None))
