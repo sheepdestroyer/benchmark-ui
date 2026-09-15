@@ -7,10 +7,11 @@ A comprehensive benchmarking pipeline and Streamlit dashboard designed to evalua
 - `dashboard.py` - Main interactive Streamlit UI dashboard for browsing historical run data, multi-GPU evaluation, and quantization optimization.
 - `benchmark_ui.py` - Simple runner Streamlit UI for direct benchmark execution and real-time streaming output.
 - `utils.py` - Centralized security, URL/SSRF validation, and input sanitization helpers.
-- `run_suite.py` - Unified run orchestrator for executing throughput, reasoning, and KLD benchmark modes.
+- `run_suite.py` - Unified run orchestrator for executing throughput, reasoning, agentic, and KLD benchmark modes.
 - `run_matrix.py` - Automated benchmark matrix generator sweeping across models, threads, and quantization settings.
 - `populate_history.py` - Utility script to populate the history registry with synthetic benchmark run logs.
-- `advanced_benchmarks.py` - Long-context (Needle, RULER, LongBench) and agentic reasoning (SWE-bench) benchmark pipeline.
+- `agentic_benchmarks.py` - Native Harbor / Terminal-Bench 2.0 wrapper and autonomous multi-turn agent evaluation harness.
+- `advanced_benchmarks.py` - Long-context (Needle, RULER, LongBench) and codebase debugging (SWE-bench) benchmark pipeline.
 - `kld_benchmark.py` - KV cache quantization Kullback-Leibler (KL) Divergence and perplexity evaluation.
 - `deploy/` - Production deployment specifications, including systemd Quadlet container definitions (`benchmark-ui.container`).
 - `history/` - Registry directory storing historical run JSON logs.
@@ -55,7 +56,7 @@ Or run either UI dashboard manually:
 
 ### 2. Execute the Unified Runner Script
 
-To run all benchmarks (throughput, reasoning, and local KLD quantization analysis) under a single command:
+To run all benchmarks (throughput, reasoning, agentic, and local KLD quantization analysis) under a single command:
 
 ```bash
 python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6-35B-A3B
@@ -64,13 +65,16 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 #### Run Modes:
 - `--mode throughput`: Runs only the ORM and Markdown throughput workloads via `benchmark.sh`.
 - `--mode reasoning`: Runs the long-context synthetic and real-world reasoning tasks.
+- `--mode agentic`: Runs multi-turn autonomous coding and terminal agent benchmarks (Harbor / Terminal-Bench 2.0 or standalone harness).
 - `--mode kld`: Compiles the native `llama-perplexity` binary and runs KLD analysis locally.
 - `--mode all`: Orchestrates all of the above sequentially.
 
 #### CLI Arguments:
 - `--endpoint`: Server endpoint URL (default: `http://127.0.0.1:8083`).
 - `--model`: Model alias or name loaded on the endpoint.
-- `--tokens`: Target token context length for reasoning tests (e.g. 5000 for validation, 200000 for full scaling).
+- `--tokens`: Target token context length or standard tier (e.g. `8k`, `32k`, `64k`, `128k`, `240k`, or integer).
+- `--max-tokens`: Maximum output and reasoning tokens to generate (default: `16384`).
+- `--agentic-tasks`: Task filter for agentic benchmark suite (e.g. `all`, `fix-syntax`, `log-analysis`, `git-repair`, `env-config`).
 - `--api-key`: API key for Bearer authentication (falls back to `API_KEY` / `OPENAI_API_KEY` environment variables).
 - `--gguf-path`: Local GGUF file path (for KLD mode, auto-detects Hugging Face cache if blank).
 - `--corpus`: Corpus prose file path for local perplexity calculation.
@@ -79,7 +83,7 @@ python3 run_suite.py --mode all --endpoint http://127.0.0.1:8083 --model Qwen3.6
 
 ## Automated Testing & CI/CD
  
-The repository maintains an automated unit test suite (403 tests) covering input validation, UI logic, benchmark execution, and data formatting.
+The repository maintains an automated unit test suite (523 tests) covering input validation, UI logic, benchmark execution, and data formatting.
  
 Install development dependencies and run the test suite using `pytest`:
  

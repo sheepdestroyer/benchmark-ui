@@ -94,9 +94,17 @@ Build a high-performance Streamlit WebUI to view and filter historical runs:
 - [x] **Defensive Validation & Queue Reader Extraction**: Enforced numeric type checks on `generate_filler_text` and extracted `enqueue_output` to module scope in `dashboard.py` with 100% test coverage (PR #137 / Issue #131).
 - [x] **Modular Run File Ingestion & Main Runner Tests**: Extracted `_parse_run_file` in `dashboard.py`, extracted runner helpers in `advanced_benchmarks.py`, added `--benchmark` selector and `--output` flags, and added comprehensive unit tests for `run_swe_test` and `main()` (PR #138 / Issue #132).
 
+## Phase 11: Scalable Agentic Benchmarks, Context Tiers (up to 240k) & SWE-bench Fixture Fix (Completed 2026-09-15)
+
+- [x] **SWE-bench Fixture Decoupling & Dynamic Token Limits**: Created isolated buggy calculator fixture (`toy_repo/fixtures/buggy_calculator.py`), added pytest fixtures ignore rule in `pytest.ini`, implemented self-healing crash recovery and atomic restoration via `os.replace`, and expanded token generation window to 16,384 tokens (PR #151 / Issue #147).
+- [x] **Scalable Context Tiers & Dynamic Timeout Scaling**: Centralized `CONTEXT_TIERS` (`8k`, `32k`, `64k`, `128k`, `240k`) and hardened `parse_context_tokens` in `utils.py`, added dynamic timeout calculation bounded to `[300, 7200]` in `call_endpoint`, added `--max-tokens` CLI parameter, and synchronized tier selector in Streamlit runner (PR #152 / Issue #148).
+- [x] **Native Harbor & Terminal-Bench 2.0 Agentic Benchmark Harness**: Implemented `agentic_benchmarks.py` supporting Harbor CLI execution over user-level rootless Podman (`unix:///run/user/$UID/podman/podman.sock`) and an autonomous 4-task multi-turn sandbox fallback with process group kill isolation (`os.killpg`), sanitized environments, and `--mode agentic` in `run_suite.py` (PR #153 / Issue #149).
+- [x] **Dashboard Agentic Metrics, Visualizations & History Schema**: Ingested `agentic_metrics` and `token_breakdown` in `_parse_run_file`, surfaced agentic KPI summary cards and comparison tables, added Plotly context scaling curves up to 240k tokens and reasoning token ratio figures, and supported `--agentic-tasks` filter in the runner UI (PR #154 / Issue #150).
+
 ---
 
 ## Next Steps / Future Work
 1. **Dynamic Live Telemetry**: Integrate GPU VRAM and temperature metrics directly into the Streamlit UI via NVML.
 2. **Automated Export**: Add CSV/Excel export buttons for filtered historical benchmark sets.
+
 
