@@ -1,0 +1,59 @@
+{
+    "run_metadata": {
+        "timestamp": "2026-09-15T22:55:30.861119",
+        "target_endpoint": "http://127.0.0.1:8081",
+        "synthetic": true,
+        "cli_arguments": [
+            "--mode",
+            "all",
+            "--model",
+            "Qwen3.6-27B-spec2",
+            "--tokens",
+            "5000"
+        ]
+    },
+    "model_settings": {
+        "model_name": "unsloth/Qwen3.6-27B-MTP-GGUF:Q4_K_S",
+        "profile_alias": "Qwen3.6-27B-spec2",
+        "base_quantization": "Q4_K_S",
+        "kv_cache_quant": "q8_0",
+        "threads": 16,
+        "ubatch_size": 512,
+        "batch_size": 2048,
+        "speculative_draft_type": "draft-mtp",
+        "spec_type": "draft-mtp",
+        "spec_draft_type_k": "q5_1",
+        "spec_draft_type_v": "q5_1",
+        "flash_attn": "true",
+        "parallel": "1",
+        "fit": "true"
+    },
+    "throughput_metrics": {
+        "prefill_speed": 1522.5,
+        "decode_speed": 115.5,
+        "ttft": 0.381
+    },
+    "reasoning_accuracy": {
+        "needle": "Pass",
+        "ruler": "Pass",
+        "longbench": "Pass",
+        "swe_bench": "Pass"
+    },
+    "agentic_metrics": {
+        "suite": "standalone-agentic",
+        "tasks_total": 4,
+        "tasks_passed": 3,
+        "average_turns": 2.5,
+        "total_tool_calls": 6
+    },
+    "token_breakdown": {
+        "prompt_tokens": 1200,
+        "reasoning_tokens": 450,
+        "completion_tokens": 650
+    },
+    "quantization_loss": {
+        "perplexity": 3.928,
+        "mean_kld": 0.0018,
+        "same_top_match_percent": 98.4
+    }
+}
