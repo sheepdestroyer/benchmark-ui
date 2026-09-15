@@ -4,6 +4,13 @@ All notable changes to the LLM Benchmarking and Server Router project are docume
 
 ## [Unreleased]
 
+### Added
+*   **Native Harbor & Standalone Agentic Benchmark Harness (`agentic_benchmarks.py`, `run_suite.py`)**: Implemented full agentic evaluation harness supporting official Harbor CLI (`harbor run`) over rootless Podman socket (`unix:///run/user/$UID/podman/podman.sock`) and an autonomous 4-task multi-turn sandbox runner (`fix-syntax`, `log-analysis`, `git-repair`, `env-config`) with process-group kill isolation (`os.killpg`), sanitized environments, and `--mode agentic` CLI orchestration (PR #153 / Issue #149).
+*   **Scalable Context Tiers & Dynamic Timeout Scaling (`utils.py`, `advanced_benchmarks.py`, `dashboard.py`)**: Centralized standard context tier presets (`8k`, `32k`, `64k`, `128k`, `240k`) with input parser `parse_context_tokens`, added dynamic timeout calculation bounded to $[300, 7200]$s in `call_endpoint`, added `--max-tokens` CLI support across runners, and added synchronized tier selector in the Streamlit runner UI (PR #152 / Issue #148).
+*   **Agentic Telemetry, Visualizations & History Schema (`dashboard.py`)**: Ingested `agentic_metrics` and `token_breakdown` in `_parse_run_file`, added summary cards (`Agentic Suite`, `Agentic Pass Rate`, `Agentic Turns`, `Tool Calls`), side-by-side comparison tables formatted cleanly with `pd.notna` to eliminate `"nan"` strings, Plotly Context Scaling curves (up to 240k tokens), and Reasoning Token Ratio charts (PR #154 / Issue #150).
+*   **Decoupled Buggy SWE-bench Fixture (`toy_repo/fixtures/buggy_calculator.py`, `advanced_benchmarks.py`)**: Decoupled the order-of-operations bug from the clean test repository into `toy_repo/fixtures/buggy_calculator.py`, ignored in `pytest.ini`, with atomic backup/restoration via `os.replace` and configurable output token limits (default `max_tokens=16384`) to prevent reasoning token starvation (PR #151 / Issue #147).
+*   **Clean Historical Baseline Reset & Live Multi-Mode Telemetry (`history/`, `populate_history.py`)**: Archived legacy runs into `history/archive_legacy/` (gitignored), seeded 24 baseline runs with `populate_history.py`, validated live reasoning benchmarks with SWE-bench passing 100%, standalone agentic suite passing 3/3 tasks, deep context scaling at 32k tokens, and verified Langfuse session tracking on `https://llm-routing.vendeuvre.lan` (PR #155).
+
 ## [v0.1.6] - 2026-09-14 - Dynamic Model Retrieval, SSRF LAN Allowlist & Persistent Endpoint Management
 
 ### Added
