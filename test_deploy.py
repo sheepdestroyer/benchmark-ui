@@ -345,3 +345,16 @@ def test_quadlet_ephemeral_port_range_off_host_range():
     sysctls = config["Container"].get("Sysctl", [])
 
     assert '"net.ipv4.ip_local_port_range=62000 65000"' in sysctls
+
+
+def test_quadlet_uses_log_priority_splitter():
+    """Verify the repo Quadlet matches prod: stderr is split by priority."""
+    config = parse_quadlet_file(DEPLOY_CONTAINER_PATH)
+    container = config["Container"]
+
+    assert container["Entrypoint"] == ["/usr/local/bin/log-priority-splitter.sh"]
+    assert any(
+        v.startswith("/mnt/DATA/boy/prod/infra/bin/log-priority-splitter.sh:")
+        and v.endswith(":ro,z")
+        for v in container["Volume"]
+    )

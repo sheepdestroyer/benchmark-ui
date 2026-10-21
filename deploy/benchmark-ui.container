@@ -6,11 +6,14 @@ After=network-online.target
 ContainerName=production-benchmark-ui
 Image=ghcr.io/sheepdestroyer/benchmark-ui:latest
 AutoUpdate=registry
+Entrypoint=/usr/local/bin/log-priority-splitter.sh
+Exec=streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
 Network=pasta:-a,10.0.2.1/24
 Sysctl="net.ipv4.ip_local_port_range=62000 65000"
 PublishPort=127.0.0.1:8501:8501
 Volume=/mnt/DATA/boy/prod/benchmark-ui/data/history:/app/history:Z
 Volume=/mnt/DATA/boy/prod/haproxy/certs/ca-bundle.crt:/etc/ssl/certs/ca-bundle.crt:ro,z
+Volume=/mnt/DATA/boy/prod/infra/bin/log-priority-splitter.sh:/usr/local/bin/log-priority-splitter.sh:ro,z
 Environment=STREAMLIT_SERVER_PORT=8501
 Environment=STREAMLIT_SERVER_ADDRESS=0.0.0.0
 Environment=STREAMLIT_SERVER_HEADLESS=true
