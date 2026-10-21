@@ -332,3 +332,29 @@ def test_validate_quadlet_config_missing_wud_label():
     }
     with pytest.raises(ValueError, match="Missing Label=wud.watch.digest=true"):
         validate_quadlet_config(config)
+
+
+def test_quadlet_ephemeral_port_range_off_host_range():
+    """Verify the container's ephemeral port range sits outside the host's (32768-60999).
+
+    pasta binds each outbound UDP flow on the host with the container's source port;
+    a port already held by a host-network process makes the bind fail and the
+    datagram (usually a DNS query) is dropped.
+    """
+    config = parse_quadlet_file(DEPLOY_CONTAINER_PATH)
+    sysctls = config["Container"].get("Sysctl", [])
+
+    assert '"net.ipv4.ip_local_port_range=62000 65000"' in sysctls
+
+
+def test_quadlet_uses_log_priority_splitter():
+    """Verify the repo Quadlet matches prod: stderr is split by priority."""
+    config = parse_quadlet_file(DEPLOY_CONTAINER_PATH)
+    container = config["Container"]
+
+    assert container["Entrypoint"] == ["/usr/local/bin/log-priority-splitter.sh"]
+    assert any(
+        v.startswith("/mnt/DATA/boy/prod/infra/bin/log-priority-splitter.sh:")
+        and v.endswith(":ro,z")
+        for v in container["Volume"]
+    )
