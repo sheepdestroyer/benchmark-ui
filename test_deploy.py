@@ -344,7 +344,7 @@ def test_quadlet_ephemeral_port_range_off_host_range():
     config = parse_quadlet_file(DEPLOY_CONTAINER_PATH)
     sysctls = config["Container"].get("Sysctl", [])
 
-    assert '"net.ipv4.ip_local_port_range=62000 65000"' in sysctls
+    assert '"net.ipv4.ip_local_port_range=62000 65001"' in sysctls
 
 
 def test_quadlet_uses_log_priority_splitter():
