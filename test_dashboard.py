@@ -3113,5 +3113,47 @@ class TestDashboardContextTiersAndMaxTokens(unittest.TestCase):
                 self.assertNotIn("nan", comp_df[col].astype(str).str.lower().values)
 
 
+    def test_parse_run_file_unified_v02_fields(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "run_2026-11-22T21-00-00.json"
+            data = {
+                "run_metadata": {
+                    "timestamp": "2026-11-22T21:00:00",
+                    "target_endpoint": "http://192.168.0.31:8080",
+                    "cli_arguments": ["--profile", "quick"],
+                },
+                "deployment_tuple": {
+                    "engine": "basalt",
+                    "max_context": 262144,
+                },
+                "model_settings": {
+                    "profile_alias": "strata-qwen",
+                    "base_quantization": "NVFP4-DQ8",
+                    "kv_cache_quant": "int8",
+                },
+                "throughput_metrics": {
+                    "prefill_speed": 1200.0,
+                    "decode_speed": 75.0,
+                    "ttft": 0.25,
+                },
+                "prefix_cache_metrics": {"speedup": 6.5},
+                "concurrency_metrics": {"aggregate_decode_tok_s": 130.0},
+                "hass_probe": {"mean_ttft_s": 0.21},
+                "hermes_replay": {"malformed_tool_count": 0},
+                "mrcr_metrics": {"mrcr_mean": 0.92},
+                "ocr_metrics": {"cer_mean": 0.015},
+            }
+            file_path.write_text(json.dumps(data), encoding="utf-8")
+            res = dashboard._parse_run_file(file_path)
+            self.assertEqual(res["Engine"], "basalt")
+            self.assertEqual(res["Context Length"], 262144)
+            self.assertEqual(res["Prefix Speedup"], 6.5)
+            self.assertEqual(res["C2 Decode (t/s)"], 130.0)
+            self.assertEqual(res["HASS TTFT (s)"], 0.21)
+            self.assertEqual(res["Hermes Malformed"], 0)
+            self.assertEqual(res["MRCR Mean"], 0.92)
+            self.assertEqual(res["OCR CER"], 0.015)
+
+
 if __name__ == "__main__":
     unittest.main()

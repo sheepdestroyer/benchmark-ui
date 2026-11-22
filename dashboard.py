@@ -866,6 +866,18 @@ def _parse_run_file(filepath):
         if tasks_total and tasks_total > 0 and tasks_passed is not None:
             pass_rate = round((tasks_passed / tasks_total) * 100, 1)
 
+        dep = data.get("deployment_tuple") or {}
+        prefix_cache = data.get("prefix_cache_metrics") or {}
+        conc_metrics = data.get("concurrency_metrics") or {}
+        hass_probe = data.get("hass_probe") or {}
+        hermes_rep = data.get("hermes_replay") or {}
+        mrcr_metrics = data.get("mrcr_metrics") or {}
+        ocr_metrics = data.get("ocr_metrics") or {}
+        if isinstance(dep.get("max_context"), int):
+            ctx_len = dep["max_context"]
+        elif isinstance(settings.get("context_length"), int):
+            ctx_len = settings["context_length"]
+
         return {
             "Filename": filepath.name,
             "Timestamp": metadata.get("timestamp", "Unknown"),
@@ -904,6 +916,13 @@ def _parse_run_file(filepath):
             "KLD": loss.get("mean_kld"),
             "Same Top %": loss.get("same_top_match_percent"),
             "Context Length": ctx_len,
+            "Engine": dep.get("engine") or settings.get("engine"),
+            "Prefix Speedup": prefix_cache.get("speedup"),
+            "C2 Decode (t/s)": conc_metrics.get("aggregate_decode_tok_s"),
+            "HASS TTFT (s)": hass_probe.get("mean_ttft_s"),
+            "Hermes Malformed": hermes_rep.get("malformed_tool_count"),
+            "MRCR Mean": mrcr_metrics.get("mrcr_mean"),
+            "OCR CER": ocr_metrics.get("cer_mean"),
         }
     except Exception as e:
         st.error(f"Error loading {filepath.name}: {e}")
@@ -1223,6 +1242,13 @@ with tab_history:
             "Agentic Pass Rate",
             "Agentic Turns",
             "Agentic Tool Calls",
+            "Engine",
+            "Prefix Speedup",
+            "C2 Decode (t/s)",
+            "HASS TTFT (s)",
+            "Hermes Malformed",
+            "MRCR Mean",
+            "OCR CER",
             "PPL",
             "KLD",
         ]
@@ -1245,6 +1271,30 @@ with tab_history:
         if "Agentic Tool Calls" in unified_df.columns:
             flat_format["Agentic Tool Calls"] = (
                 lambda x: f"{int(x)}" if pd.notna(x) else "N/A"
+            )
+        if "Prefix Speedup" in unified_df.columns:
+            flat_format["Prefix Speedup"] = (
+                lambda x: f"{x:.2f}x" if pd.notna(x) else "N/A"
+            )
+        if "C2 Decode (t/s)" in unified_df.columns:
+            flat_format["C2 Decode (t/s)"] = (
+                lambda x: f"{x:.1f}" if pd.notna(x) else "N/A"
+            )
+        if "HASS TTFT (s)" in unified_df.columns:
+            flat_format["HASS TTFT (s)"] = (
+                lambda x: f"{x:.3f}" if pd.notna(x) else "N/A"
+            )
+        if "Hermes Malformed" in unified_df.columns:
+            flat_format["Hermes Malformed"] = (
+                lambda x: f"{int(x)}" if pd.notna(x) else "N/A"
+            )
+        if "MRCR Mean" in unified_df.columns:
+            flat_format["MRCR Mean"] = (
+                lambda x: f"{x:.3f}" if pd.notna(x) else "N/A"
+            )
+        if "OCR CER" in unified_df.columns:
+            flat_format["OCR CER"] = (
+                lambda x: f"{x:.4f}" if pd.notna(x) else "N/A"
             )
 
         st.dataframe(
@@ -1989,6 +2039,53 @@ with tab_compare:
 
             comp_df = pd.DataFrame(
                 compare_rows, columns=["Metric", "Configuration A", "Configuration B"]
+            )
+            extra_compare_rows = [
+                (
+                    "Engine",
+                    str(runA.get("Engine") or "N/A"),
+                    str(runB.get("Engine") or "N/A"),
+                ),
+                (
+                    "Prefix Speedup (x)",
+                    fmt_num(runA.get("Prefix Speedup"), "{:.2f}"),
+                    fmt_num(runB.get("Prefix Speedup"), "{:.2f}"),
+                ),
+                (
+                    "C2 Decode (t/s)",
+                    fmt_num(runA.get("C2 Decode (t/s)"), "{:.1f}"),
+                    fmt_num(runB.get("C2 Decode (t/s)"), "{:.1f}"),
+                ),
+                (
+                    "HASS TTFT (s)",
+                    fmt_num(runA.get("HASS TTFT (s)"), "{:.3f}"),
+                    fmt_num(runB.get("HASS TTFT (s)"), "{:.3f}"),
+                ),
+                (
+                    "MRCR Mean",
+                    fmt_num(runA.get("MRCR Mean"), "{:.3f}"),
+                    fmt_num(runB.get("MRCR Mean"), "{:.3f}"),
+                ),
+                (
+                    "OCR CER Mean",
+                    fmt_num(runA.get("OCR CER"), "{:.4f}"),
+                    fmt_num(runB.get("OCR CER"), "{:.4f}"),
+                ),
+                (
+                    "Hermes Malformed Tools",
+                    fmt_num(runA.get("Hermes Malformed"), "{:.0f}"),
+                    fmt_num(runB.get("Hermes Malformed"), "{:.0f}"),
+                ),
+            ]
+            comp_df = pd.concat(
+                [
+                    comp_df,
+                    pd.DataFrame(
+                        extra_compare_rows,
+                        columns=["Metric", "Configuration A", "Configuration B"],
+                    ),
+                ],
+                ignore_index=True,
             )
             st.table(comp_df)
         else:
