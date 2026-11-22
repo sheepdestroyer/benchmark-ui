@@ -1393,6 +1393,28 @@ class TestRunSuiteContextTiersAndMaxTokens(unittest.TestCase):
 class TestRunSuiteUnifiedProfile(unittest.TestCase):
     """Test unified v0.2 --profile orchestration, --output-dir, and provenance tuple."""
 
+    def test_get_model_settings_skips_preset_threads_and_batches(self):
+        mock_adv = MagicMock()
+        mock_adv.map_repo_to_preset_alias.return_value = "Qwen3.8-27B-spec"
+        mock_adv.get_preset_metadata.return_value = {
+            "threads": 8,
+            "batch_size": 4096,
+            "ubatch_size": 1024,
+            "spec_type": "draft-mtp",
+        }
+        with (
+            patch.object(run_suite, "advanced_benchmarks", mock_adv),
+            patch(
+                "run_suite.requests.get",
+                side_effect=run_suite.requests.RequestException("offline"),
+            ),
+        ):
+            settings = run_suite.get_model_settings(
+                "http://127.0.0.1:8083", "Qwen3.8-27B-spec"
+            )
+        self.assertEqual(settings["spec_type"], "draft-mtp")
+        self.assertIsNone(settings["threads"])
+
     def test_main_unified_profile_quick_with_output_dir(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_dir = Path(tmp_dir) / "custom_out"
