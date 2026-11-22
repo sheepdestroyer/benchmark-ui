@@ -1390,5 +1390,102 @@ class TestRunSuiteContextTiersAndMaxTokens(unittest.TestCase):
         )
 
 
+class TestRunSuiteUnifiedProfile(unittest.TestCase):
+    """Test unified v0.2 --profile orchestration, --output-dir, and provenance tuple."""
+
+    def test_main_unified_profile_quick_with_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_dir = Path(tmp_dir) / "custom_out"
+            fake_script = os.path.join(tmp_dir, "run_suite.py")
+            test_args = [
+                "run_suite.py",
+                "--endpoint",
+                "http://192.168.0.31:8080",
+                "--model",
+                "strata-qwen",
+                "--profile",
+                "quick",
+                "--engine",
+                "basalt",
+                "--output-dir",
+                str(out_dir),
+                "--extra-meta",
+                '{"routing_mode":"resident_experts"}',
+                "--api-key",
+                "secret-tok",
+            ]
+            from deployment_tuple import DeploymentTuple
+
+            fake_dt = DeploymentTuple(
+                engine="basalt",
+                model_alias="strata-qwen",
+                weight_quant="NVFP4-DQ8",
+                kv_quant="int8",
+                routing_mode="resident_experts",
+                parallel_slots=2,
+                max_context=262144,
+                host="gx10",
+            )
+            fake_dt_none_slots = DeploymentTuple(
+                engine="strata",
+                model_alias="strata-qwen",
+                weight_quant="UD-Q4_K_XL",
+                kv_quant="int8",
+                parallel_slots=None,
+                max_context=262144,
+            )
+
+            for dt_obj in (fake_dt, fake_dt_none_slots):
+                with (
+                    patch("sys.argv", test_args),
+                    patch.object(run_suite, "__file__", fake_script),
+                    patch(
+                        "run_suite.detect_engine_from_endpoint",
+                        return_value=dt_obj,
+                    ),
+                    patch(
+                        "run_suite.measure_throughput_suite",
+                        return_value={
+                            "throughput_metrics": {
+                                "prefill_speed": 500.0,
+                                "decode_speed": 65.0,
+                                "ttft": 0.3,
+                            },
+                            "prefix_cache_metrics": {"speedup": 4.2},
+                            "concurrency_metrics": {"aggregate_decode_tok_s": 110.0},
+                            "hass_probe": {"mean_ttft_s": 0.25},
+                        },
+                    ),
+                    patch(
+                        "run_suite.run_api_and_hermes_suite",
+                        return_value={
+                            "api_edges": {"passed": 5, "total": 5},
+                            "hermes_replay": {
+                                "passed": 2,
+                                "total": 2,
+                                "malformed_tool_count": 0,
+                            },
+                            "disconnect_recovery": None,
+                        },
+                    ),
+                    patch(
+                        "run_suite.run_mrcr_suite",
+                        return_value={"mrcr_mean": 0.91, "custom_ratio": 1.0},
+                    ),
+                    patch(
+                        "run_suite.run_ocr_suite",
+                        return_value={"cer_mean": 0.012, "runaway_count": 0},
+                    ),
+                ):
+                    run_suite.main()
+
+            files = list(out_dir.glob("run_*.json"))
+            self.assertTrue(len(files) >= 1)
+            payload = json.loads(files[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["run_metadata"]["profile"], "quick")
+            self.assertEqual(payload["mrcr_metrics"]["mrcr_mean"], 0.91)
+            self.assertEqual(payload["ocr_metrics"]["cer_mean"], 0.012)
+
+
 if __name__ == "__main__":
     unittest.main()

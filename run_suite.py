@@ -13,6 +13,15 @@ QUANT_TYPES = (
 )
 
 import argparse
+from bench_api_hermes import run_api_and_hermes_suite
+from bench_mrcr import run_mrcr_suite
+from bench_ocr import run_ocr_suite
+from bench_throughput import measure_throughput_suite
+from deployment_tuple import (
+    deployment_tuple_to_dict,
+    detect_engine_from_endpoint,
+    parse_extra_meta,
+)
 import datetime
 import json
 import os
@@ -401,6 +410,77 @@ def run_kld(model_path, corpus):
     return kld_results
 
 
+def _execute_unified_profile(args, timestamp, dt, call_kw):
+    """Run tier-appropriate quick/full/gate suites and return unified JSON run data."""
+    profile = args.profile
+    api_key = call_kw.get("api_key")
+    throughput_bundle = measure_throughput_suite(
+        args.endpoint, args.model, profile=profile, api_key=api_key
+    )
+    api_hermes = run_api_and_hermes_suite(
+        args.endpoint,
+        args.model,
+        profile=profile,
+        fixtures_dir=getattr(args, "hermes_fixtures_dir", None),
+        api_key=api_key,
+    )
+    mrcr_res = run_mrcr_suite(
+        args.endpoint,
+        args.model,
+        tasks_path=getattr(args, "mrcr_tasks", None),
+        profile=profile,
+        api_key=api_key,
+    )
+    ocr_res = run_ocr_suite(
+        args.endpoint,
+        args.model,
+        gold_dir=getattr(args, "ocr_gold_dir", None),
+        profile=profile,
+        api_key=api_key,
+    )
+
+    dt_dict = deployment_tuple_to_dict(dt)
+    model_settings = {
+        "profile_alias": args.model,
+        "engine": dt.engine,
+        "engine_version": dt.engine_version,
+        "base_quantization": dt.weight_quant,
+        "kv_cache_quant": dt.kv_quant,
+        "routing_mode": dt.routing_mode,
+        "spec_type": dt.speculative_mode,
+        "parallel": str(dt.parallel_slots)
+        if dt.parallel_slots is not None
+        else "Unknown",
+        "context_length": dt.max_context,
+    }
+    return {
+        "run_metadata": {
+            "timestamp": timestamp,
+            "target_endpoint": args.endpoint,
+            "profile": profile,
+            "cli_arguments": redact_cli_args(sys.argv[1:]),
+        },
+        "deployment_tuple": dt_dict,
+        "model_settings": model_settings,
+        "throughput_metrics": throughput_bundle["throughput_metrics"],
+        "prefix_cache_metrics": throughput_bundle["prefix_cache_metrics"],
+        "concurrency_metrics": throughput_bundle["concurrency_metrics"],
+        "hass_probe": throughput_bundle["hass_probe"],
+        "api_edges": api_hermes["api_edges"],
+        "hermes_replay": api_hermes["hermes_replay"],
+        "disconnect_recovery": api_hermes["disconnect_recovery"],
+        "mrcr_metrics": mrcr_res,
+        "ocr_metrics": ocr_res,
+        "reasoning_accuracy": {
+            "mrcr_mean": mrcr_res.get("mrcr_mean"),
+            "lcq_custom": mrcr_res.get("custom_ratio"),
+        },
+        "agentic_metrics": {},
+        "token_breakdown": {},
+        "quantization_loss": {},
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Unified LLM Benchmarking Suite")
     parser.add_argument(
@@ -446,6 +526,42 @@ def main():
         help="API key for Bearer authentication",
     )
 
+    parser.add_argument(
+        "--profile",
+        choices=["quick", "full", "gate"],
+        default=None,
+        help="Run unified v0.2 evaluation profile (quick, full, gate).",
+    )
+    parser.add_argument(
+        "--engine",
+        default=None,
+        help="Explicit engine override (llama.cpp, basalt, strata, strata-inkling).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Optional directory to write run JSON instead of default history/.",
+    )
+    parser.add_argument(
+        "--hermes-fixtures-dir",
+        default=None,
+        help="Directory of Hermes JSON replay fixtures.",
+    )
+    parser.add_argument(
+        "--mrcr-tasks",
+        default=None,
+        help="Path to MRCR / long-context tasks JSON file.",
+    )
+    parser.add_argument(
+        "--ocr-gold-dir",
+        default=None,
+        help="Path to DIVORCE-IA OCR gold directory (gold.json + manifest.json).",
+    )
+    parser.add_argument(
+        "--extra-meta",
+        default=None,
+        help="Additional JSON metadata string or @file.json for deployment tuple.",
+    )
     args = parser.parse_args()
 
     timestamp = datetime.datetime.now().isoformat()
@@ -472,77 +588,93 @@ def main():
     if getattr(args, "api_key", None):
         call_kw["api_key"] = args.api_key
 
-    # 1. Run throughput if mode is 'throughput' or 'all'
-    if args.mode in ["throughput", "all"]:
-        metrics = run_throughput(args.endpoint, args.model, **call_kw)
-        throughput_metrics.update(metrics)
-
-    # 2. Run reasoning if mode is 'reasoning' or 'all'
-    if args.mode in ["reasoning", "all"]:
-        accuracy = run_reasoning(
+    if getattr(args, "profile", None) in ("quick", "full", "gate"):
+        extra_meta = parse_extra_meta(getattr(args, "extra_meta", None))
+        dt = detect_engine_from_endpoint(
             args.endpoint,
             args.model,
-            args.tokens,
-            max_tokens=args.max_tokens,
-            **call_kw,
+            engine_override=getattr(args, "engine", None),
+            api_key=args.api_key,
+            extra_meta=extra_meta,
         )
-        reasoning_accuracy.update(accuracy)
+        run_data = _execute_unified_profile(args, timestamp, dt, call_kw)
+    else:
+        # 1. Run throughput if mode is 'throughput' or 'all'
+        if args.mode in ["throughput", "all"]:
+            metrics = run_throughput(args.endpoint, args.model, **call_kw)
+            throughput_metrics.update(metrics)
 
-    # 3. Run agentic if mode is 'agentic' or 'all'
-    if args.mode in ["agentic", "all"]:
-        agentic_results = run_agentic(
-            args.endpoint,
-            args.model,
-            task_filter=args.agentic_tasks,
-            max_tokens=args.max_tokens,
-            **call_kw,
-        )
-        agentic_metrics = agentic_results
-        token_breakdown = (
-            agentic_results.get("token_breakdown") if agentic_results else None
-        )
+        # 2. Run reasoning if mode is 'reasoning' or 'all'
+        if args.mode in ["reasoning", "all"]:
+            accuracy = run_reasoning(
+                args.endpoint,
+                args.model,
+                args.tokens,
+                max_tokens=args.max_tokens,
+                **call_kw,
+            )
+            reasoning_accuracy.update(accuracy)
 
-    # 4. Run KLD if mode is 'kld' or 'all'
-    kld_results = None
-    if args.mode in ["kld", "all"]:
-        kld_results = run_kld(args.gguf_path, args.corpus)
+        # 3. Run agentic if mode is 'agentic' or 'all'
+        if args.mode in ["agentic", "all"]:
+            agentic_results = run_agentic(
+                args.endpoint,
+                args.model,
+                task_filter=args.agentic_tasks,
+                max_tokens=args.max_tokens,
+                **call_kw,
+            )
+            agentic_metrics = agentic_results
+            token_breakdown = (
+                agentic_results.get("token_breakdown") if agentic_results else None
+            )
 
-    # 5. Extract model settings
-    model_settings = get_model_settings(args.endpoint, args.model, **call_kw)
+        # 4. Run KLD if mode is 'kld' or 'all'
+        kld_results = None
+        if args.mode in ["kld", "all"]:
+            kld_results = run_kld(args.gguf_path, args.corpus)
 
-    # If KLD was run, choose the quantization loss values matching the model's KV Cache quant setting
-    if kld_results:
-        kv_quant = model_settings.get("kv_cache_quant", "q5_1")
-        if not kv_quant or kv_quant == "Unknown":
-            kv_quant = "q5_1"
-        match_quant = kv_quant
-        if match_quant not in kld_results:
-            for k in QUANT_PRIORITIES:
-                if k in kld_results:
-                    match_quant = k
-                    break
-        if match_quant in kld_results:
-            quantization_loss.update(kld_results[match_quant])
-            if model_settings["kv_cache_quant"] == "Unknown":
-                model_settings["kv_cache_quant"] = match_quant
+        # 5. Extract model settings
+        model_settings = get_model_settings(args.endpoint, args.model, **call_kw)
 
-    # Create final run object
-    run_data = {
-        "run_metadata": {
-            "timestamp": timestamp,
-            "target_endpoint": args.endpoint,
-            "cli_arguments": redact_cli_args(sys.argv[1:]),
-        },
-        "model_settings": model_settings,
-        "throughput_metrics": throughput_metrics,
-        "reasoning_accuracy": reasoning_accuracy,
-        "agentic_metrics": agentic_metrics,
-        "token_breakdown": token_breakdown,
-        "quantization_loss": quantization_loss,
-    }
+        # If KLD was run, choose the quantization loss values matching the model's KV Cache quant setting
+        if kld_results:
+            kv_quant = model_settings.get("kv_cache_quant", "q5_1")
+            if not kv_quant or kv_quant == "Unknown":
+                kv_quant = "q5_1"
+            match_quant = kv_quant
+            if match_quant not in kld_results:
+                for k in QUANT_PRIORITIES:
+                    if k in kld_results:
+                        match_quant = k
+                        break
+            if match_quant in kld_results:
+                quantization_loss.update(kld_results[match_quant])
+                if model_settings["kv_cache_quant"] == "Unknown":
+                    model_settings["kv_cache_quant"] = match_quant
 
-    # Write output to history/
-    history_dir = (Path(__file__).parent / "history").resolve()
+        # Create final run object
+        run_data = {
+            "run_metadata": {
+                "timestamp": timestamp,
+                "target_endpoint": args.endpoint,
+                "cli_arguments": redact_cli_args(sys.argv[1:]),
+            },
+            "model_settings": model_settings,
+            "throughput_metrics": throughput_metrics,
+            "reasoning_accuracy": reasoning_accuracy,
+            "agentic_metrics": agentic_metrics,
+            "token_breakdown": token_breakdown,
+            "quantization_loss": quantization_loss,
+        }
+
+    # Write output to output_dir (if given) or history/
+    out_dir_arg = getattr(args, "output_dir", None)
+    history_dir = (
+        Path(out_dir_arg).resolve()
+        if out_dir_arg
+        else (Path(__file__).parent / "history").resolve()
+    )
     history_dir.mkdir(parents=True, exist_ok=True)
     safe_timestamp = timestamp.replace(":", "-").replace(".", "-")
     output_file = history_dir / f"run_{safe_timestamp}.json"

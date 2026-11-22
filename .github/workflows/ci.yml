@@ -39,3 +39,4 @@ jobs:
       - name: Run Pytest Suite with Coverage
         run: |
           python -m pytest --cov=. --cov-report=term-missing
+          python -m pytest --cov=deployment_tuple --cov=bench_throughput --cov=bench_api_hermes --cov=bench_mrcr --cov=bench_ocr --cov=bench_kld_adapters --cov=run_suite --cov=agentic_benchmarks --cov=utils --cov=populate_history --cov-fail-under=100 --cov-report=term-missing
